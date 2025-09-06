@@ -1,0 +1,19 @@
+manifest_version = 2
+
+name = "mocktioneer"
+description = "Mocktioneer: a mock OpenRTB bidder for testing"
+language = "rust"
+version = "0.1.0"
+
+[scripts]
+build = """
+    cargo build --bin mocktioneer --release --target wasm32-wasip1 --color always
+"""
+
+[local_server]
+  # This section is used by `fastly compute serve` for local dev.
+  # It won't affect deployed behavior.
+  port = 7676
+
+# No backends required; this is an originless mock bidder.
+

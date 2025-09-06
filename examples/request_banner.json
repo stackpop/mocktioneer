@@ -1,0 +1,27 @@
+{
+  "id": "test-req-1",
+  "at": 1,
+  "cur": ["USD"],
+  "imp": [
+    {
+      "id": "1",
+      "banner": {
+        "w": 300,
+        "h": 250
+      },
+      "ext": {
+        "bidder": {
+          "endpoint": "http://127.0.0.1:7676/openrtb2/auction"
+        }
+      }
+    }
+  ],
+  "site": {
+    "page": "https://example.com"
+  },
+  "device": {
+    "ua": "Mozilla/5.0",
+    "ip": "127.0.0.1"
+  }
+}
+

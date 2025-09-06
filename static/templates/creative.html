@@ -1,0 +1,25 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Mocktioneer {{W}}x{{H}}</title>
+  <style>
+    html,body{margin:0;padding:0;height:100%}
+    a,img{display:block;border:0}
+    .container{width:100%;height:100%}
+  </style>
+</head>
+<body>
+  <a id="clk" href="/click" target="_blank" class="container">
+    <img src="/static/img/{{W}}x{{H}}.svg" alt="Mocktioneer {{W}}x{{H}}" style="width:100%;height:100%;object-fit:contain;">
+  </a>
+  <script>
+    (function(){
+      var p=new URLSearchParams(location.search),c=p.get('crid')||'';
+      // Pass size context too so landing can echo
+      document.getElementById('clk').href='/click?crid='+encodeURIComponent(c)+'&w={{W}}&h={{H}}';
+    })();
+  </script>
+</body>
+</html>
