@@ -23,11 +23,6 @@ fn rand_id(len: usize) -> String {
         .collect()
 }
 
-pub fn banner_adm_html(crid: &str, w: i64, h: i64) -> String {
-    // Use iframe-based creative to keep a single template path
-    banner_adm_iframe("mocktioneer.edgecompute.app", crid, w, h, None)
-}
-
 pub fn size_from_imp(imp: &OpenrtbImp) -> (i64, i64) {
     // Prefer imp.banner.w/h; fallback to banner.format[0].w/h; default 300x250
     if let Some(banner) = &imp.banner {
@@ -45,9 +40,7 @@ pub fn size_from_imp(imp: &OpenrtbImp) -> (i64, i64) {
     (300, 250)
 }
 
-// duplicate removed
-
-pub fn build_openrtb_response_typed(req: &OpenRTBRequest) -> OpenRTBResponse {
+pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> OpenRTBResponse {
     let mut bids: Vec<OpenrtbBid> = Vec::new();
     for imp in req.imp.iter() {
         let impid = if imp.id.is_empty() { "1" } else { &imp.id };
@@ -66,7 +59,7 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest) -> OpenRTBResponse {
                 json!({"mocktioneer": {"bid": f}})
             });
         let bid_for_iframe = if bid_ext.is_some() { Some(price) } else { None };
-        let adm_html = banner_adm_iframe("mocktioneer.edgecompute.app", &crid, w, h, bid_for_iframe);
+        let adm_html = banner_adm_iframe(base_host, &crid, w, h, bid_for_iframe);
         bids.push(OpenrtbBid {
             id: bid_id,
             impid: impid.to_string(),
@@ -211,7 +204,6 @@ pub fn build_openrtb_response_with_base_typed(
         }],
     }
 }
-// (duplicate removed)
 
 #[cfg(test)]
 mod tests {
@@ -240,7 +232,7 @@ mod tests {
             "imp": [{"id":"1","banner":{"w":300,"h":250}}]
         });
         let req: OpenRTBRequest = serde_json::from_value(req_v).unwrap();
-        let resp = build_openrtb_response_typed(&req);
+        let resp = build_openrtb_response_typed(&req, "host.test");
         assert_eq!(resp.id, "r1");
         assert_eq!(resp.cur.as_deref(), Some("USD"));
         assert_eq!(resp.seatbid.len(), 1);
@@ -294,14 +286,6 @@ mod tests {
     }
 
     #[test]
-    fn test_banner_adm_html_contains_expected_iframe_and_escapes() {
-        let html = banner_adm_html("abc&def\"", 300, 250);
-        assert!(html.contains("//mocktioneer.edgecompute.app/static/creatives/300x250.html?crid=abc&amp;def&quot;"));
-        assert!(html.contains("width=\"300\""));
-        assert!(html.contains("height=\"250\""));
-    }
-
-    #[test]
     fn test_build_openrtb_response_with_base_standard_and_defaulted_sizes() {
         // standard size
         let req_std_v: serde_json::Value = serde_json::json!({
@@ -342,7 +326,7 @@ mod tests {
             }]
         });
         let req_with_bid: OpenRTBRequest = serde_json::from_value(req_with_bid_v).unwrap();
-        let resp_with_bid = build_openrtb_response_typed(&req_with_bid);
+        let resp_with_bid = build_openrtb_response_typed(&req_with_bid, "host.test");
         let bid = &resp_with_bid.seatbid[0].bid[0];
         let echoed = bid.ext.as_ref().unwrap();
         assert_eq!(echoed["mocktioneer"]["bid"], 2.34);
@@ -357,7 +341,7 @@ mod tests {
             }]
         });
         let req_no_bid: OpenRTBRequest = serde_json::from_value(req_no_bid_v).unwrap();
-        let resp_no_bid = build_openrtb_response_typed(&req_no_bid);
+        let resp_no_bid = build_openrtb_response_typed(&req_no_bid, "host.test");
         assert!(resp_no_bid.seatbid[0].bid[0].ext.is_none());
         assert!((resp_no_bid.seatbid[0].bid[0].price - 1.23).abs() < 0.0001);
     }
