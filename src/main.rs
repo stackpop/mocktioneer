@@ -3,7 +3,10 @@ use fastly::{mime, Error, Request, Response};
 #[cfg(target_arch = "wasm32")]
 use mocktioneer::openrtb::OpenRTBRequest;
 #[cfg(target_arch = "wasm32")]
-use mocktioneer::{build_openrtb_response_with_base_typed, escape_html, is_standard_size, render_svg, render_template_str};
+use mocktioneer::{
+    build_openrtb_response_with_base_typed, escape_html, is_standard_size, render_svg,
+    render_template_str,
+};
 
 #[cfg(target_arch = "wasm32")]
 #[fastly::main]
@@ -145,7 +148,9 @@ fn handle_root(req: Request) -> Result<Response, Error> {
         .unwrap_or("");
     let service_id = env::var("FASTLY_SERVICE_ID").unwrap_or_else(|_| "".to_string());
     let service_version = env::var("FASTLY_SERVICE_VERSION").unwrap_or_else(|_| "".to_string());
-    let datacenter = env::var("FASTLY_DATACENTER").or_else(|_| env::var("FASTLY_REGION")).unwrap_or_else(|_| "".to_string());
+    let datacenter = env::var("FASTLY_DATACENTER")
+        .or_else(|_| env::var("FASTLY_REGION"))
+        .unwrap_or_else(|_| "".to_string());
     let pkg_version = env!("CARGO_PKG_VERSION");
     const INFO_TMPL: &str = include_str!("../static/templates/info.html");
     let data = serde_json::json!({

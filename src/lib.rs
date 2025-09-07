@@ -1,12 +1,12 @@
 use rand::{distributions::Alphanumeric, Rng};
 
 pub mod openrtb;
+use handlebars::Handlebars;
 use openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
 use serde_json::json;
 use serde_json::Value as JsonValue;
-use handlebars::Handlebars;
 
 pub fn escape_html(input: &str) -> String {
     input
@@ -138,12 +138,18 @@ pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
     const SVG_TMPL: &str = include_str!("../static/templates/image.svg");
     let pad = ((w.min(h) as f64) * 0.08).round() as i64;
     let mut text_len = w - 2 * pad;
-    if text_len < 1 { text_len = 1; }
+    if text_len < 1 {
+        text_len = 1;
+    }
     let font = (h as f64 * 0.28).round() as i64;
     let mut cap_font = ((w.min(h) as f64) * 0.16).round() as i64;
-    if cap_font < 10 { cap_font = 10; }
+    if cap_font < 10 {
+        cap_font = 10;
+    }
     let mut stroke = ((w.min(h) as f64) * 0.03).round() as i64;
-    if stroke < 2 { stroke = 2; }
+    if stroke < 2 {
+        stroke = 2;
+    }
     let xbr = (w - pad - stroke).max(0);
     let ybr = (h - pad - stroke).max(0);
     let xtl = (pad + stroke).max(0);
