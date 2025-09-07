@@ -1,5 +1,4 @@
-[build]
-target = "wasm32-wasip1"
+# Default to native target for dev/tests; build wasm explicitly with `--target wasm32-wasip1`
 
-[target.'cfg(all(target_arch = "wasm32"))']
-runner = "viceroy run -C ../../fastly.toml -- "
+[target.wasm32-wasip1]
+runner = "viceroy run -C fastly.toml -- "
