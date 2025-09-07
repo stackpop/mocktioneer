@@ -1,5 +1,10 @@
 use rand::{distributions::Alphanumeric, Rng};
-use serde_json::{json, Value};
+
+pub mod openrtb;
+use openrtb::{
+    Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
+};
+use serde_json::json;
 
 pub fn escape_html(input: &str) -> String {
     input
@@ -19,25 +24,23 @@ fn rand_id(len: usize) -> String {
 }
 
 pub fn banner_adm_html(crid: &str, w: i64, h: i64) -> String {
-    format!(
-        "<html><body style=\"margin:0;padding:0;\"><a href=\"/click?crid={crid}&w={w}&h={h}\" target=\"_blank\"><div style=\"display:flex;align-items:center;justify-content:center;width:{w}px;height:{h}px;background:#dbeafe;border:1px solid #93c5fd;font:14px/1.2 system-ui,sans-serif;color:#1e3a8a\">Mocktioneer {w}x{h} (crid={crid})</div></a></body></html>",
-        crid=escape_html(crid), w=w, h=h
-    )
+    const HTML_TMPL: &str = include_str!("../static/templates/banner_adm.html");
+    HTML_TMPL
+        .replace("{{CRID}}", &escape_html(crid))
+        .replace("{{W}}", &w.to_string())
+        .replace("{{H}}", &h.to_string())
 }
 
-pub fn size_from_imp(imp: &Value) -> (i64, i64) {
+pub fn size_from_imp(imp: &OpenrtbImp) -> (i64, i64) {
     // Prefer imp.banner.w/h; fallback to banner.format[0].w/h; default 300x250
-    let banner = imp.get("banner");
-    if let Some(banner) = banner {
-        let w = banner.get("w").and_then(|v| v.as_i64());
-        let h = banner.get("h").and_then(|v| v.as_i64());
-        if let (Some(w), Some(h)) = (w, h) {
+    if let Some(banner) = &imp.banner {
+        if let (Some(w), Some(h)) = (banner.w, banner.h) {
             return (w, h);
         }
-        if let Some(fmt) = banner.get("format").and_then(|v| v.as_array()) {
+        if let Some(fmt) = &banner.format {
             if let Some(fmt0) = fmt.first() {
-                let w = fmt0.get("w").and_then(|v| v.as_i64()).unwrap_or(300);
-                let h = fmt0.get("h").and_then(|v| v.as_i64()).unwrap_or(250);
+                let w = fmt0.w;
+                let h = fmt0.h;
                 return (w, h);
             }
         }
@@ -47,43 +50,51 @@ pub fn size_from_imp(imp: &Value) -> (i64, i64) {
 
 // duplicate removed
 
-pub fn build_openrtb_response(parsed: &Value) -> Value {
-    let req_id = parsed
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("req")
-        .to_string();
-    let imps = parsed
-        .get("imp")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let mut bids = vec![];
-    for imp in imps.iter() {
-        let impid = imp.get("id").and_then(|v| v.as_str()).unwrap_or("1");
+pub fn build_openrtb_response_typed(req: &OpenRTBRequest) -> OpenRTBResponse {
+    let mut bids: Vec<OpenrtbBid> = Vec::new();
+    for imp in req.imp.iter() {
+        let impid = if imp.id.is_empty() { "1" } else { &imp.id };
         let (w, h) = size_from_imp(imp);
         let bid_id = rand_id(12);
         let crid = format!("mocktioneer-{}", impid);
         let adm_html = banner_adm_html(&crid, w, h);
-
-        bids.push(json!({
-            "id": bid_id,
-            "impid": impid,
-            "price": 1.23,
-            "adm": adm_html,
-            "crid": crid,
-            "w": w,
-            "h": h,
-            "adomain": ["example.com"],
-        }));
+        // Extract numeric bid param from imp.ext.mocktioneer.bid if present; use as price
+        let mut price = 1.23_f64;
+        let bid_ext = imp
+            .ext
+            .as_ref()
+            .and_then(|e| e.mocktioneer.as_ref())
+            .and_then(|m| m.bid)
+            .map(|f| {
+                price = f;
+                json!({"mocktioneer": {"bid": f}})
+            });
+        bids.push(OpenrtbBid {
+            id: bid_id,
+            impid: impid.to_string(),
+            price,
+            adm: Some(adm_html),
+            crid: Some(crid),
+            w: Some(w),
+            h: Some(h),
+            mtype: Some(MediaType::Banner),
+            adomain: Some(vec!["example.com".to_string()]),
+            ext: bid_ext,
+            ..Default::default()
+        });
     }
-
-    json!({
-        "id": req_id,
-        "cur": "USD",
-        "seatbid": [ { "seat": "mocktioneer", "bid": bids } ]
-    })
+    OpenRTBResponse {
+        id: if req.id.is_empty() {
+            "req".to_string()
+        } else {
+            req.id.clone()
+        },
+        cur: Some("USD".to_string()),
+        seatbid: vec![SeatBid {
+            seat: Some("mocktioneer".to_string()),
+            bid: bids,
+        }],
+    }
 }
 
 pub fn is_standard_size(w: i64, h: i64) -> bool {
@@ -111,54 +122,63 @@ fn standard_or_default(w: i64, h: i64) -> (i64, i64) {
 }
 
 pub fn banner_adm_iframe(base_host: &str, crid: &str, w: i64, h: i64) -> String {
+    const IFRAME_TMPL: &str = include_str!("../static/templates/iframe.html");
     let safe_crid = escape_html(crid);
-    format!(
-        "<iframe src=\"//{host}/static/creatives/{w}x{h}.html?crid={crid}\" width=\"{w}\" height=\"{h}\" frameborder=\"0\" scrolling=\"no\"></iframe>",
-        host = base_host,
-        w = w,
-        h = h,
-        crid = safe_crid
-    )
+    IFRAME_TMPL
+        .replace("{{HOST}}", base_host)
+        .replace("{{W}}", &w.to_string())
+        .replace("{{H}}", &h.to_string())
+        .replace("{{CRID}}", &safe_crid)
 }
 
-pub fn build_openrtb_response_with_base(parsed: &Value, base_host: &str) -> Value {
-    let req_id = parsed
-        .get("id")
-        .and_then(|v| v.as_str())
-        .unwrap_or("req")
-        .to_string();
-    let imps = parsed
-        .get("imp")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    let mut bids = vec![];
-    for imp in imps.iter() {
-        let impid = imp.get("id").and_then(|v| v.as_str()).unwrap_or("1");
+pub fn build_openrtb_response_with_base_typed(
+    req: &OpenRTBRequest,
+    base_host: &str,
+) -> OpenRTBResponse {
+    let mut bids: Vec<OpenrtbBid> = Vec::new();
+    for imp in req.imp.iter() {
+        let impid = if imp.id.is_empty() { "1" } else { &imp.id };
         let (mut w, mut h) = size_from_imp(imp);
-        let bid_id = rand_id(12);
         (w, h) = standard_or_default(w, h);
+        let bid_id = rand_id(12);
         let crid = format!("mocktioneer-{}", impid);
         let adm_html = banner_adm_iframe(base_host, &crid, w, h);
-
-        bids.push(json!({
-            "id": bid_id,
-            "impid": impid,
-            "price": 1.23,
-            "adm": adm_html,
-            "crid": crid,
-            "w": w,
-            "h": h,
-            "adomain": ["example.com"],
-        }));
+        let mut price = 1.23_f64;
+        let bid_ext = imp
+            .ext
+            .as_ref()
+            .and_then(|e| e.mocktioneer.as_ref())
+            .and_then(|m| m.bid)
+            .map(|f| {
+                price = f;
+                json!({"mocktioneer": {"bid": f}})
+            });
+        bids.push(OpenrtbBid {
+            id: bid_id,
+            impid: impid.to_string(),
+            price,
+            adm: Some(adm_html),
+            crid: Some(crid),
+            w: Some(w),
+            h: Some(h),
+            mtype: Some(MediaType::Banner),
+            adomain: Some(vec!["example.com".to_string()]),
+            ext: bid_ext,
+            ..Default::default()
+        });
     }
-
-    json!({
-        "id": req_id,
-        "cur": "USD",
-        "seatbid": [ { "seat": "mocktioneer", "bid": bids } ]
-    })
+    OpenRTBResponse {
+        id: if req.id.is_empty() {
+            "req".to_string()
+        } else {
+            req.id.clone()
+        },
+        cur: Some("USD".to_string()),
+        seatbid: vec![SeatBid {
+            seat: Some("mocktioneer".to_string()),
+            bid: bids,
+        }],
+    }
 }
 // (duplicate removed)
 
@@ -168,32 +188,38 @@ mod tests {
 
     #[test]
     fn test_size_from_imp_defaults_and_format() {
-        let v: Value = serde_json::json!({"id":"1","banner":{}});
-        assert_eq!(size_from_imp(&v), (300, 250));
+        let v: serde_json::Value = serde_json::json!({"id":"1","banner":{}});
+        let imp: OpenrtbImp = serde_json::from_value(v).unwrap();
+        assert_eq!(size_from_imp(&imp), (300, 250));
 
-        let v: Value = serde_json::json!({"id":"1","banner":{"format":[{"w":320,"h":50}]}});
-        assert_eq!(size_from_imp(&v), (320, 50));
+        let v: serde_json::Value =
+            serde_json::json!({"id":"1","banner":{"format":[{"w":320,"h":50}]}});
+        let imp: OpenrtbImp = serde_json::from_value(v).unwrap();
+        assert_eq!(size_from_imp(&imp), (320, 50));
 
-        let v: Value = serde_json::json!({"id":"1","banner":{"w":728,"h":90}});
-        assert_eq!(size_from_imp(&v), (728, 90));
+        let v: serde_json::Value = serde_json::json!({"id":"1","banner":{"w":728,"h":90}});
+        let imp: OpenrtbImp = serde_json::from_value(v).unwrap();
+        assert_eq!(size_from_imp(&imp), (728, 90));
     }
 
     #[test]
     fn test_build_openrtb_response_structure() {
-        let req: Value = serde_json::json!({
+        let req_v: serde_json::Value = serde_json::json!({
             "id": "r1",
             "imp": [{"id":"1","banner":{"w":300,"h":250}}]
         });
-        let resp = build_openrtb_response(&req);
-        assert_eq!(resp["id"], "r1");
-        assert_eq!(resp["cur"], "USD");
-        assert!(resp["seatbid"].is_array());
-        assert!(resp["seatbid"][0]["bid"].is_array());
-        let bid = &resp["seatbid"][0]["bid"][0];
-        assert_eq!(bid["impid"], "1");
-        assert_eq!(bid["w"], 300);
-        assert_eq!(bid["h"], 250);
-        assert!(bid["adm"].is_string());
+        let req: OpenRTBRequest = serde_json::from_value(req_v).unwrap();
+        let resp = build_openrtb_response_typed(&req);
+        assert_eq!(resp.id, "r1");
+        assert_eq!(resp.cur.as_deref(), Some("USD"));
+        assert_eq!(resp.seatbid.len(), 1);
+        assert!(!resp.seatbid[0].bid.is_empty());
+        let bid = &resp.seatbid[0].bid[0];
+        assert_eq!(bid.impid, "1");
+        assert_eq!(bid.w, Some(300));
+        assert_eq!(bid.h, Some(250));
+        assert_eq!(bid.mtype, Some(MediaType::Banner));
+        assert!(bid.adm.as_ref().is_some());
     }
 
     #[test]
@@ -237,29 +263,71 @@ mod tests {
     }
 
     #[test]
+    fn test_banner_adm_html_contains_expected_link_and_escapes() {
+        let html = banner_adm_html("abc&def\"", 300, 250);
+        assert!(html.contains("/click?crid=abc&amp;def&quot;&w=300&h=250"));
+        assert!(html.contains("mocktioneer 300x250 (crid=abc&amp;def&quot;)"));
+    }
+
+    #[test]
     fn test_build_openrtb_response_with_base_standard_and_defaulted_sizes() {
         // standard size
-        let req_std: Value = serde_json::json!({
+        let req_std_v: serde_json::Value = serde_json::json!({
             "id": "r2",
             "imp": [{"id":"1","banner":{"w":320,"h":50}}]
         });
-        let resp_std = build_openrtb_response_with_base(&req_std, "host.test");
-        let adm_std = resp_std["seatbid"][0]["bid"][0]["adm"].as_str().unwrap();
+        let req_std: OpenRTBRequest = serde_json::from_value(req_std_v).unwrap();
+        let resp_std = build_openrtb_response_with_base_typed(&req_std, "host.test");
+        let adm_std = resp_std.seatbid[0].bid[0].adm.as_ref().unwrap();
         assert!(adm_std.contains("//host.test/static/creatives/320x50.html"));
+        assert_eq!(resp_std.seatbid[0].bid[0].mtype, Some(MediaType::Banner));
 
         // non-standard should default to 300x250
-        let req_def: Value = serde_json::json!({
+        let req_def_v: serde_json::Value = serde_json::json!({
             "id": "r3",
             "imp": [{"id":"1","banner":{"w":333,"h":222}}]
         });
-        let resp_def = build_openrtb_response_with_base(&req_def, "host.test");
-        let adm_def = resp_def["seatbid"][0]["bid"][0]["adm"].as_str().unwrap();
+        let req_def: OpenRTBRequest = serde_json::from_value(req_def_v).unwrap();
+        let resp_def = build_openrtb_response_with_base_typed(&req_def, "host.test");
+        let adm_def = resp_def.seatbid[0].bid[0].adm.as_ref().unwrap();
         assert!(adm_def.contains("//host.test/static/creatives/300x250.html"));
     }
 
     #[test]
     fn test_escape_html_basic() {
         assert_eq!(escape_html("<&>\"'"), "&lt;&amp;&gt;&quot;&#39;");
+    }
+
+    #[test]
+    fn test_bid_ext_echo_present_and_absent() {
+        // present: imp.ext.mocktioneer.bid should be echoed to bid.ext.mocktioneer.bid
+        let req_with_bid_v: serde_json::Value = serde_json::json!({
+            "id": "r_with_bid",
+            "imp": [{
+                "id": "1",
+                "banner": {"w": 300, "h": 250},
+                "ext": {"mocktioneer": {"bid": 2.34}}
+            }]
+        });
+        let req_with_bid: OpenRTBRequest = serde_json::from_value(req_with_bid_v).unwrap();
+        let resp_with_bid = build_openrtb_response_typed(&req_with_bid);
+        let bid = &resp_with_bid.seatbid[0].bid[0];
+        let echoed = bid.ext.as_ref().unwrap();
+        assert_eq!(echoed["mocktioneer"]["bid"], 2.34);
+        assert!((bid.price - 2.34).abs() < 0.0001);
+
+        // absent: no imp.ext => bid.ext should be None
+        let req_no_bid_v: serde_json::Value = serde_json::json!({
+            "id": "r_no_bid",
+            "imp": [{
+                "id": "1",
+                "banner": {"w": 300, "h": 250}
+            }]
+        });
+        let req_no_bid: OpenRTBRequest = serde_json::from_value(req_no_bid_v).unwrap();
+        let resp_no_bid = build_openrtb_response_typed(&req_no_bid);
+        assert!(resp_no_bid.seatbid[0].bid[0].ext.is_none());
+        assert!((resp_no_bid.seatbid[0].bid[0].price - 1.23).abs() < 0.0001);
     }
 }
 

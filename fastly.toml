@@ -12,4 +12,4 @@ service_id = ""
 [local_server]
 
 [scripts]
-  build = "cargo build --profile release"
+  build = "cargo build --profile release --target wasm32-wasip1"

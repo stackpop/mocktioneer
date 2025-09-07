@@ -1,7 +1,7 @@
+#[cfg(target_arch = "wasm32")]
 use fastly::{mime, Error, Request, Response};
-use mocktioneer::{build_openrtb_response_with_base, escape_html, is_standard_size};
-use serde_json::Value;
 
+#[cfg(target_arch = "wasm32")]
 #[fastly::main]
 pub fn main(req: Request) -> Result<Response, Error> {
     // CORS preflight support
@@ -10,7 +10,7 @@ pub fn main(req: Request) -> Result<Response, Error> {
     }
 
     match (req.get_method().as_str(), req.get_path()) {
-        ("GET", "/") => Ok(cors(Response::from_body("Mocktioneer up"))),
+        ("GET", "/") => Ok(cors(Response::from_body("mocktioneer up"))),
         ("POST", "/openrtb2/auction") => handle_openrtb_auction(req),
         ("GET", "/click") => handle_click(req),
         ("GET", path) if path.starts_with("/static/") => handle_static(path),
@@ -18,6 +18,7 @@ pub fn main(req: Request) -> Result<Response, Error> {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
 fn cors(mut resp: Response) -> Response {
     resp.set_header("Access-Control-Allow-Origin", "*");
     resp.set_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -25,9 +26,10 @@ fn cors(mut resp: Response) -> Response {
     resp
 }
 
+#[cfg(target_arch = "wasm32")]
 fn handle_openrtb_auction(mut req: Request) -> Result<Response, Error> {
     let body = req.take_body_bytes();
-    let parsed: Value = match serde_json::from_slice(&body) {
+    let parsed: OpenRTBRequest = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(e) => {
             let err = serde_json::json!({"error":"invalid_json","message": e.to_string()});
@@ -43,12 +45,14 @@ fn handle_openrtb_auction(mut req: Request) -> Result<Response, Error> {
         .get_header("Host")
         .and_then(|hv| hv.to_str().ok())
         .unwrap_or("mocktioneer.edgecompute.app");
-    let resp = build_openrtb_response_with_base(&parsed, host);
+    let resp = build_openrtb_response_with_base_typed(&parsed, host);
+    let body = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
     Ok(cors(
-        Response::from_body(resp.to_string()).with_content_type(mime::APPLICATION_JSON),
+        Response::from_body(body).with_content_type(mime::APPLICATION_JSON),
     ))
 }
 
+#[cfg(target_arch = "wasm32")]
 fn handle_static(path: &str) -> Result<Response, Error> {
     if let Some((w, h)) = parse_size(path, "/static/img/", ".svg") {
         if !is_standard_size(w, h) {
@@ -71,6 +75,7 @@ fn handle_static(path: &str) -> Result<Response, Error> {
     Ok(cors(Response::from_status(404).with_body("Not Found")))
 }
 
+#[cfg(target_arch = "wasm32")]
 fn handle_click(req: Request) -> Result<Response, Error> {
     let params = req
         .get_query::<std::collections::HashMap<String, String>>()
@@ -88,6 +93,7 @@ fn handle_click(req: Request) -> Result<Response, Error> {
     ))
 }
 
+#[cfg(target_arch = "wasm32")]
 fn parse_size(path: &str, prefix: &str, suffix: &str) -> Option<(i64, i64)> {
     if !path.starts_with(prefix) || !path.ends_with(suffix) {
         return None;
@@ -100,6 +106,7 @@ fn parse_size(path: &str, prefix: &str, suffix: &str) -> Option<(i64, i64)> {
     Some((w, h))
 }
 
+#[cfg(target_arch = "wasm32")]
 fn svg_image(w: i64, h: i64) -> String {
     const SVG_TMPL: &str = include_str!("../static/templates/image.svg");
     // Padding to keep text away from edges (~8% of min side)
@@ -121,12 +128,11 @@ fn svg_image(w: i64, h: i64) -> String {
     if stroke < 2 {
         stroke = 2;
     }
-    // Bottom-right coordinates with padding
-    let xbr = (w - pad).max(0);
-    let ybr = (h - pad).max(0);
-    // Top-left coordinates with padding
-    let xtl = pad.max(0);
-    let ytl = pad.max(0);
+    // Account for stroke so text outlines don't get clipped at edges
+    let xbr = (w - pad - stroke).max(0);
+    let ybr = (h - pad - stroke).max(0);
+    let xtl = (pad + stroke).max(0);
+    let ytl = (pad + stroke).max(0);
     SVG_TMPL
         .replace("{{W}}", &w.to_string())
         .replace("{{H}}", &h.to_string())
@@ -141,6 +147,7 @@ fn svg_image(w: i64, h: i64) -> String {
         .replace("{{YTL}}", &ytl.to_string())
 }
 
+#[cfg(target_arch = "wasm32")]
 fn creative_html(w: i64, h: i64) -> String {
     const HTML_TMPL: &str = include_str!("../static/templates/creative.html");
     HTML_TMPL
