@@ -13,13 +13,17 @@
 </head>
 <body>
   <a id="clk" href="/click" target="_blank" class="container" aria-label="Open mocktioneer {{W}} by {{H}} creative">
-    <img class="creative-img" src="/static/img/{{W}}x{{H}}.svg" alt="mocktioneer {{W}}x{{H}}">
+    <img id="creative-img" class="creative-img" src="/static/img/{{W}}x{{H}}.svg" alt="mocktioneer {{W}}x{{H}}">
   </a>
   <script>
     (function(){
-      var p=new URLSearchParams(location.search),c=p.get('crid')||'';
+      var p=new URLSearchParams(location.search),c=p.get('crid')||'',b=p.get('bid')||'';
       // Pass size context too so landing can echo
       document.getElementById('clk').href='/click?crid='+encodeURIComponent(c)+'&w={{W}}&h={{H}}';
+      if (b) {
+        var img=document.getElementById('creative-img');
+        img.src=img.src + '?bid=' + encodeURIComponent(b);
+      }
     })();
   </script>
 </body>

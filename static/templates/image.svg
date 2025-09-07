@@ -48,6 +48,6 @@
   <text x="{{XTL}}" y="{{YTL}}" text-anchor="start" dominant-baseline="hanging"
         font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif"
         font-size="{{CAPFONT}}" fill="#1e3a8a" stroke="#FFFFFF" stroke-width="{{STROKE}}" stroke-opacity="1" style="paint-order: stroke fill" stroke-linejoin="round" stroke-linecap="round">
-    mocktioneer {{W}}×{{H}}
+    mocktioneer {{W}}×{{H}}{{BIDLBL}}
   </text>
 </svg>

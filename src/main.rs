@@ -1,5 +1,9 @@
 #[cfg(target_arch = "wasm32")]
 use fastly::{mime, Error, Request, Response};
+#[cfg(target_arch = "wasm32")]
+use mocktioneer::openrtb::OpenRTBRequest;
+#[cfg(target_arch = "wasm32")]
+use mocktioneer::{build_openrtb_response_with_base_typed, escape_html, is_standard_size, render_svg};
 
 #[cfg(target_arch = "wasm32")]
 #[fastly::main]
@@ -9,11 +13,13 @@ pub fn main(req: Request) -> Result<Response, Error> {
         return Ok(cors(Response::from_status(204)));
     }
 
-    match (req.get_method().as_str(), req.get_path()) {
+    let method = req.get_method().to_string();
+    let path = req.get_path().to_string();
+    match (method.as_str(), path.as_str()) {
         ("GET", "/") => Ok(cors(Response::from_body("mocktioneer up"))),
         ("POST", "/openrtb2/auction") => handle_openrtb_auction(req),
         ("GET", "/click") => handle_click(req),
-        ("GET", path) if path.starts_with("/static/") => handle_static(path),
+        ("GET", _p) => handle_static(req),
         _ => Ok(cors(Response::from_status(404).with_body("Not Found"))),
     }
 }
@@ -53,12 +59,18 @@ fn handle_openrtb_auction(mut req: Request) -> Result<Response, Error> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn handle_static(path: &str) -> Result<Response, Error> {
+fn handle_static(req: Request) -> Result<Response, Error> {
+    let path = req.get_path();
     if let Some((w, h)) = parse_size(path, "/static/img/", ".svg") {
         if !is_standard_size(w, h) {
             return Ok(cors(Response::from_status(404).with_body("Not Found")));
         }
-        let svg = svg_image(w, h);
+        let bid = req
+            .get_query::<std::collections::HashMap<String, String>>()
+            .ok()
+            .and_then(|m| m.get("bid").cloned())
+            .and_then(|s| s.parse::<f64>().ok());
+        let svg = svg_image(w, h, bid);
         return Ok(cors(
             Response::from_body(svg).with_content_type(mime::IMAGE_SVG),
         ));
@@ -107,44 +119,8 @@ fn parse_size(path: &str, prefix: &str, suffix: &str) -> Option<(i64, i64)> {
 }
 
 #[cfg(target_arch = "wasm32")]
-fn svg_image(w: i64, h: i64) -> String {
-    const SVG_TMPL: &str = include_str!("../static/templates/image.svg");
-    // Padding to keep text away from edges (~8% of min side)
-    let pad = ((w.min(h) as f64) * 0.08).round() as i64;
-    // Ensure text length fits horizontally within padding
-    let mut text_len = w - 2 * pad;
-    if text_len < 1 {
-        text_len = 1;
-    }
-    // Main heading font: sized by height so it fits vertically
-    let font = (h as f64 * 0.28).round() as i64;
-    // Caption font for bottom-right size label
-    let mut cap_font = ((w.min(h) as f64) * 0.16).round() as i64; // ~16% of min side
-    if cap_font < 10 {
-        cap_font = 10;
-    }
-    // Stroke width for caption outline (stronger min for readability)
-    let mut stroke = ((w.min(h) as f64) * 0.03).round() as i64;
-    if stroke < 2 {
-        stroke = 2;
-    }
-    // Account for stroke so text outlines don't get clipped at edges
-    let xbr = (w - pad - stroke).max(0);
-    let ybr = (h - pad - stroke).max(0);
-    let xtl = (pad + stroke).max(0);
-    let ytl = (pad + stroke).max(0);
-    SVG_TMPL
-        .replace("{{W}}", &w.to_string())
-        .replace("{{H}}", &h.to_string())
-        .replace("{{FONT}}", &font.to_string())
-        .replace("{{TEXTLEN}}", &text_len.to_string())
-        .replace("{{PADDING}}", &pad.to_string())
-        .replace("{{CAPFONT}}", &cap_font.to_string())
-        .replace("{{STROKE}}", &stroke.to_string())
-        .replace("{{XBR}}", &xbr.to_string())
-        .replace("{{YBR}}", &ybr.to_string())
-        .replace("{{XTL}}", &xtl.to_string())
-        .replace("{{YTL}}", &ytl.to_string())
+fn svg_image(w: i64, h: i64, bid: Option<f64>) -> String {
+    render_svg(w, h, bid)
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -24,11 +24,8 @@ fn rand_id(len: usize) -> String {
 }
 
 pub fn banner_adm_html(crid: &str, w: i64, h: i64) -> String {
-    const HTML_TMPL: &str = include_str!("../static/templates/banner_adm.html");
-    HTML_TMPL
-        .replace("{{CRID}}", &escape_html(crid))
-        .replace("{{W}}", &w.to_string())
-        .replace("{{H}}", &h.to_string())
+    // Use iframe-based creative to keep a single template path
+    banner_adm_iframe("mocktioneer.edgecompute.app", crid, w, h, None)
 }
 
 pub fn size_from_imp(imp: &OpenrtbImp) -> (i64, i64) {
@@ -57,7 +54,6 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest) -> OpenRTBResponse {
         let (w, h) = size_from_imp(imp);
         let bid_id = rand_id(12);
         let crid = format!("mocktioneer-{}", impid);
-        let adm_html = banner_adm_html(&crid, w, h);
         // Extract numeric bid param from imp.ext.mocktioneer.bid if present; use as price
         let mut price = 1.23_f64;
         let bid_ext = imp
@@ -69,6 +65,8 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest) -> OpenRTBResponse {
                 price = f;
                 json!({"mocktioneer": {"bid": f}})
             });
+        let bid_for_iframe = if bid_ext.is_some() { Some(price) } else { None };
+        let adm_html = banner_adm_iframe("mocktioneer.edgecompute.app", &crid, w, h, bid_for_iframe);
         bids.push(OpenrtbBid {
             id: bid_id,
             impid: impid.to_string(),
@@ -121,14 +119,46 @@ fn standard_or_default(w: i64, h: i64) -> (i64, i64) {
     }
 }
 
-pub fn banner_adm_iframe(base_host: &str, crid: &str, w: i64, h: i64) -> String {
+pub fn banner_adm_iframe(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>) -> String {
     const IFRAME_TMPL: &str = include_str!("../static/templates/iframe.html");
     let safe_crid = escape_html(crid);
+    let bid_str = bid.map(|b| format!("{:.2}", b)).unwrap_or_default();
     IFRAME_TMPL
         .replace("{{HOST}}", base_host)
         .replace("{{W}}", &w.to_string())
         .replace("{{H}}", &h.to_string())
         .replace("{{CRID}}", &safe_crid)
+        .replace("{{BID}}", &bid_str)
+}
+
+pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
+    const SVG_TMPL: &str = include_str!("../static/templates/image.svg");
+    let pad = ((w.min(h) as f64) * 0.08).round() as i64;
+    let mut text_len = w - 2 * pad;
+    if text_len < 1 { text_len = 1; }
+    let font = (h as f64 * 0.28).round() as i64;
+    let mut cap_font = ((w.min(h) as f64) * 0.16).round() as i64;
+    if cap_font < 10 { cap_font = 10; }
+    let mut stroke = ((w.min(h) as f64) * 0.03).round() as i64;
+    if stroke < 2 { stroke = 2; }
+    let xbr = (w - pad - stroke).max(0);
+    let ybr = (h - pad - stroke).max(0);
+    let xtl = (pad + stroke).max(0);
+    let ytl = (pad + stroke).max(0);
+    let bid_label = bid.map(|b| format!(" — ${:.2}", b)).unwrap_or_default();
+    SVG_TMPL
+        .replace("{{W}}", &w.to_string())
+        .replace("{{H}}", &h.to_string())
+        .replace("{{FONT}}", &font.to_string())
+        .replace("{{TEXTLEN}}", &text_len.to_string())
+        .replace("{{PADDING}}", &pad.to_string())
+        .replace("{{CAPFONT}}", &cap_font.to_string())
+        .replace("{{STROKE}}", &stroke.to_string())
+        .replace("{{XBR}}", &xbr.to_string())
+        .replace("{{YBR}}", &ybr.to_string())
+        .replace("{{XTL}}", &xtl.to_string())
+        .replace("{{YTL}}", &ytl.to_string())
+        .replace("{{BIDLBL}}", &bid_label)
 }
 
 pub fn build_openrtb_response_with_base_typed(
@@ -142,7 +172,6 @@ pub fn build_openrtb_response_with_base_typed(
         (w, h) = standard_or_default(w, h);
         let bid_id = rand_id(12);
         let crid = format!("mocktioneer-{}", impid);
-        let adm_html = banner_adm_iframe(base_host, &crid, w, h);
         let mut price = 1.23_f64;
         let bid_ext = imp
             .ext
@@ -153,6 +182,8 @@ pub fn build_openrtb_response_with_base_typed(
                 price = f;
                 json!({"mocktioneer": {"bid": f}})
             });
+        let bid_for_iframe = if bid_ext.is_some() { Some(price) } else { None };
+        let adm_html = banner_adm_iframe(base_host, &crid, w, h, bid_for_iframe);
         bids.push(OpenrtbBid {
             id: bid_id,
             impid: impid.to_string(),
@@ -256,17 +287,18 @@ mod tests {
 
     #[test]
     fn test_banner_adm_iframe_contains_expected_src_and_escapes() {
-        let adm = banner_adm_iframe("host.test", "abc&def\"", 300, 250);
+        let adm = banner_adm_iframe("host.test", "abc&def\"", 300, 250, None);
         assert!(adm.contains("//host.test/static/creatives/300x250.html?crid=abc&amp;def&quot;"));
         assert!(adm.contains("width=\"300\""));
         assert!(adm.contains("height=\"250\""));
     }
 
     #[test]
-    fn test_banner_adm_html_contains_expected_link_and_escapes() {
+    fn test_banner_adm_html_contains_expected_iframe_and_escapes() {
         let html = banner_adm_html("abc&def\"", 300, 250);
-        assert!(html.contains("/click?crid=abc&amp;def&quot;&w=300&h=250"));
-        assert!(html.contains("mocktioneer 300x250 (crid=abc&amp;def&quot;)"));
+        assert!(html.contains("//mocktioneer.edgecompute.app/static/creatives/300x250.html?crid=abc&amp;def&quot;"));
+        assert!(html.contains("width=\"300\""));
+        assert!(html.contains("height=\"250\""));
     }
 
     #[test]
@@ -328,6 +360,14 @@ mod tests {
         let resp_no_bid = build_openrtb_response_typed(&req_no_bid);
         assert!(resp_no_bid.seatbid[0].bid[0].ext.is_none());
         assert!((resp_no_bid.seatbid[0].bid[0].price - 1.23).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_render_svg_includes_bid_label_when_present() {
+        let svg = render_svg(300, 250, Some(2.5));
+        assert!(svg.contains("$2.50"));
+        let svg2 = render_svg(300, 250, None);
+        assert!(!svg2.contains("$"));
     }
 }
 
