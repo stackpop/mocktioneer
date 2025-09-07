@@ -5,6 +5,8 @@ use openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
 use serde_json::json;
+use serde_json::Value as JsonValue;
+use handlebars::Handlebars;
 
 pub fn escape_html(input: &str) -> String {
     input
@@ -112,16 +114,24 @@ fn standard_or_default(w: i64, h: i64) -> (i64, i64) {
     }
 }
 
+pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
+    let mut reg = Handlebars::new();
+    // We want HTML escaping on by default (to protect attribute injection)
+    reg.register_template_string("t", tmpl).ok();
+    reg.render("t", data).unwrap_or_default()
+}
+
 pub fn banner_adm_iframe(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>) -> String {
     const IFRAME_TMPL: &str = include_str!("../static/templates/iframe.html");
-    let safe_crid = escape_html(crid);
     let bid_str = bid.map(|b| format!("{:.2}", b)).unwrap_or_default();
-    IFRAME_TMPL
-        .replace("{{HOST}}", base_host)
-        .replace("{{W}}", &w.to_string())
-        .replace("{{H}}", &h.to_string())
-        .replace("{{CRID}}", &safe_crid)
-        .replace("{{BID}}", &bid_str)
+    let data = json!({
+        "HOST": base_host,
+        "W": w,
+        "H": h,
+        "CRID": crid,
+        "BID": bid_str,
+    });
+    render_template_str(IFRAME_TMPL, &data)
 }
 
 pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
@@ -139,19 +149,21 @@ pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
     let xtl = (pad + stroke).max(0);
     let ytl = (pad + stroke).max(0);
     let bid_label = bid.map(|b| format!(" — ${:.2}", b)).unwrap_or_default();
-    SVG_TMPL
-        .replace("{{W}}", &w.to_string())
-        .replace("{{H}}", &h.to_string())
-        .replace("{{FONT}}", &font.to_string())
-        .replace("{{TEXTLEN}}", &text_len.to_string())
-        .replace("{{PADDING}}", &pad.to_string())
-        .replace("{{CAPFONT}}", &cap_font.to_string())
-        .replace("{{STROKE}}", &stroke.to_string())
-        .replace("{{XBR}}", &xbr.to_string())
-        .replace("{{YBR}}", &ybr.to_string())
-        .replace("{{XTL}}", &xtl.to_string())
-        .replace("{{YTL}}", &ytl.to_string())
-        .replace("{{BIDLBL}}", &bid_label)
+    let data = json!({
+        "W": w,
+        "H": h,
+        "FONT": font,
+        "TEXTLEN": text_len,
+        "PADDING": pad,
+        "CAPFONT": cap_font,
+        "STROKE": stroke,
+        "XBR": xbr,
+        "YBR": ybr,
+        "XTL": xtl,
+        "YTL": ytl,
+        "BIDLBL": bid_label,
+    });
+    render_template_str(SVG_TMPL, &data)
 }
 
 pub fn build_openrtb_response_with_base_typed(

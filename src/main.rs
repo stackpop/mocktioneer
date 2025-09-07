@@ -3,7 +3,7 @@ use fastly::{mime, Error, Request, Response};
 #[cfg(target_arch = "wasm32")]
 use mocktioneer::openrtb::OpenRTBRequest;
 #[cfg(target_arch = "wasm32")]
-use mocktioneer::{build_openrtb_response_with_base_typed, escape_html, is_standard_size, render_svg};
+use mocktioneer::{build_openrtb_response_with_base_typed, escape_html, is_standard_size, render_svg, render_template_str};
 
 #[cfg(target_arch = "wasm32")]
 #[fastly::main]
@@ -16,7 +16,7 @@ pub fn main(req: Request) -> Result<Response, Error> {
     let method = req.get_method().to_string();
     let path = req.get_path().to_string();
     match (method.as_str(), path.as_str()) {
-        ("GET", "/") => Ok(cors(Response::from_body("mocktioneer up"))),
+        ("GET", "/") => handle_root(req),
         ("POST", "/openrtb2/auction") => handle_openrtb_auction(req),
         ("GET", "/click") => handle_click(req),
         ("GET", _p) => handle_static(req),
@@ -126,9 +126,8 @@ fn svg_image(w: i64, h: i64, bid: Option<f64>) -> String {
 #[cfg(target_arch = "wasm32")]
 fn creative_html(w: i64, h: i64) -> String {
     const HTML_TMPL: &str = include_str!("../static/templates/creative.html");
-    HTML_TMPL
-        .replace("{{W}}", &w.to_string())
-        .replace("{{H}}", &h.to_string())
+    let data = serde_json::json!({"W": w, "H": h});
+    render_template_str(HTML_TMPL, &data)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -136,4 +135,29 @@ fn main() {
     eprintln!(
         "mocktioneer is a Fastly Compute WASM app. Build for wasm32-wasi: `cargo build --target wasm32-wasi` or run locally with Fastly CLI."
     );
+}
+#[cfg(target_arch = "wasm32")]
+fn handle_root(req: Request) -> Result<Response, Error> {
+    use std::env;
+    let host = req
+        .get_header("Host")
+        .and_then(|hv| hv.to_str().ok())
+        .unwrap_or("");
+    let service_id = env::var("FASTLY_SERVICE_ID").unwrap_or_else(|_| "".to_string());
+    let service_version = env::var("FASTLY_SERVICE_VERSION").unwrap_or_else(|_| "".to_string());
+    let datacenter = env::var("FASTLY_DATACENTER").or_else(|_| env::var("FASTLY_REGION")).unwrap_or_else(|_| "".to_string());
+    let pkg_version = env!("CARGO_PKG_VERSION");
+    const INFO_TMPL: &str = include_str!("../static/templates/info.html");
+    let data = serde_json::json!({
+        "TITLE": "Mocktioneer Up",
+        "HOST": host,
+        "SERVICE_ID": service_id,
+        "SERVICE_VERSION": service_version,
+        "DATACENTER": datacenter,
+        "PKG_VERSION": pkg_version,
+    });
+    let html = render_template_str(INFO_TMPL, &data);
+    Ok(cors(
+        Response::from_body(html).with_content_type(mime::TEXT_HTML_UTF_8),
+    ))
 }
