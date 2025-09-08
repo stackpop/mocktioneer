@@ -43,6 +43,14 @@ Commands
   - Quick test: `./examples/curl_local_test.sh`
 - Build tests: `cargo test --no-run`
 
+Logging
+- Logging uses AnyEdge’s Fastly logger. Configure via environment variables:
+- `ANYEDGE_FASTLY_LOG_ENDPOINT`: Fastly log endpoint name (e.g. `mocktioneerlog`).
+  - `ANYEDGE_LOG_LEVEL`: one of `off|error|warn|info|debug|trace` (default: `info`).
+- Example (local):
+  - `ANYEDGE_FASTLY_LOG_ENDPOINT=mocktioneerlog ANYEDGE_LOG_LEVEL=debug fastly compute serve`
+- Note: Legacy `MOCKTIONEER_LOG` has been removed; logging is now controlled by AnyEdge.
+
 Deploying to Fastly
 - First-time publish (Fastly will prompt to create a service, attach a domain, and deploy):
   - `fastly compute publish`

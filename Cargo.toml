@@ -13,12 +13,14 @@ lto = "fat"
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rand = "0.8"
-handlebars = "4"
-log = "0.4"
-log-fastly = "0.9"
-fern = "0.6"
-chrono = { version = "0.4" }
+uuid = { version = "1", features = ["v7"] }
+handlebars = "6"
+log = { version = "0.4", features = ["serde"] }
+# logging is provided by anyedge-fastly
+anyedge-core = { path = "../anyedge/crates/anyedge-core" }
+toml = "0.8"
+validator = { version = "0.18", features = ["derive"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 fastly = "0.11.0"
+anyedge-fastly = { path = "../anyedge/crates/anyedge-fastly", features = ["fastly"] }
