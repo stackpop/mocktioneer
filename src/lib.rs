@@ -2,6 +2,8 @@ use rand::{distributions::Alphanumeric, Rng};
 
 pub mod openrtb;
 use handlebars::Handlebars;
+use log::LevelFilter;
+use std::sync::Once;
 use openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
@@ -15,6 +17,68 @@ pub fn escape_html(input: &str) -> String {
         .replace('>', "&gt;")
         .replace('"', "&quot;")
         .replace('\'', "&#39;")
+}
+
+fn parse_level(s: &str) -> LevelFilter {
+    match s.to_ascii_lowercase().as_str() {
+        "off" => LevelFilter::Off,
+        "error" => LevelFilter::Error,
+        "warn" | "warning" => LevelFilter::Warn,
+        "info" => LevelFilter::Info,
+        "debug" => LevelFilter::Debug,
+        "trace" => LevelFilter::Trace,
+        _ => LevelFilter::Info,
+    }
+}
+
+// -------- logging --------
+#[cfg(target_arch = "wasm32")]
+pub fn init_logging() {
+    static INIT_LOGGER: Once = Once::new();
+    INIT_LOGGER.call_once(|| {
+        let level = std::env::var("MOCKTIONEER_LOG").ok().map(|s| parse_level(&s)).unwrap_or(LevelFilter::Info);
+        let logger = log_fastly::Logger::builder()
+            .default_endpoint("tslog")
+            .echo_stdout(true)
+            .max_level(level)
+            .build()
+            .expect("Failed to build Logger");
+
+        let _ = fern::Dispatch::new()
+            .format(|out, message, record| {
+                out.finish(format_args!(
+                    "{}  {} {}",
+                    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                    record.level(),
+                    message
+                ))
+            })
+            .chain(Box::new(logger) as Box<dyn log::Log>)
+            .apply();
+
+        log::set_max_level(level);
+        log::info!("logger initialized at level: {:?}", level);
+    });
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn init_logging() {
+    static INIT_LOGGER: Once = Once::new();
+    INIT_LOGGER.call_once(|| {
+        let level = std::env::var("MOCKTIONEER_LOG").ok().map(|s| parse_level(&s)).unwrap_or(LevelFilter::Info);
+        let _ = fern::Dispatch::new()
+            .format(|out, message, record| {
+                out.finish(format_args!(
+                    "{}  {} {}",
+                    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+                    record.level(),
+                    message
+                ))
+            })
+            .chain(std::io::stdout())
+            .apply();
+        log::set_max_level(level);
+    });
 }
 
 fn rand_id(len: usize) -> String {

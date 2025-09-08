@@ -11,6 +11,8 @@ use mocktioneer::{
 #[cfg(target_arch = "wasm32")]
 #[fastly::main]
 pub fn main(req: Request) -> Result<Response, Error> {
+    // init logging (no-op after first call)
+    mocktioneer::init_logging();
     // CORS preflight support
     if req.get_method().as_str() == "OPTIONS" {
         return Ok(cors(Response::from_status(204)));
@@ -18,6 +20,7 @@ pub fn main(req: Request) -> Result<Response, Error> {
 
     let method = req.get_method().to_string();
     let path = req.get_path().to_string();
+    log::info!("{} {}", method, path);
     match (method.as_str(), path.as_str()) {
         ("GET", "/") => handle_root(req),
         ("POST", "/openrtb2/auction") => handle_openrtb_auction(req),
@@ -41,6 +44,7 @@ fn handle_openrtb_auction(mut req: Request) -> Result<Response, Error> {
     let parsed: OpenRTBRequest = match serde_json::from_slice(&body) {
         Ok(v) => v,
         Err(e) => {
+            log::error!("invalid JSON: {}", e);
             let err = serde_json::json!({"error":"invalid_json","message": e.to_string()});
             return Ok(cors(
                 Response::from_status(400)
@@ -54,7 +58,10 @@ fn handle_openrtb_auction(mut req: Request) -> Result<Response, Error> {
         .get_header("Host")
         .and_then(|hv| hv.to_str().ok())
         .unwrap_or("mocktioneer.edgecompute.app");
+    log::info!("auction host={}, id={}, imps={} ", host, parsed.id, parsed.imp.len());
     let resp = build_openrtb_response_with_base_typed(&parsed, host);
+    let bids = resp.seatbid.get(0).map(|sb| sb.bid.len()).unwrap_or(0);
+    log::info!("responding with bids={}", bids);
     let body = serde_json::to_string(&resp).unwrap_or_else(|_| "{}".to_string());
     Ok(cors(
         Response::from_body(body).with_content_type(mime::APPLICATION_JSON),
@@ -66,6 +73,7 @@ fn handle_static(req: Request) -> Result<Response, Error> {
     let path = req.get_path();
     if let Some((w, h)) = parse_size(path, "/static/img/", ".svg") {
         if !is_standard_size(w, h) {
+            log::warn!("non-standard image size {}x{}", w, h);
             return Ok(cors(Response::from_status(404).with_body("Not Found")));
         }
         let bid = req
@@ -73,6 +81,7 @@ fn handle_static(req: Request) -> Result<Response, Error> {
             .ok()
             .and_then(|m| m.get("bid").cloned())
             .and_then(|s| s.parse::<f64>().ok());
+        log::debug!("serving svg size={}x{}, bid={:?}", w, h, bid);
         let svg = svg_image(w, h, bid);
         return Ok(cors(
             Response::from_body(svg).with_content_type(mime::IMAGE_SVG),
@@ -80,8 +89,10 @@ fn handle_static(req: Request) -> Result<Response, Error> {
     }
     if let Some((w, h)) = parse_size(path, "/static/creatives/", ".html") {
         if !is_standard_size(w, h) {
+            log::warn!("non-standard creative size {}x{}", w, h);
             return Ok(cors(Response::from_status(404).with_body("Not Found")));
         }
+        log::debug!("serving creative {}x{}", w, h);
         let html = creative_html(w, h);
         return Ok(cors(
             Response::from_body(html).with_content_type(mime::TEXT_HTML_UTF_8),
@@ -98,6 +109,7 @@ fn handle_click(req: Request) -> Result<Response, Error> {
     let crid = escape_html(params.get("crid").map(String::as_str).unwrap_or(""));
     let w = escape_html(params.get("w").map(String::as_str).unwrap_or(""));
     let h = escape_html(params.get("h").map(String::as_str).unwrap_or(""));
+    log::info!("click crid={}, size={}x{}", crid, w, h);
     const CLICK_TMPL: &str = include_str!("../static/templates/click.html");
     let html = CLICK_TMPL
         .replace("{{CRID}}", &crid)
