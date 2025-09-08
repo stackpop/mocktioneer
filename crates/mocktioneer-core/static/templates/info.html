@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{TITLE}}</title>
+    <style>
+      body {
+        font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Arial,
+          sans-serif;
+        margin: 0;
+        padding: 24px;
+        background: #f8fafc;
+        color: #0f172a;
+      }
+      h1 {
+        margin: 0 0 12px 0;
+        font-size: 20px;
+      }
+      .card {
+        background: #fff;
+        padding: 16px;
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        max-width: 720px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 6px;
+        border-bottom: 1px solid #f1f5f9;
+      }
+      th {
+        width: 180px;
+        color: #475569;
+        font-weight: 600;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 1px 4px;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>mocktioneer</h1>
+      <table>
+        <tr>
+          <th>Fastly Host</th>
+          <td>{{HOST}}</td>
+        </tr>
+        <tr>
+          <th>Service ID</th>
+          <td><code>{{SERVICE_ID}}</code></td>
+        </tr>
+        <tr>
+          <th>Service Version</th>
+          <td>{{SERVICE_VERSION}}</td>
+        </tr>
+        <tr>
+          <th>Datacenter/Region</th>
+          <td>{{DATACENTER}}</td>
+        </tr>
+        <tr>
+          <th>Package Version</th>
+          <td>{{PKG_VERSION}}</td>
+        </tr>
+      </table>
+    </div>
+  </body>
+</html>

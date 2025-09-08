@@ -1,0 +1,17 @@
+[package]
+name = "mocktioneer-fastly"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "mocktioneer-fastly"
+path = "src/main.rs"
+
+[dependencies]
+anyedge-fastly = { path = "../../../anyedge/crates/anyedge-fastly", features = ["fastly"] }
+log = "0.4"
+mocktioneer-core = { path = "../mocktioneer-core" }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+fastly = "0.11.0"

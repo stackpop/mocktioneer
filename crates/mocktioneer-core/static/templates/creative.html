@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Mocktioneer {{W}}x{{H}}</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+      }
+      a {
+        display: block;
+        border: 0;
+        text-decoration: none;
+        color: inherit;
+      }
+      .container {
+        width: 100%;
+        height: 100%;
+      }
+      .creative-img {
+        width: 100%;
+        height: 100%;
+        object-fit: contain;
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <a
+      id="clk"
+      href="/click"
+      target="_blank"
+      class="container"
+      aria-label="Open mocktioneer {{W}} by {{H}} creative"
+    >
+      <img
+        id="creative-img"
+        class="creative-img"
+        src="/static/img/{{W}}x{{H}}.svg"
+        alt="mocktioneer {{W}}x{{H}}"
+      />
+    </a>
+    <script>
+      (function () {
+        var p = new URLSearchParams(location.search),
+          c = p.get("crid") || "",
+          b = p.get("bid") || "";
+        // Pass size context too so landing can echo
+        document.getElementById("clk").href =
+          "/click?crid=" + encodeURIComponent(c) + "&w={{W}}&h={{H}}";
+        if (b) {
+          var img = document.getElementById("creative-img");
+          img.src = img.src + "?bid=" + encodeURIComponent(b);
+        }
+      })();
+    </script>
+  </body>
+  </html>

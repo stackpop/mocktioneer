@@ -2,3 +2,4 @@
 provider = "fastly"
 endpoint = "mocktioneerlog"
 level = "info"
+
