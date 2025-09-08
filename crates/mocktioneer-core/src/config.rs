@@ -80,4 +80,3 @@ mod tests {
         assert_eq!(cfg.logging.level, log::LevelFilter::Info);
     }
 }
-

@@ -137,4 +137,3 @@ mod tests {
         assert_eq!(parse_size_param("bad", ".svg"), None);
     }
 }
-

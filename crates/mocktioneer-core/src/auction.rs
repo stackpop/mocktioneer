@@ -82,7 +82,6 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> Op
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
             ext: bid_ext,
-            ..Default::default()
         });
     }
     OpenRTBResponse {
@@ -133,7 +132,6 @@ pub fn build_openrtb_response_with_base_typed(
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
             ext: bid_ext,
-            ..Default::default()
         });
     }
     OpenRTBResponse {
@@ -222,4 +220,3 @@ mod tests {
         assert_eq!(standard_or_default(320, 50), (320, 50));
     }
 }
-
