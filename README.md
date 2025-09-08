@@ -44,12 +44,25 @@ Commands
 - Build tests: `cargo test --no-run`
 
 Logging
-- Logging uses AnyEdge’s Fastly logger. Configure via environment variables:
-- `ANYEDGE_FASTLY_LOG_ENDPOINT`: Fastly log endpoint name (e.g. `mocktioneerlog`).
-  - `ANYEDGE_LOG_LEVEL`: one of `off|error|warn|info|debug|trace` (default: `info`).
-- Example (local):
-  - `ANYEDGE_FASTLY_LOG_ENDPOINT=mocktioneerlog ANYEDGE_LOG_LEVEL=debug fastly compute serve`
-- Note: Legacy `MOCKTIONEER_LOG` has been removed; logging is now controlled by AnyEdge.
+- Configure logging via `mocktioneer.toml` (embedded at build time):
+
+  ```toml
+  [logging]
+  # Provider: "fastly" (wasm32-wasi Compute@Edge) or "stdout" (local/native)
+  provider = "fastly"
+  # Fastly log endpoint name (must exist on your Fastly service)
+  endpoint = "mocktioneerlog"
+  # one of: off|error|warn|info|debug|trace
+  level = "info"
+  ```
+
+- Behavior by target:
+  - wasm32-wasi (Fastly): uses the Fastly logger; `echo_stdout` mirrors logs in `fastly compute serve`.
+  - Native/local: uses the stdout logger when `provider = "stdout"` (Fastly provider falls back to stdout).
+
+- Notes:
+  - Changes to `mocktioneer.toml` require rebuilding because it’s compiled in via `include_str!`.
+  - Legacy env vars are no longer used; use the TOML file instead.
 
 Deploying to Fastly
 - First-time publish (Fastly will prompt to create a service, attach a domain, and deploy):
@@ -61,7 +74,6 @@ Configuration & Notes
 - This service is originless; no backends required.
 - CORS is enabled for `*` by default.
 - Templates live in `static/templates/`:
-  - `banner_adm.html`: HTML used for `seatbid.bid[].adm` in auction responses.
   - `iframe.html`: Used by the response builder when an iframe creative is preferred.
   - `creative.html`: The page shown inside the iframe; displays the SVG image.
   - `image.svg`: Generates the labeled creative “mocktioneer {W}×{H}”.

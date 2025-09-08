@@ -1,8 +1,19 @@
 use serde::Deserialize;
 use validator::Validate;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LoggingProvider {
+    Fastly,
+    Stdout,
+}
+
+fn default_logging_provider() -> LoggingProvider { LoggingProvider::Fastly }
+
 #[derive(Debug, Clone, Deserialize, Validate)]
 pub struct LoggingConfig {
+    #[serde(default = "default_logging_provider")]
+    pub provider: LoggingProvider,
     #[validate(length(min = 1))]
     pub endpoint: String,
     pub level: log::LevelFilter,
@@ -18,9 +29,6 @@ impl AppConfig {
     pub fn from_toml_str(s: &str) -> Result<Self, String> {
         let cfg: AppConfig = toml::from_str(s).map_err(|e| format!("toml parse error: {}", e))?;
         cfg.validate().map_err(|e| e.to_string())?;
-        if cfg.logging.endpoint.trim().is_empty() {
-            return Err("validation error: logging.endpoint must not be empty".to_string());
-        }
         Ok(cfg)
     }
 }
@@ -47,6 +55,8 @@ mod tests {
             let cfg = AppConfig::from_toml_str(&toml_str).expect("should parse valid config");
             assert_eq!(cfg.logging.endpoint, "endpoint");
             assert_eq!(cfg.logging.level, expected);
+            // default provider is fastly
+            assert_eq!(cfg.logging.provider, LoggingProvider::Fastly);
         }
     }
 
@@ -58,10 +68,10 @@ mod tests {
     }
 
     #[test]
-    fn app_config_validates_non_empty_endpoint() {
-        let toml_str = "[logging]\nendpoint = \"\"\nlevel = \"info\"\n";
-        let err = AppConfig::from_toml_str(toml_str).err().expect("should error");
-        // error originates from validator; don't rely on exact text
-        assert!(err.to_lowercase().contains("valid"));
+    fn app_config_accepts_stdout_provider_and_endpoint() {
+        let toml_str = "[logging]\nprovider=\"stdout\"\nendpoint=\"ignored\"\nlevel=\"info\"\n";
+        let cfg = AppConfig::from_toml_str(toml_str).expect("should parse valid config");
+        assert_eq!(cfg.logging.provider, LoggingProvider::Stdout);
+        assert_eq!(cfg.logging.level, log::LevelFilter::Info);
     }
 }

@@ -1,4 +1,4 @@
-use anyedge_core::{app::RouteOptions, header, App as EdgeApp, Method, Request as ARequest, Response as AResponse};
+use anyedge_core::{header, App as EdgeApp, Request as ARequest, Response as AResponse};
 
 use crate::auction::{build_openrtb_response_with_base_typed, is_standard_size};
 use crate::openrtb::OpenRTBRequest;
@@ -102,13 +102,6 @@ pub fn handle_click(req: ARequest) -> AResponse {
         .with_body(html)
 }
 
-pub fn handle_stream(_req: ARequest) -> AResponse {
-    let chunks = (0..5).map(|i| format!("chunk {}\n", i).into_bytes());
-    AResponse::ok()
-        .with_header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
-        .with_chunks(chunks)
-}
-
 pub fn build_app() -> EdgeApp {
     let mut app = EdgeApp::new();
 
@@ -131,15 +124,14 @@ pub fn build_app() -> EdgeApp {
     // Click landing
     app.get("/click", handle_click);
 
-    // Stream example (optional)
-    app.route_with(Method::GET, "/stream", handle_stream, RouteOptions::streaming());
-
     app
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use anyedge_core::Method;
 
     #[test]
     fn test_handle_root_returns_html() {
@@ -222,16 +214,6 @@ mod tests {
         let ct = res.headers.get(header::CONTENT_TYPE).unwrap();
         assert!(ct.to_str().unwrap().contains("text/html"));
         assert!(!res.body.is_empty());
-    }
-
-    #[test]
-    fn test_handle_stream_streams() {
-        let req = ARequest::new(Method::GET, "/stream");
-        let res = handle_stream(req);
-        assert_eq!(res.status.as_u16(), 200);
-        assert!(res.is_streaming());
-        let ct = res.headers.get(header::CONTENT_TYPE).unwrap();
-        assert!(ct.to_str().unwrap().contains("text/plain"));
     }
 }
 

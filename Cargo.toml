@@ -24,3 +24,6 @@ validator = { version = "0.18", features = ["derive"] }
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 fastly = "0.11.0"
 anyedge-fastly = { path = "../anyedge/crates/anyedge-fastly", features = ["fastly"] }
+
+[target.'cfg(not(all(target_arch = "wasm32", target_os = "wasi")))'.dependencies]
+anyedge-std = { path = "../anyedge/crates/anyedge-std" }
