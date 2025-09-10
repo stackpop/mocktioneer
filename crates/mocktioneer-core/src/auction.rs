@@ -244,10 +244,13 @@ mod tests {
         let resp = build_openrtb_response_typed(&req, "host.test");
         let bid_id = &resp.seatbid[0].bid[0].id;
         assert_eq!(bid_id.len(), 32);
-        assert!(bid_id
+        assert!(
+            bid_id
                 .chars()
                 .all(|c| c.is_ascii_digit() || (c >= 'a' && c <= 'f')),
-            "bid id not lower-hex32: {}", bid_id);
+            "bid id not lower-hex32: {}",
+            bid_id
+        );
     }
 
     #[test]

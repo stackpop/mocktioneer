@@ -10,7 +10,12 @@ fn root_returns_html_with_cors() {
     let app = app();
     let res = app.handle(Request::new(Method::GET, "/"));
     assert_eq!(res.status.as_u16(), 200);
-    let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+    let ct = res
+        .headers
+        .get(header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(ct.starts_with("text/html"));
     // CORS headers from mocktioneer middleware
     assert_eq!(
@@ -30,10 +35,18 @@ fn pixel_sets_cookie_and_is_gif() {
     // First request without cookie should set it
     let res = app.handle(Request::new(Method::GET, "/pixel"));
     assert_eq!(res.status.as_u16(), 200);
-    let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+    let ct = res
+        .headers
+        .get(header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert_eq!(ct, "image/gif");
     let set_cookie = res.headers.get_all("set-cookie");
-    let cookies: Vec<_> = set_cookie.iter().map(|v| v.to_str().unwrap().to_string()).collect();
+    let cookies: Vec<_> = set_cookie
+        .iter()
+        .map(|v| v.to_str().unwrap().to_string())
+        .collect();
     assert!(cookies.iter().any(|c| c.starts_with("mtkid=")));
     assert!(cookies
         .iter()
@@ -60,7 +73,12 @@ fn openrtb_auction_returns_json() {
     req.set_header("Host", "test.local");
     let res = app.handle(req);
     assert_eq!(res.status.as_u16(), 200);
-    let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+    let ct = res
+        .headers
+        .get(header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert_eq!(ct, "application/json");
     let v: serde_json::Value = serde_json::from_slice(&res.body).unwrap();
     assert_eq!(v["id"], "r1");
@@ -75,7 +93,12 @@ fn static_img_svg_and_nonstandard_404() {
     req.query_params.insert("bid".into(), "2.5".into());
     let res = app.handle(req);
     assert_eq!(res.status.as_u16(), 200);
-    let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+    let ct = res
+        .headers
+        .get(header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert_eq!(ct, "image/svg+xml");
     let body = String::from_utf8(res.body).unwrap();
     assert!(body.contains("<svg"));
@@ -89,7 +112,12 @@ fn static_creatives_html_ok() {
     let app = app();
     let res = app.handle(Request::new(Method::GET, "/static/creatives/300x250.html"));
     assert_eq!(res.status.as_u16(), 200);
-    let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+    let ct = res
+        .headers
+        .get(header::CONTENT_TYPE)
+        .unwrap()
+        .to_str()
+        .unwrap();
     assert!(ct.starts_with("text/html"));
 }
 
@@ -112,7 +140,13 @@ fn options_includes_allow_and_cors_headers() {
     let res = app.handle(Request::new(Method::OPTIONS, "/openrtb2/auction"));
     assert_eq!(res.status.as_u16(), 204);
     // Router-provided Allow header should list OPTIONS and the registered method (POST)
-    let allow = res.headers.get(header::ALLOW).unwrap().to_str().unwrap().to_string();
+    let allow = res
+        .headers
+        .get(header::ALLOW)
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_string();
     assert!(allow.contains("POST"));
     assert!(allow.contains("OPTIONS"));
     // CORS headers from middleware

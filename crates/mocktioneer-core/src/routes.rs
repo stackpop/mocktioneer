@@ -206,7 +206,12 @@ mod tests {
         let req = ARequest::new(Method::GET, "/pixel");
         let res = handle_pixel(req);
         assert_eq!(res.status.as_u16(), 200);
-        let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+        let ct = res
+            .headers
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert_eq!(ct, "image/gif");
         let cookies = res.headers_all("set-cookie");
         assert!(cookies.iter().any(|c| c.starts_with("mtkid=")));
@@ -226,7 +231,12 @@ mod tests {
         let req = ARequest::new(Method::POST, "/openrtb2/auction").with_body("not-json");
         let res = handle_openrtb_auction(req);
         assert_eq!(res.status.as_u16(), 400);
-        let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+        let ct = res
+            .headers
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert_eq!(ct, "application/json");
     }
 
@@ -237,7 +247,12 @@ mod tests {
         req.query_params.insert("bid".into(), "2.50".into());
         let res = handle_static_img(req);
         assert_eq!(res.status.as_u16(), 200);
-        let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+        let ct = res
+            .headers
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert_eq!(ct, "image/svg+xml");
 
         let mut req2 = ARequest::new(Method::GET, "/static/img/333x222.svg");
@@ -249,11 +264,15 @@ mod tests {
     #[test]
     fn handle_static_creatives_html_ok() {
         let mut req = ARequest::new(Method::GET, "/static/creatives/300x250.html");
-        req.params
-            .insert("size".into(), "300x250.html".into());
+        req.params.insert("size".into(), "300x250.html".into());
         let res = handle_static_creatives(req);
         assert_eq!(res.status.as_u16(), 200);
-        let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+        let ct = res
+            .headers
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(ct.starts_with("text/html"));
     }
 
@@ -276,7 +295,12 @@ mod tests {
         let req = ARequest::new(Method::GET, "/");
         let res = handle_root(req);
         assert_eq!(res.status.as_u16(), 200);
-        let ct = res.headers.get(header::CONTENT_TYPE).unwrap().to_str().unwrap();
+        let ct = res
+            .headers
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
         assert!(ct.starts_with("text/html"));
     }
 }
