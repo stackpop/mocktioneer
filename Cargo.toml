@@ -1,29 +1,12 @@
-[package]
-name = "mocktioneer"
-version = "0.1.0"
-authors = []
-edition = "2021"
-publish = false
+[workspace]
+members = [
+  "crates/mocktioneer-core",
+  "crates/mocktioneer-fastly",
+  "crates/mocktioneer-cloudflare",
+]
+resolver = "2"
 
 [profile.release]
 debug = 1
 codegen-units = 1
 lto = "fat"
-
-[dependencies]
-serde = { version = "1.0", features = ["derive"] }
-serde_json = "1.0"
-uuid = { version = "1", features = ["v7"] }
-handlebars = "6"
-log = { version = "0.4", features = ["serde"] }
-# logging is provided by anyedge-fastly
-anyedge-core = { path = "../anyedge/crates/anyedge-core" }
-toml = "0.8"
-validator = { version = "0.18", features = ["derive"] }
-
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-fastly = "0.11.0"
-anyedge-fastly = { path = "../anyedge/crates/anyedge-fastly", features = ["fastly"] }
-
-[target.'cfg(not(all(target_arch = "wasm32", target_os = "wasi")))'.dependencies]
-anyedge-std = { path = "../anyedge/crates/anyedge-std" }

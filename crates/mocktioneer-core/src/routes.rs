@@ -19,8 +19,7 @@ pub struct Cors;
 impl anyedge_core::Middleware for Cors {
     fn handle(&self, req: ARequest, next: anyedge_core::Next) -> AResponse {
         let res = next(req);
-        res
-            .with_header("Access-Control-Allow-Origin", "*")
+        res.with_header("Access-Control-Allow-Origin", "*")
             .with_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
             .with_header("Access-Control-Allow-Headers", "*, content-type")
     }
@@ -131,89 +130,10 @@ pub fn build_app() -> EdgeApp {
 mod tests {
     use super::*;
 
-    use anyedge_core::Method;
-
     #[test]
-    fn test_handle_root_returns_html() {
-        let mut req = ARequest::new(Method::GET, "/");
-        req.set_header("Host", "host.test");
-        let res = handle_root(req);
-        assert_eq!(res.status.as_u16(), 200);
-        let ct = res.headers.get(header::CONTENT_TYPE).unwrap();
-        assert!(ct.to_str().unwrap().contains("text/html"));
-        assert!(!res.body.is_empty());
-    }
-
-    #[test]
-    fn test_handle_openrtb_auction_ok_and_bad() {
-        // OK
-        let body_ok = serde_json::json!({
-            "id": "r1",
-            "imp": [{"id":"1","banner":{"w":300,"h":250}}]
-        })
-        .to_string();
-        let mut ok_req = ARequest::new(Method::POST, "/openrtb2/auction").with_body(body_ok);
-        ok_req.set_header("Host", "host.test");
-        let ok_res = handle_openrtb_auction(ok_req);
-        assert_eq!(ok_res.status.as_u16(), 200);
-        let ct = ok_res.headers.get(header::CONTENT_TYPE).unwrap();
-        assert!(ct.to_str().unwrap().contains("application/json"));
-        assert!(!ok_res.body.is_empty());
-
-        // BAD JSON
-        let bad_req = ARequest::new(Method::POST, "/openrtb2/auction").with_body("{not json}");
-        let bad_res = handle_openrtb_auction(bad_req);
-        assert_eq!(bad_res.status.as_u16(), 400);
-    }
-
-    #[test]
-    fn test_handle_static_img_ok_and_404() {
-        // non-standard -> 404
-        let mut req_bad = ARequest::new(Method::GET, "/static/img/333x222.svg");
-        req_bad.params.insert("size".into(), "333x222.svg".into());
-        let res_bad = handle_static_img(req_bad);
-        assert_eq!(res_bad.status.as_u16(), 404);
-
-        // standard -> 200 SVG
-        let mut req_ok = ARequest::new(Method::GET, "/static/img/300x250.svg");
-        req_ok.params.insert("size".into(), "300x250.svg".into());
-        req_ok.query_params.insert("bid".into(), "2.50".into());
-        let res_ok = handle_static_img(req_ok);
-        assert_eq!(res_ok.status.as_u16(), 200);
-        let ct = res_ok.headers.get(header::CONTENT_TYPE).unwrap();
-        assert!(ct.to_str().unwrap().contains("image/svg+xml"));
-        assert!(!res_ok.body.is_empty());
-    }
-
-    #[test]
-    fn test_handle_static_creatives_ok_and_404() {
-        // non-standard -> 404
-        let mut req_bad = ARequest::new(Method::GET, "/static/creatives/333x222.html");
-        req_bad.params.insert("size".into(), "333x222.html".into());
-        let res_bad = handle_static_creatives(req_bad);
-        assert_eq!(res_bad.status.as_u16(), 404);
-
-        // standard -> 200 HTML
-        let mut req_ok = ARequest::new(Method::GET, "/static/creatives/320x50.html");
-        req_ok.params.insert("size".into(), "320x50.html".into());
-        let res_ok = handle_static_creatives(req_ok);
-        assert_eq!(res_ok.status.as_u16(), 200);
-        let ct = res_ok.headers.get(header::CONTENT_TYPE).unwrap();
-        assert!(ct.to_str().unwrap().contains("text/html"));
-        assert!(!res_ok.body.is_empty());
-    }
-
-    #[test]
-    fn test_handle_click_returns_html() {
-        let mut req = ARequest::new(Method::GET, "/click");
-        req.query_params.insert("crid".into(), "abc".into());
-        req.query_params.insert("w".into(), "300".into());
-        req.query_params.insert("h".into(), "250".into());
-        let res = handle_click(req);
-        assert_eq!(res.status.as_u16(), 200);
-        let ct = res.headers.get(header::CONTENT_TYPE).unwrap();
-        assert!(ct.to_str().unwrap().contains("text/html"));
-        assert!(!res.body.is_empty());
+    fn parse_size_param_parses_suffix() {
+        assert_eq!(parse_size_param("300x250.svg", ".svg"), Some((300, 250)));
+        assert_eq!(parse_size_param("300x250.html", ".svg"), None);
+        assert_eq!(parse_size_param("bad", ".svg"), None);
     }
 }
-

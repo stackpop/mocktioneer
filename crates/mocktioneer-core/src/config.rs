@@ -8,7 +8,9 @@ pub enum LoggingProvider {
     Stdout,
 }
 
-fn default_logging_provider() -> LoggingProvider { LoggingProvider::Fastly }
+fn default_logging_provider() -> LoggingProvider {
+    LoggingProvider::Fastly
+}
 
 #[derive(Debug, Clone, Deserialize, Validate)]
 pub struct LoggingConfig {
@@ -48,10 +50,7 @@ mod tests {
             ("trace", log::LevelFilter::Trace),
         ];
         for (lvl, expected) in cases {
-            let toml_str = format!(
-                "[logging]\nendpoint = \"endpoint\"\nlevel = \"{}\"\n",
-                lvl
-            );
+            let toml_str = format!("[logging]\nendpoint = \"endpoint\"\nlevel = \"{}\"\n", lvl);
             let cfg = AppConfig::from_toml_str(&toml_str).expect("should parse valid config");
             assert_eq!(cfg.logging.endpoint, "endpoint");
             assert_eq!(cfg.logging.level, expected);
@@ -63,8 +62,14 @@ mod tests {
     #[test]
     fn app_config_rejects_invalid_level() {
         let toml_str = "[logging]\nendpoint = \"ep\"\nlevel = \"verbose\"\n";
-        let err = AppConfig::from_toml_str(toml_str).err().expect("should error");
-        assert!(err.contains("toml parse error"), "unexpected error: {}", err);
+        let err = AppConfig::from_toml_str(toml_str)
+            .err()
+            .expect("should error");
+        assert!(
+            err.contains("toml parse error"),
+            "unexpected error: {}",
+            err
+        );
     }
 
     #[test]

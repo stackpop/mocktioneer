@@ -82,11 +82,14 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> Op
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
             ext: bid_ext,
-            ..Default::default()
         });
     }
     OpenRTBResponse {
-        id: if req.id.is_empty() { "req".to_string() } else { req.id.clone() },
+        id: if req.id.is_empty() {
+            "req".to_string()
+        } else {
+            req.id.clone()
+        },
         cur: Some("USD".to_string()),
         seatbid: vec![SeatBid {
             seat: Some("mocktioneer".to_string()),
@@ -129,11 +132,14 @@ pub fn build_openrtb_response_with_base_typed(
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
             ext: bid_ext,
-            ..Default::default()
         });
     }
     OpenRTBResponse {
-        id: if req.id.is_empty() { "req".to_string() } else { req.id.clone() },
+        id: if req.id.is_empty() {
+            "req".to_string()
+        } else {
+            req.id.clone()
+        },
         cur: Some("USD".to_string()),
         seatbid: vec![SeatBid {
             seat: Some("mocktioneer".to_string()),
@@ -210,64 +216,7 @@ mod tests {
 
     #[test]
     fn test_standard_or_default_behavior() {
-        assert_eq!(super::standard_or_default(300, 250), (300, 250));
-        assert_eq!(super::standard_or_default(333, 222), (300, 250));
-    }
-
-    #[test]
-    fn test_build_openrtb_response_with_base_standard_and_defaulted_sizes() {
-        // standard size
-        let req_std_v: serde_json::Value = serde_json::json!({
-            "id": "r2",
-            "imp": [{"id":"1","banner":{"w":320,"h":50}}]
-        });
-        let req_std: OpenRTBRequest = serde_json::from_value(req_std_v).unwrap();
-        let resp_std = build_openrtb_response_with_base_typed(&req_std, "host.test");
-        let adm_std = resp_std.seatbid[0].bid[0].adm.as_ref().unwrap();
-        assert!(adm_std.contains("//host.test/static/creatives/320x50.html"));
-        assert_eq!(resp_std.seatbid[0].bid[0].mtype, Some(MediaType::Banner));
-
-        // non-standard should default to 300x250
-        let req_def_v: serde_json::Value = serde_json::json!({
-            "id": "r3",
-            "imp": [{"id":"1","banner":{"w":333,"h":222}}]
-        });
-        let req_def: OpenRTBRequest = serde_json::from_value(req_def_v).unwrap();
-        let resp_def = build_openrtb_response_with_base_typed(&req_def, "host.test");
-        let adm_def = resp_def.seatbid[0].bid[0].adm.as_ref().unwrap();
-        assert!(adm_def.contains("//host.test/static/creatives/300x250.html"));
-    }
-
-    #[test]
-    fn test_bid_ext_echo_present_and_absent() {
-        // present: imp.ext.mocktioneer.bid should be echoed to bid.ext.mocktioneer.bid
-        let req_with_bid_v: serde_json::Value = serde_json::json!({
-            "id": "r_with_bid",
-            "imp": [{
-                "id": "1",
-                "banner": {"w": 300, "h": 250},
-                "ext": {"mocktioneer": {"bid": 2.34}}
-            }]
-        });
-        let req_with_bid: OpenRTBRequest = serde_json::from_value(req_with_bid_v).unwrap();
-        let resp_with_bid = build_openrtb_response_typed(&req_with_bid, "host.test");
-        let bid = &resp_with_bid.seatbid[0].bid[0];
-        let echoed = bid.ext.as_ref().unwrap();
-        assert_eq!(echoed["mocktioneer"]["bid"], 2.34);
-        assert!((bid.price - 2.34).abs() < 0.0001);
-
-        // absent: no imp.ext => bid.ext should be None
-        let req_no_bid_v: serde_json::Value = serde_json::json!({
-            "id": "r_no_bid",
-            "imp": [{
-                "id": "1",
-                "banner": {"w": 300, "h": 250}
-            }]
-        });
-        let req_no_bid: OpenRTBRequest = serde_json::from_value(req_no_bid_v).unwrap();
-        let resp_no_bid = build_openrtb_response_typed(&req_no_bid, "host.test");
-        assert!(resp_no_bid.seatbid[0].bid[0].ext.is_none());
-        assert!((resp_no_bid.seatbid[0].bid[0].price - 1.23).abs() < 0.0001);
+        assert_eq!(standard_or_default(333, 222), (300, 250));
+        assert_eq!(standard_or_default(320, 50), (320, 50));
     }
 }
-

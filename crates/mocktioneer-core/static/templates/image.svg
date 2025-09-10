@@ -38,20 +38,27 @@
 
   <!-- Blobs (blurred) -->
   <g filter="url(#blur60)">
-    <rect x="-10%" y="-10%" width="70%" height="70%" fill="url(#g1)" />
-    <rect x="35%" y="-15%" width="70%" height="70%" fill="url(#g2)" />
-    <rect x="20%" y="30%" width="70%" height="70%" fill="url(#g3)" />
+    <circle cx="{{XTL}}" cy="{{YTL}}" r="120" fill="url(#g1)" />
+    <circle cx="{{XBR}}" cy="{{YTL}}" r="150" fill="url(#g2)" />
+    <circle cx="{{XBR}}" cy="{{YBR}}" r="180" fill="url(#g3)" />
   </g>
 
-  <!-- Very subtle noise overlay for texture -->
-  <rect x="0" y="0" width="100%" height="100%" filter="url(#noise)" opacity="0.035" />
+  <!-- Simplified design: no inner card or decorative bars -->
 
-  <!-- Brand label top-left with size -->
-  <text x="{{XTL}}" y="{{YTL}}" text-anchor="start" dominant-baseline="hanging"
-    font-family="system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif"
-    font-size="{{CAPFONT}}" fill="#1e3a8a" stroke="#FFFFFF" stroke-width="{{STROKE}}"
-    stroke-opacity="1" style="paint-order: stroke fill" stroke-linejoin="round"
-    stroke-linecap="round">
-    mocktioneer {{W}}×{{H}}{{BIDLBL}}
+  <!-- Main text -->
+  <text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="#0f172a"
+        style="font: bold {{FONT}}px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+     {{W}}×{{H}}
   </text>
+
+  <!-- Small caption and optional bid label (appears underneath main title) -->
+  <text x="50%" y="{{CAPY}}" dominant-baseline="middle" text-anchor="middle" fill="#334155"
+        style="font: {{CAPFONT}}px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+    mocktioneer banner {{BIDLBL}}
+  </text>
+
+  <!-- No outer border frame -->
+
+  <!-- Subtle noise overlay -->
+  <rect x="0" y="0" width="100%" height="100%" fill="url(#noise)" opacity="0.03"/>
 </svg>
