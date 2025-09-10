@@ -122,4 +122,11 @@ mod tests {
         let svg2 = render_svg(300, 250, None);
         assert!(!svg2.contains("$"));
     }
+
+    #[test]
+    fn test_banner_adm_iframe_includes_bid_param_when_present() {
+        let adm = banner_adm_iframe("host.test", "crid123", 320, 50, Some(3.75));
+        assert!(adm.contains("//host.test/static/creatives/320x50.html"));
+        assert!(adm.contains("bid=3.75"));
+    }
 }
