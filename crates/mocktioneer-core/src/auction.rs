@@ -4,7 +4,7 @@ use crate::openrtb::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::render::banner_adm_iframe;
+use crate::render::iframe_html;
 
 fn new_id() -> String {
     Uuid::now_v7().simple().to_string()
@@ -70,7 +70,7 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> Op
                 json!({"mocktioneer": {"bid": f}})
             });
         let bid_for_iframe = if bid_ext.is_some() { Some(price) } else { None };
-        let adm_html = banner_adm_iframe(base_host, &crid, w, h, bid_for_iframe);
+        let adm_html = iframe_html(base_host, &crid, w, h, bid_for_iframe);
         bids.push(OpenrtbBid {
             id: bid_id,
             impid: impid.to_string(),
@@ -123,7 +123,7 @@ pub fn build_openrtb_response_with_base_typed(
                 json!({"mocktioneer": {"bid": f}})
             });
         let bid_for_iframe = if bid_ext.is_some() { Some(price) } else { None };
-        let adm_html = banner_adm_iframe(base_host, &crid, w, h, bid_for_iframe);
+        let adm_html = iframe_html(base_host, &crid, w, h, bid_for_iframe);
         bids.push(OpenrtbBid {
             id: bid_id,
             impid: impid.to_string(),

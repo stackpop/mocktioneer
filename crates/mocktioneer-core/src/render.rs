@@ -17,8 +17,8 @@ pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
     reg.render("t", data).unwrap_or_default()
 }
 
-pub fn banner_adm_iframe(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>) -> String {
-    const IFRAME_TMPL: &str = include_str!("../static/templates/iframe.html");
+const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html");
+pub fn iframe_html(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>) -> String {
     let bid_str = bid.map(|b| format!("{:.2}", b)).unwrap_or_default();
     let data = serde_json::json!({
         "HOST": base_host,
@@ -27,7 +27,7 @@ pub fn banner_adm_iframe(base_host: &str, crid: &str, w: i64, h: i64, bid: Optio
         "CRID": crid,
         "BID": bid_str,
     });
-    render_template_str(IFRAME_TMPL, &data)
+    render_template_str(IFRAME_HTML_TMPL, &data)
 }
 
 pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
@@ -72,15 +72,15 @@ pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
     render_template_str(SVG_TMPL, &data)
 }
 
+const CREATIVE_HTML_TMPL: &str = include_str!("../static/templates/creative.html");
 pub fn creative_html(w: i64, h: i64, pixel: bool) -> String {
-    const HTML_TMPL: &str = include_str!("../static/templates/creative.html");
     let data = serde_json::json!({"W": w, "H": h, "PIXEL": pixel});
-    render_template_str(HTML_TMPL, &data)
+    render_template_str(CREATIVE_HTML_TMPL, &data)
 }
 
+const INFO_TMPL: &str = include_str!("../static/templates/info.html");
 pub fn info_html(host: &str) -> String {
     use std::env;
-    const INFO_TMPL: &str = include_str!("../static/templates/info.html");
     let service_id = env::var("FASTLY_SERVICE_ID").unwrap_or_else(|_| "".to_string());
     let service_version = env::var("FASTLY_SERVICE_VERSION").unwrap_or_else(|_| "".to_string());
     let datacenter = env::var("FASTLY_DATACENTER")
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_banner_adm_iframe_contains_expected_src_and_escapes() {
-        let adm = banner_adm_iframe("host.test", "abc&def\"", 300, 250, None);
+        let adm = iframe_html("host.test", "abc&def\"", 300, 250, None);
         assert!(adm.contains("//host.test/static/creatives/300x250.html?crid=abc&amp;def&quot;"));
         assert!(adm.contains("width=\"300\""));
         assert!(adm.contains("height=\"250\""));
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn test_banner_adm_iframe_includes_bid_param_when_present() {
-        let adm = banner_adm_iframe("host.test", "crid123", 320, 50, Some(3.75));
+        let adm = iframe_html("host.test", "crid123", 320, 50, Some(3.75));
         assert!(adm.contains("//host.test/static/creatives/320x50.html"));
         assert!(adm.contains("bid=3.75"));
     }
