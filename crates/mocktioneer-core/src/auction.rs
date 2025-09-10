@@ -82,6 +82,7 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> Op
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
             ext: bid_ext,
+            ..Default::default()
         });
     }
     OpenRTBResponse {
@@ -94,7 +95,9 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> Op
         seatbid: vec![SeatBid {
             seat: Some("mocktioneer".to_string()),
             bid: bids,
+            ..Default::default()
         }],
+        ..Default::default()
     }
 }
 
@@ -132,6 +135,7 @@ pub fn build_openrtb_response_with_base_typed(
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
             ext: bid_ext,
+            ..Default::default()
         });
     }
     OpenRTBResponse {
@@ -144,7 +148,9 @@ pub fn build_openrtb_response_with_base_typed(
         seatbid: vec![SeatBid {
             seat: Some("mocktioneer".to_string()),
             bid: bids,
+            ..Default::default()
         }],
+        ..Default::default()
     }
 }
 

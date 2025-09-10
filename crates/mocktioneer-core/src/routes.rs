@@ -79,7 +79,13 @@ pub fn handle_static_creatives(req: ARequest) -> AResponse {
             log::warn!("non-standard creative size {}x{}", w, h);
             return AResponse::not_found();
         }
-        let html = creative_html(w, h);
+        // Pixel opt-in parameter (default: true). Accepts values like: true/1/yes/on to enable; false/0/no/off to disable
+        let pixel = match req.query("pixel").map(|s| s.to_ascii_lowercase()) {
+            None => true,
+            Some(ref v) if ["false", "0", "no", "off"].contains(&v.as_str()) => false,
+            Some(_) => true,
+        };
+        let html = creative_html(w, h, pixel);
         return AResponse::ok()
             .with_header(header::CONTENT_TYPE, "text/html; charset=utf-8")
             .with_body(html);
@@ -101,7 +107,7 @@ fn parse_cookie<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
 }
 
 // 1x1 transparent GIF content included from a static file
-const PIXEL_GIF: &[u8] = include_bytes!("../static/templates/pixel.gif");
+const PIXEL_GIF: &[u8] = include_bytes!("../static/pixel.gif");
 
 pub fn handle_pixel(req: ARequest) -> AResponse {
     let cookie_name = "mtkid";
@@ -274,6 +280,16 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(ct.starts_with("text/html"));
+        let body = String::from_utf8(res.body.clone()).unwrap();
+        assert!(body.contains("/pixel"));
+
+        let mut req2 = ARequest::new(Method::GET, "/static/creatives/300x250.html");
+        req2.params.insert("size".into(), "300x250.html".into());
+        req2.query_params.insert("pixel".into(), "false".into());
+        let res2 = handle_static_creatives(req2);
+        assert_eq!(res2.status.as_u16(), 200);
+        let body2 = String::from_utf8(res2.body).unwrap();
+        assert!(!body2.contains("/pixel"));
     }
 
     #[test]

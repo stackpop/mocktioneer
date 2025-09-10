@@ -37,6 +37,7 @@
   - Query params
     - `crid` (string, optional): creative ID, forwarded to click URL.
     - `bid` (number, optional): displayed as a price badge on the underlying SVG.
+    - `pixel` (bool, optional, default `true`): if `false`/`0`/`no`/`off`, disables the 1×1 tracking pixel; otherwise includes it.
   - Notes: non‑standard sizes return 404.
 
 - GET `/static/img/{W}x{H}.svg` — Dynamic SVG labeled “mocktioneer {W}×{H}``.

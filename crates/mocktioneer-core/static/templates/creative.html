@@ -44,6 +44,17 @@
         alt="mocktioneer {{W}}x{{H}}"
       />
     </a>
+    {{#if PIXEL}}
+    <img
+      src="/pixel"
+      width="1"
+      height="1"
+      alt=""
+      aria-hidden="true"
+      referrerpolicy="no-referrer"
+      style="position:absolute;left:-9999px;top:-9999px;border:0;width:1px;height:1px"
+    />
+    {{/if}}
     <script>
       (function () {
         var p = new URLSearchParams(location.search),

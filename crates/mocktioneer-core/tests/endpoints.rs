@@ -119,6 +119,18 @@ fn static_creatives_html_ok() {
         .to_str()
         .unwrap();
     assert!(ct.starts_with("text/html"));
+    let body = String::from_utf8(res.body).unwrap();
+    assert!(body.contains("/pixel"), "default should include pixel");
+
+    let mut req2 = Request::new(Method::GET, "/static/creatives/300x250.html");
+    req2.query_params.insert("pixel".into(), "false".into());
+    let res2 = app.handle(req2);
+    assert_eq!(res2.status.as_u16(), 200);
+    let body2 = String::from_utf8(res2.body).unwrap();
+    assert!(
+        !body2.contains("/pixel"),
+        "pixel=false should disable pixel"
+    );
 }
 
 #[test]
