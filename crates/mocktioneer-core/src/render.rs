@@ -73,8 +73,8 @@ pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
 }
 
 const CREATIVE_HTML_TMPL: &str = include_str!("../static/templates/creative.html");
-pub fn creative_html(w: i64, h: i64, pixel: bool) -> String {
-    let data = serde_json::json!({"W": w, "H": h, "PIXEL": pixel});
+pub fn creative_html(w: i64, h: i64, pixel: bool, host: &str) -> String {
+    let data = serde_json::json!({"W": w, "H": h, "PIXEL": pixel, "HOST": host});
     render_template_str(CREATIVE_HTML_TMPL, &data)
 }
 

@@ -32,7 +32,7 @@
   <body>
     <a
       id="clk"
-      href="/click"
+      href="//{{HOST}}/click"
       target="_blank"
       class="container"
       aria-label="Open mocktioneer {{W}} by {{H}} creative"
@@ -40,13 +40,13 @@
       <img
         id="creative-img"
         class="creative-img"
-        src="/static/img/{{W}}x{{H}}.svg"
+        src="//{{HOST}}/static/img/{{W}}x{{H}}.svg"
         alt="mocktioneer {{W}}x{{H}}"
       />
     </a>
     {{#if PIXEL}}
     <img
-      src="/pixel"
+      src="//{{HOST}}/pixel"
       width="1"
       height="1"
       alt=""
@@ -62,7 +62,7 @@
           b = p.get("bid") || "";
         // Pass size context too so landing can echo
         document.getElementById("clk").href =
-          "/click?crid=" + encodeURIComponent(c) + "&w={{W}}&h={{H}}";
+          "//{{HOST}}/click?crid=" + encodeURIComponent(c) + "&w={{W}}&h={{H}}";
         if (b) {
           var img = document.getElementById("creative-img");
           img.src = img.src + "?bid=" + encodeURIComponent(b);

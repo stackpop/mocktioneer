@@ -85,7 +85,10 @@ pub fn handle_static_creatives(req: ARequest) -> AResponse {
             Some(ref v) if ["false", "0", "no", "off"].contains(&v.as_str()) => false,
             Some(_) => true,
         };
-        let html = creative_html(w, h, pixel);
+        let host = req
+            .header("Host")
+            .unwrap_or("mocktioneer.edgecompute.app");
+        let html = creative_html(w, h, pixel, host);
         return AResponse::ok()
             .with_header(header::CONTENT_TYPE, "text/html; charset=utf-8")
             .with_body(html);
@@ -281,7 +284,7 @@ mod tests {
             .unwrap();
         assert!(ct.starts_with("text/html"));
         let body = String::from_utf8(res.body.clone()).unwrap();
-        assert!(body.contains("/pixel"));
+        assert!(body.contains("//mocktioneer.edgecompute.app/pixel"));
 
         let mut req2 = ARequest::new(Method::GET, "/static/creatives/300x250.html");
         req2.params.insert("size".into(), "300x250.html".into());
