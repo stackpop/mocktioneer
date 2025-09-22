@@ -1,0 +1,24 @@
+[package]
+name = "mocktioneer-adapter-fastly"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "mocktioneer-adapter-fastly"
+path = "src/main.rs"
+
+[features]
+default = []
+fastly = ["dep:anyedge-adapter-fastly"]
+
+[dependencies]
+mocktioneer-core = { workspace = true }
+anyedge-adapter-fastly = { workspace = true, optional = true }
+log = { workspace = true }
+simple_logger = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+anyedge-core = { workspace = true }
+anyedge-adapter-fastly = { workspace = true, features = ["fastly"] }
+fastly = { workspace = true }

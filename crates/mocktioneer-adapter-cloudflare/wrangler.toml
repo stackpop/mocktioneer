@@ -1,4 +1,4 @@
-name = "mocktioneer-cloudflare"
+name = "mocktioneer-adapter-cloudflare"
 main = "build/worker/shim.mjs"
 compatibility_date = "2023-05-01"
 
@@ -6,4 +6,3 @@ compatibility_date = "2023-05-01"
 # Requires `worker-build` during local dev/deploy:
 # cargo install worker-build
 command = "worker-build --release"
-

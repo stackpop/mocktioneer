@@ -1,0 +1,22 @@
+[package]
+name = "mocktioneer-adapter-cloudflare"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "mocktioneer-adapter-cloudflare"
+path = "src/main.rs"
+
+[features]
+default = ["cloudflare"]
+cloudflare = ["dep:anyedge-adapter-cloudflare"]
+
+[dependencies]
+mocktioneer-core = { workspace = true }
+anyedge-adapter-cloudflare = { workspace = true, optional = true }
+worker = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+anyedge-core = { workspace = true }
+anyedge-adapter-cloudflare = { workspace = true, features = ["cloudflare"] }
