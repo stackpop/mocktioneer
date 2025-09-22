@@ -4,7 +4,7 @@ use crate::openrtb::{
 use serde_json::json;
 use uuid::Uuid;
 
-use crate::render::banner_adm_iframe;
+use crate::render::iframe_html;
 
 fn new_id() -> String {
     Uuid::now_v7().simple().to_string()
@@ -70,7 +70,7 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> Op
                 json!({"mocktioneer": {"bid": f}})
             });
         let bid_for_iframe = if bid_ext.is_some() { Some(price) } else { None };
-        let adm_html = banner_adm_iframe(base_host, &crid, w, h, bid_for_iframe);
+        let adm_html = iframe_html(base_host, &crid, w, h, bid_for_iframe);
         bids.push(OpenrtbBid {
             id: bid_id,
             impid: impid.to_string(),
@@ -82,6 +82,7 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> Op
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
             ext: bid_ext,
+            ..Default::default()
         });
     }
     OpenRTBResponse {
@@ -94,7 +95,9 @@ pub fn build_openrtb_response_typed(req: &OpenRTBRequest, base_host: &str) -> Op
         seatbid: vec![SeatBid {
             seat: Some("mocktioneer".to_string()),
             bid: bids,
+            ..Default::default()
         }],
+        ..Default::default()
     }
 }
 
@@ -120,7 +123,7 @@ pub fn build_openrtb_response_with_base_typed(
                 json!({"mocktioneer": {"bid": f}})
             });
         let bid_for_iframe = if bid_ext.is_some() { Some(price) } else { None };
-        let adm_html = banner_adm_iframe(base_host, &crid, w, h, bid_for_iframe);
+        let adm_html = iframe_html(base_host, &crid, w, h, bid_for_iframe);
         bids.push(OpenrtbBid {
             id: bid_id,
             impid: impid.to_string(),
@@ -132,6 +135,7 @@ pub fn build_openrtb_response_with_base_typed(
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
             ext: bid_ext,
+            ..Default::default()
         });
     }
     OpenRTBResponse {
@@ -144,7 +148,9 @@ pub fn build_openrtb_response_with_base_typed(
         seatbid: vec![SeatBid {
             seat: Some("mocktioneer".to_string()),
             bid: bids,
+            ..Default::default()
         }],
+        ..Default::default()
     }
 }
 
@@ -218,5 +224,65 @@ mod tests {
     fn test_standard_or_default_behavior() {
         assert_eq!(standard_or_default(333, 222), (300, 250));
         assert_eq!(standard_or_default(320, 50), (320, 50));
+    }
+
+    #[test]
+    fn test_build_openrtb_response_with_base_enforces_standard_sizes() {
+        let req_v: serde_json::Value = serde_json::json!({
+            "id": "r2",
+            "imp": [{"id":"1","banner":{"w":333,"h":222}}]
+        });
+        let req: OpenRTBRequest = serde_json::from_value(req_v).unwrap();
+        let resp = build_openrtb_response_with_base_typed(&req, "host.test");
+        let bid = &resp.seatbid[0].bid[0];
+        // Non-standard should default to 300x250
+        assert_eq!(bid.w, Some(300));
+        assert_eq!(bid.h, Some(250));
+    }
+
+    #[test]
+    fn test_bid_id_is_hex_like_uuid() {
+        let req_v: serde_json::Value = serde_json::json!({
+            "id": "r3",
+            "imp": [{"id":"1","banner":{"w":300,"h":250}}]
+        });
+        let req: OpenRTBRequest = serde_json::from_value(req_v).unwrap();
+        let resp = build_openrtb_response_typed(&req, "host.test");
+        let bid_id = &resp.seatbid[0].bid[0].id;
+        assert_eq!(bid_id.len(), 32);
+        assert!(
+            bid_id
+                .chars()
+                .all(|c| c.is_ascii_digit() || (c >= 'a' && c <= 'f')),
+            "bid id not lower-hex32: {}",
+            bid_id
+        );
+    }
+
+    #[test]
+    fn test_price_from_ext_and_iframe_bid_param() {
+        let req_v: serde_json::Value = serde_json::json!({
+            "id": "r4",
+            "imp": [{
+                "id":"1",
+                "banner":{"w":300,"h":250},
+                "ext": {"mocktioneer": {"bid": 2.5}}
+            }]
+        });
+        let req: OpenRTBRequest = serde_json::from_value(req_v).unwrap();
+        let resp = build_openrtb_response_with_base_typed(&req, "host.test");
+        let bid = &resp.seatbid[0].bid[0];
+        assert_eq!(bid.price, 2.5);
+        let ext_bid = bid
+            .ext
+            .as_ref()
+            .and_then(|e| e.get("mocktioneer"))
+            .and_then(|m| m.get("bid"))
+            .and_then(|v| v.as_f64())
+            .unwrap();
+        assert_eq!(ext_bid, 2.5);
+        // Iframe should include bid=2.50 parameter
+        let adm = bid.adm.as_ref().unwrap();
+        assert!(adm.contains("bid=2.50"));
     }
 }
