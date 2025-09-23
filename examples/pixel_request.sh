@@ -8,7 +8,17 @@ set -euo pipefail
 
 BASE_URL="${MOCKTIONEER_BASE_URL:-http://127.0.0.1:7676}"
 OUTPUT_FORMAT="${1:-base64}"
-PIXEL_URL="${BASE_URL}/pixel"
+
+generate_pid() {
+  if command -v uuidgen >/dev/null 2>&1; then
+    uuidgen | tr -d '\n-' | tr '[:upper:]' '[:lower:]'
+  else
+    python3 -c 'import uuid; print(uuid.uuid4().hex)'
+  fi
+}
+
+PID="${MOCKTIONEER_PIXEL_ID:-$(generate_pid)}"
+PIXEL_URL="${BASE_URL}/pixel?pid=${PID}"
 
 >&2 echo "Requesting tracking pixel from ${PIXEL_URL}"
 

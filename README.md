@@ -30,8 +30,7 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
 ## Running the Edge Bundles
 
 ### Fastly Compute@Edge
-- `cargo build --target wasm32-wasip1 -p mocktioneer-adapter-fastly` (or use `fastly compute build`).
-- `fastly compute serve` to iterate locally; responses stream over the embedded AnyEdge router.
+- `fastly compute serve -C crates/mocktioneer-adapter-fastly` to iterate locally; responses stream over the embedded AnyEdge router.
 - Logging is controlled by `mocktioneer.toml` (embedded during build). See [Configuration & Logging](#configuration--logging).
 
 ### Cloudflare Workers
@@ -62,7 +61,7 @@ level = "info"           # off|error|warn|info|debug|trace
 | GET    | `/static/creatives/{W}x{H}.html`   | HTML wrapper around the SVG creative and optional tracking pixel. |
 | GET    | `/static/img/{W}x{H}.svg`          | Dynamic SVG showing size + optional bid badge. |
 | GET    | `/click`                           | Landing page that echoes creative metadata. |
-| GET    | `/pixel`                           | 1×1 transparent GIF that sets a long-lived `mtkid` cookie. |
+| GET    | `/pixel?pid={id}`                  | 1×1 transparent GIF that sets a long-lived `mtkid` cookie (requires `pid` query). |
 
 ### Auction (`/openrtb2/auction`)
 - Supports `imp[].banner.w/h` or `imp[].banner.format[0]` size hints.
@@ -70,9 +69,10 @@ level = "info"           # off|error|warn|info|debug|trace
 - Builds iframe HTML pointing to `/static/creatives/{size}.html?crid=...&bid=...` using the incoming `Host` header (defaults to `mocktioneer.edgecompute.app`).
 
 ### Creatives & Assets
-- `pixel` query parameter on `/static/creatives/...` toggles the tracking pixel (`true` by default). Accepts `false|0|no|off` to disable.
+- `pixel` query parameter on `/static/creatives/...` toggles the tracking pixel (`true` by default). Accepts `false|0|no|off` to disable. When enabled, the rendered HTML auto-generates a random `pid` query string for `/pixel`.
 - `/static/img/...` accepts a `bid` query parameter (rendered as a badge like `-$2.50`).
-- `/pixel` issues `Set-Cookie: mtkid=<UUIDv7>; Path=/; Max-Age=31536000; SameSite=None; Secure; HttpOnly` when no cookie is present and marks the response as non-cacheable.
+- `/pixel` (with a required `pid` query parameter) issues `Set-Cookie: mtkid=<UUIDv7>; Path=/; Max-Age=31536000; SameSite=None; Secure; HttpOnly` when no cookie is present and marks the response as non-cacheable.
+  Provide any non-empty ID when calling the endpoint directly; creatives rendered by Mocktioneer generate a random value automatically.
 
 ### Standard Sizes
 
@@ -148,7 +148,7 @@ params: {
 - Helper scripts in `examples/` (override the host with `MOCKTIONEER_BASE_URL`):
   - `./examples/openrtb_request.sh [payload.json] [/openrtb2/auction]` - posts the bundled payload (or supplied file) and pretty-prints the response.
   - `./examples/iframe_request.sh [size] [crid] [bid] [pixel]` - fetches the rendered creative iframe HTML.
-  - `./examples/pixel_request.sh [base64|raw|hexdump]` - requests `/pixel` and streams the encoded response body.
+  - `./examples/pixel_request.sh [base64|raw|hexdump]` - requests `/pixel` (supplying a random `pid`, or override with `MOCKTIONEER_PIXEL_ID`) and streams the encoded response body.
 
 - Local cURL smoke test:
 

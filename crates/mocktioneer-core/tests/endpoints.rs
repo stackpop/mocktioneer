@@ -45,7 +45,7 @@ fn pixel_sets_cookie_and_is_gif() {
 
     let response = block_on(app.router().oneshot(make_request(
         Method::GET,
-        "/pixel",
+        "/pixel?pid=first",
         Body::empty(),
     )));
     assert_eq!(response.status(), StatusCode::OK);
@@ -67,7 +67,7 @@ fn pixel_sets_cookie_and_is_gif() {
         .iter()
         .any(|c| c.contains("SameSite=None") && c.contains("Secure") && c.contains("HttpOnly")));
 
-    let mut second = make_request(Method::GET, "/pixel", Body::empty());
+    let mut second = make_request(Method::GET, "/pixel?pid=second", Body::empty());
     second
         .headers_mut()
         .insert(header::COOKIE, HeaderValue::from_static("mtkid=abc"));
@@ -146,16 +146,39 @@ fn static_creatives_html_ok() {
         .unwrap();
     assert!(ct.starts_with("text/html"));
     let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
-    assert!(body.contains("//mocktioneer.edgecompute.app/pixel"));
+    assert!(body.contains("//mocktioneer.edgecompute.app/pixel?pid="));
+    assert!(body.contains("data-static-pid=\""));
+    assert!(!body.contains("var jsPid = \""));
 
     let response = block_on(app.router().oneshot(make_request(
         Method::GET,
-        "/static/creatives/300x250.html?pixel=false",
+        "/static/creatives/300x250.html?pixel_html=false",
         Body::empty(),
     )));
     assert_eq!(response.status(), StatusCode::OK);
     let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
     assert!(!body.contains("/pixel"));
+    assert!(!body.contains("var jsPid = \""));
+
+    let response = block_on(app.router().oneshot(make_request(
+        Method::GET,
+        "/static/creatives/300x250.html?pixel_js=true",
+        Body::empty(),
+    )));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
+    assert!(body.contains("//mocktioneer.edgecompute.app/pixel?pid="));
+    let static_pid = body
+        .split("data-static-pid=\"")
+        .nth(1)
+        .and_then(|s| s.split('\"').next())
+        .expect("static pid");
+    let js_pid = body
+        .split("var jsPid = \"")
+        .nth(1)
+        .and_then(|s| s.split('\"').next())
+        .expect("js pid");
+    assert_ne!(static_pid, js_pid);
 }
 
 #[test]
@@ -169,6 +192,20 @@ fn click_echoes_params() {
     assert_eq!(response.status(), StatusCode::OK);
     let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
     assert!(body.contains("abc"));
+    assert!(!body.contains("Additional Parameters"));
+
+    let response = block_on(app.router().oneshot(make_request(
+        Method::GET,
+        "/click?crid=abc&foo=bar&baz=qux",
+        Body::empty(),
+    )));
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
+    assert!(body.contains("Additional Parameters"));
+    assert!(body.contains("foo"));
+    assert!(body.contains("bar"));
+    assert!(body.contains("baz"));
+    assert!(body.contains("qux"));
 }
 
 #[test]

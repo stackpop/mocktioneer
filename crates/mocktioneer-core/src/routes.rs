@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use anyedge_core::FromRequest;
@@ -24,7 +25,15 @@ struct StaticImgQuery {
 #[derive(Deserialize, Validate)]
 struct StaticCreativeQuery {
     #[serde(default)]
-    pixel: Option<bool>,
+    pixel_html: Option<bool>,
+    #[serde(default)]
+    pixel_js: Option<bool>,
+}
+
+#[derive(Deserialize, Validate)]
+struct PixelQueryParams {
+    #[validate(length(min = 1, max = 128))]
+    pid: String,
 }
 
 #[derive(Deserialize, Validate)]
@@ -38,6 +47,8 @@ struct ClickQueryParams {
     #[serde(default)]
     #[validate(range(min = 1))]
     h: Option<i64>,
+    #[serde(flatten)]
+    extra: HashMap<String, String>,
 }
 
 #[derive(Deserialize, Validate)]
@@ -266,12 +277,13 @@ async fn handle_static_creatives(
         width: w,
         height: h,
     } = size;
-    let pixel = query.pixel.unwrap_or(true);
+    let pixel_html = query.pixel_html.unwrap_or(true);
+    let pixel_js = query.pixel_js.unwrap_or(false);
     let host = headers
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("mocktioneer.edgecompute.app");
-    let html = creative_html(w, h, pixel, host);
+    let html = creative_html(w, h, pixel_html, pixel_js, host);
     let mut response = build_response(StatusCode::OK, Body::from(html));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -295,9 +307,14 @@ fn parse_cookie<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
 const PIXEL_GIF: &[u8] = include_bytes!("../static/pixel.gif");
 
 #[action]
-async fn handle_pixel(Headers(headers): Headers) -> Response {
+async fn handle_pixel(
+    Headers(headers): Headers,
+    ValidatedQuery(params): ValidatedQuery<PixelQueryParams>,
+) -> Response {
     let cookie_name = "mtkid";
     let mut set_cookie = None;
+
+    let PixelQueryParams { pid: _ } = params;
 
     let existing = headers
         .get(header::COOKIE)
@@ -338,15 +355,31 @@ async fn handle_pixel(Headers(headers): Headers) -> Response {
 
 #[action]
 async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParams>) -> Response {
-    let ClickQueryParams { crid, w, h } = params;
+    let ClickQueryParams {
+        crid,
+        w,
+        h,
+        extra,
+    } = params;
     let crid = crid.unwrap_or_default();
     let w = w.map(|v| v.to_string()).unwrap_or_default();
     let h = h.map(|v| v.to_string()).unwrap_or_default();
+    let mut extra_pairs: Vec<_> = extra.into_iter().collect();
+    extra_pairs.sort_by(|a, b| a.0.cmp(&b.0));
+    let extra_json: Vec<_> = extra_pairs
+        .into_iter()
+        .map(|(k, v)| serde_json::json!({ "KEY": k, "VALUE": v }))
+        .collect();
     log::info!("click crid={}, size={}x{}", crid, w, h);
-    const CLICK_TMPL: &str = include_str!("../static/templates/click.html");
+    const CLICK_TMPL: &str = include_str!("../static/templates/click.html.hbs");
     let html = render_template_str(
         CLICK_TMPL,
-        &serde_json::json!({"CRID": crid, "W": w, "H": h}),
+        &serde_json::json!({
+            "CRID": crid,
+            "W": w,
+            "H": h,
+            "EXTRA": extra_json,
+        }),
     );
     let mut response = build_response(StatusCode::OK, Body::from(html));
     response.headers_mut().insert(
@@ -426,7 +459,7 @@ mod tests {
 
     #[test]
     fn handle_pixel_sets_cookie_when_absent() {
-        let ctx = ctx(Method::GET, "/pixel", Body::empty(), &[]);
+        let ctx = ctx(Method::GET, "/pixel?pid=test", Body::empty(), &[]);
         let response = response_from(block_on(handle_pixel(ctx)));
         assert_eq!(response.status(), StatusCode::OK);
         let ct = response
@@ -443,11 +476,18 @@ mod tests {
     }
 
     #[test]
+    fn handle_pixel_requires_pid() {
+        let ctx = ctx(Method::GET, "/pixel", Body::empty(), &[]);
+        let response = response_from(block_on(handle_pixel(ctx)));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
     fn handle_pixel_does_not_reset_cookie_when_present() {
         let mut builder = request_builder();
         builder = builder
             .method(Method::GET)
-            .uri("/pixel")
+            .uri("/pixel?pid=test")
             .header("Cookie", "mtkid=abc");
         let request = builder.body(Body::empty()).expect("request");
         let ctx = RequestContext::new(request, PathParams::default());
@@ -562,23 +602,52 @@ mod tests {
             .unwrap();
         assert!(ct.starts_with("text/html"));
         let body = response.into_body().into_bytes();
-        assert!(String::from_utf8(body.to_vec())
-            .unwrap()
-            .contains("//mocktioneer.edgecompute.app/pixel"));
+        let body_str = String::from_utf8(body.to_vec()).unwrap();
+        assert!(body_str.contains("data-static-pid=\""));
+        assert!(body_str.contains("//mocktioneer.edgecompute.app/pixel?pid="));
+        assert!(!body_str.contains("var jsPid = \""));
+    }
+
+    #[test]
+    fn handle_static_creatives_html_ok_with_js_pixel() {
+        let ctx = ctx(
+            Method::GET,
+            "/static/creatives/300x250.html?pixel_js=true",
+            Body::empty(),
+            &[("size", "300x250.html")],
+        );
+        let response = response_from(block_on(handle_static_creatives(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
+        assert!(body.contains("data-static-pid=\""));
+        assert!(body.contains("var jsPid = \""));
+        let static_pid = body
+            .split("data-static-pid=\"")
+            .nth(1)
+            .and_then(|s| s.split('\"').next())
+            .expect("static pid");
+        let js_pid = body
+            .split("var jsPid = \"")
+            .nth(1)
+            .and_then(|s| s.split('\"').next())
+            .expect("js pid");
+        assert_ne!(static_pid, js_pid);
     }
 
     #[test]
     fn handle_static_creatives_html_ok_without_pixel() {
         let ctx = ctx(
             Method::GET,
-            "/static/creatives/300x250.html?pixel=false",
+            "/static/creatives/300x250.html?pixel_html=false",
             Body::empty(),
             &[("size", "300x250.html")],
         );
         let response = response_from(block_on(handle_static_creatives(ctx)));
         assert_eq!(response.status(), StatusCode::OK);
         let body = response.into_body().into_bytes();
-        assert!(!String::from_utf8(body.to_vec()).unwrap().contains("/pixel"));
+        let body = String::from_utf8(body.to_vec()).unwrap();
+        assert!(!body.contains("/pixel"));
+        assert!(!body.contains("var jsPid = \""));
     }
 
     #[test]
@@ -606,10 +675,22 @@ mod tests {
     }
 
     #[test]
-    fn handle_static_creatives_rejects_invalid_pixel_toggle() {
+    fn handle_static_creatives_rejects_invalid_html_pixel_toggle() {
         let ctx = ctx(
             Method::GET,
-            "/static/creatives/300x250.html?pixel=maybe",
+            "/static/creatives/300x250.html?pixel_html=maybe",
+            Body::empty(),
+            &[("size", "300x250.html")],
+        );
+        let response = response_from(block_on(handle_static_creatives(ctx)));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_static_creatives_rejects_invalid_js_pixel_toggle() {
+        let ctx = ctx(
+            Method::GET,
+            "/static/creatives/300x250.html?pixel_js=maybe",
             Body::empty(),
             &[("size", "300x250.html")],
         );
@@ -631,6 +712,7 @@ mod tests {
         assert!(body.contains("abc"));
         assert!(body.contains("300"));
         assert!(body.contains("250"));
+        assert!(!body.contains("Additional Parameters"));
     }
 
     #[test]
@@ -645,5 +727,23 @@ mod tests {
             .to_str()
             .unwrap();
         assert!(ct.starts_with("text/html"));
+    }
+
+    #[test]
+    fn handle_click_lists_additional_params() {
+        let ctx = ctx(
+            Method::GET,
+            "/click?crid=abc&foo=bar&baz=qux",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_click(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
+        assert!(body.contains("Additional Parameters"));
+        assert!(body.contains("foo"));
+        assert!(body.contains("bar"));
+        assert!(body.contains("baz"));
+        assert!(body.contains("qux"));
     }
 }
