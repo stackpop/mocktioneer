@@ -14,7 +14,7 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
 - `crates/mocktioneer-core`: shared logic (OpenRTB types, request handlers, rendering, config, `MocktioneerApp` Hooks entrypoint).
 - `crates/mocktioneer-adapter-fastly`: Fastly Compute@Edge binary + embedded logging config.
 - `crates/mocktioneer-adapter-cloudflare`: Cloudflare Workers binary (`wrangler` manifests for dev/deploy).
-- `examples/`: helper scripts such as `curl_local_test.sh` for smoke testing.
+- `examples/`: helper scripts like `openrtb_request.sh`, `iframe_request.sh`, and `pixel_request.sh` for smoke testing.
 
 ## Quick Start
 
@@ -106,7 +106,7 @@ Supported creative sizes:
 ## Testing & Tooling
 
 - Unit tests: `cargo test` (covers routes, OpenRTB mapping, SVG rendering, cookie behaviour).
-- Smoke test: `./examples/curl_local_test.sh` posts a sample OpenRTB request against a local Fastly dev server.
+- Smoke test: `./examples/openrtb_request.sh` posts a sample OpenRTB request against a local Fastly dev server (override the host with `MOCKTIONEER_BASE_URL`).
 - When adjusting routes or templates, update `crates/mocktioneer-core/tests/endpoints.rs` to keep coverage meaningful.
 
 ## Deployment
@@ -144,6 +144,11 @@ params: {
   - `imp[i].ext.prebid.bidder.mocktioneer.bid` to force a CPM.
 
 ## Examples
+
+- Helper scripts in `examples/` (override the host with `MOCKTIONEER_BASE_URL`):
+  - `./examples/openrtb_request.sh [payload.json] [/openrtb2/auction]` - posts the bundled payload (or supplied file) and pretty-prints the response.
+  - `./examples/iframe_request.sh [size] [crid] [bid] [pixel]` - fetches the rendered creative iframe HTML.
+  - `./examples/pixel_request.sh [base64|raw|hexdump]` - requests `/pixel` and streams the encoded response body.
 
 - Local cURL smoke test:
 

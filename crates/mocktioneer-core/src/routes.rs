@@ -128,7 +128,7 @@ where
 }
 
 fn parse_size_param(size: &str, suffix: &str) -> Option<(i64, i64)> {
-    let cleaned = size.split(|c| c == '?' || c == '&').next().unwrap_or(size);
+    let cleaned = size.split(['?', '&']).next().unwrap_or(size);
 
     if !cleaned.ends_with(suffix) {
         return None;
@@ -314,7 +314,7 @@ async fn handle_pixel(Headers(headers): Headers) -> Response {
         set_cookie = Some(cookie_val);
     }
 
-    let body = Body::from(&PIXEL_GIF[..]);
+    let body = Body::from(PIXEL_GIF);
     let mut response = anyedge_core::response_builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "image/gif")
