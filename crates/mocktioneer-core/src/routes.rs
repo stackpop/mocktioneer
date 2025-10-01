@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use anyedge_core::FromRequest;
-use anyedge_core::{
-    action, header, App as EdgeApp, Body, EdgeError, HeaderValue, Headers, Hooks, Method,
-    Middleware, Next, RequestContext, RequestLogger, Response, RouterService, StatusCode,
-    ValidatedJson, ValidatedQuery,
+use anyedge_core::action;
+use anyedge_core::context::RequestContext;
+use anyedge_core::extractor::{FromRequest, Headers, ValidatedJson, ValidatedQuery};
+use anyedge_core::http::{
+    header, response_builder, HeaderMap, HeaderValue, Method, Response, StatusCode,
 };
+use anyedge_core::middleware::{Middleware, Next};
+use anyedge_core::{body::Body, error::EdgeError};
 use async_trait::async_trait;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -162,7 +164,7 @@ fn validate_static_asset_size(value: &str) -> Result<(), ValidationError> {
 }
 
 fn build_response(status: StatusCode, body: Body) -> Response {
-    let mut builder = anyedge_core::response_builder().status(status);
+    let mut builder = response_builder().status(status);
     if let Body::Once(bytes) = &body {
         if !bytes.is_empty() {
             builder = builder.header(header::CONTENT_LENGTH, bytes.len().to_string());
@@ -173,6 +175,18 @@ fn build_response(status: StatusCode, body: Body) -> Response {
         .expect("static response builder should not fail")
 }
 
+fn apply_cors(headers: &mut HeaderMap) {
+    headers.insert("Access-Control-Allow-Origin", HeaderValue::from_static("*"));
+    headers.insert(
+        "Access-Control-Allow-Methods",
+        HeaderValue::from_static("GET, POST, OPTIONS"),
+    );
+    headers.insert(
+        "Access-Control-Allow-Headers",
+        HeaderValue::from_static("*, content-type"),
+    );
+}
+
 pub struct Cors;
 
 #[async_trait(?Send)]
@@ -180,32 +194,21 @@ impl Middleware for Cors {
     async fn handle(&self, ctx: RequestContext, next: Next<'_>) -> Result<Response, EdgeError> {
         let method = ctx.request().method().clone();
         let mut response = if method == Method::OPTIONS {
-            let mut response = build_response(StatusCode::NO_CONTENT, Body::empty());
-            response.headers_mut().insert(
-                header::ALLOW,
-                HeaderValue::from_static("GET, POST, OPTIONS"),
-            );
-            response
+            Ok(options_response())
         } else {
-            next.run(ctx).await?
-        };
-
-        let headers = response.headers_mut();
-        headers.insert("Access-Control-Allow-Origin", HeaderValue::from_static("*"));
-        headers.insert(
-            "Access-Control-Allow-Methods",
-            HeaderValue::from_static("GET, POST, OPTIONS"),
-        );
-        headers.insert(
-            "Access-Control-Allow-Headers",
-            HeaderValue::from_static("*, content-type"),
-        );
+            next.run(ctx).await
+        }?;
+        apply_cors(response.headers_mut());
         Ok(response)
     }
 }
 
 #[action]
-async fn handle_options() -> Response {
+pub async fn handle_options() -> Response {
+    options_response()
+}
+
+fn options_response() -> Response {
     let mut response = build_response(StatusCode::NO_CONTENT, Body::empty());
     response.headers_mut().insert(
         header::ALLOW,
@@ -215,7 +218,7 @@ async fn handle_options() -> Response {
 }
 
 #[action]
-async fn handle_root(Headers(headers): Headers) -> Response {
+pub async fn handle_root(Headers(headers): Headers) -> Response {
     let host = headers
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
@@ -230,7 +233,7 @@ async fn handle_root(Headers(headers): Headers) -> Response {
 }
 
 #[action]
-async fn handle_openrtb_auction(
+pub async fn handle_openrtb_auction(
     Headers(headers): Headers,
     ValidatedJson(payload): ValidatedJson<OpenRTBRequest>,
 ) -> Response {
@@ -250,7 +253,7 @@ async fn handle_openrtb_auction(
 }
 
 #[action]
-async fn handle_static_img(
+pub async fn handle_static_img(
     ValidatedSize(size, _): ValidatedSize<SvgSize>,
     ValidatedQuery(query): ValidatedQuery<StaticImgQuery>,
 ) -> Response {
@@ -268,7 +271,7 @@ async fn handle_static_img(
 }
 
 #[action]
-async fn handle_static_creatives(
+pub async fn handle_static_creatives(
     ValidatedSize(size, _): ValidatedSize<HtmlSize>,
     ValidatedQuery(query): ValidatedQuery<StaticCreativeQuery>,
     Headers(headers): Headers,
@@ -307,7 +310,7 @@ fn parse_cookie<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
 const PIXEL_GIF: &[u8] = include_bytes!("../static/pixel.gif");
 
 #[action]
-async fn handle_pixel(
+pub async fn handle_pixel(
     Headers(headers): Headers,
     ValidatedQuery(params): ValidatedQuery<PixelQueryParams>,
 ) -> Response {
@@ -331,18 +334,20 @@ async fn handle_pixel(
         set_cookie = Some(cookie_val);
     }
 
-    let body = Body::from(PIXEL_GIF);
-    let mut response = anyedge_core::response_builder()
-        .status(StatusCode::OK)
-        .header(header::CONTENT_TYPE, "image/gif")
-        .header(
+    let mut response = build_response(StatusCode::OK, Body::from(PIXEL_GIF));
+    {
+        let headers = response.headers_mut();
+        headers.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/gif"));
+        headers.insert(
             header::CACHE_CONTROL,
-            "no-store, no-cache, must-revalidate, max-age=0",
-        )
-        .header("Pragma", "no-cache")
-        .header(header::CONTENT_LENGTH, PIXEL_GIF.len().to_string())
-        .body(body)
-        .expect("pixel response");
+            HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
+        );
+        headers.insert("Pragma", HeaderValue::from_static("no-cache"));
+        headers.insert(
+            header::CONTENT_LENGTH,
+            HeaderValue::from_str(&PIXEL_GIF.len().to_string()).expect("length"),
+        );
+    }
 
     if let Some(cookie) = set_cookie {
         if let Ok(value) = HeaderValue::from_str(&cookie) {
@@ -354,13 +359,8 @@ async fn handle_pixel(
 }
 
 #[action]
-async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParams>) -> Response {
-    let ClickQueryParams {
-        crid,
-        w,
-        h,
-        extra,
-    } = params;
+pub async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParams>) -> Response {
+    let ClickQueryParams { crid, w, h, extra } = params;
     let crid = crid.unwrap_or_default();
     let w = w.map(|v| v.to_string()).unwrap_or_default();
     let h = h.map(|v| v.to_string()).unwrap_or_default();
@@ -389,39 +389,15 @@ async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParams>) 
     response
 }
 
-pub struct MocktioneerApp;
-
-impl Hooks for MocktioneerApp {
-    fn routes() -> RouterService {
-        RouterService::builder()
-            .middleware(Cors)
-            .middleware(RequestLogger)
-            .get("/", handle_root)
-            .route("/", Method::OPTIONS, handle_options)
-            .post("/openrtb2/auction", handle_openrtb_auction)
-            .route("/openrtb2/auction", Method::OPTIONS, handle_options)
-            .get("/static/img/{size}", handle_static_img)
-            .route("/static/img/{size}", Method::OPTIONS, handle_options)
-            .get("/static/creatives/{size}", handle_static_creatives)
-            .route("/static/creatives/{size}", Method::OPTIONS, handle_options)
-            .get("/click", handle_click)
-            .route("/click", Method::OPTIONS, handle_options)
-            .get("/pixel", handle_pixel)
-            .route("/pixel", Method::OPTIONS, handle_options)
-            .build()
-    }
-}
-
-pub fn build_app() -> EdgeApp {
-    MocktioneerApp::build_app()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyedge_core::{
-        request_builder, Body, EdgeError, IntoResponse, Method, PathParams, RequestContext,
-    };
+    use anyedge_core::body::Body;
+    use anyedge_core::context::RequestContext;
+    use anyedge_core::error::EdgeError;
+    use anyedge_core::http::{request_builder, Method, Response, StatusCode};
+    use anyedge_core::params::PathParams;
+    use anyedge_core::response::IntoResponse;
     use futures::executor::block_on;
     use std::collections::HashMap;
 

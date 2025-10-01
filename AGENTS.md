@@ -1,6 +1,6 @@
 # Mocktioneer Agents Guide
 
-This guide gives coding agents a concise playbook for contributing to Mocktioneer while keeping the codebase DRY and consistent across edge providers.
+This guide gives coding agents a concise playbook for contributing to Mocktioneer while keeping the codebase DRY and consistent across edge adapters.
 
 ## Standard Workflow
 
@@ -30,14 +30,15 @@ This guide gives coding agents a concise playbook for contributing to Mocktionee
 ## Core Principles
 
 - **Single source of truth lives in `mocktioneer-core`.** All business logic, OpenRTB types, route handlers, render helpers, and tests should be implemented (or reused) from the shared crate.
-- **Adapters stay thin.** `mocktioneer-adapter-fastly` and `mocktioneer-adapter-cloudflare` should only translate provider APIs (request/response, logging, config). If you find yourself duplicating logic from `mocktioneer-core`, move it into the core crate first.
+- **`anyedge.toml` is configuration authority.** Declare new routes, adapter commands, and logging defaults in the manifest so adapters and the CLI stay aligned.
+- **Adapters stay thin.** `mocktioneer-adapter-fastly` and `mocktioneer-adapter-cloudflare` should only translate adapter APIs (request/response, logging, config). If you find yourself duplicating logic from `mocktioneer-core`, move it into the core crate first.
 - **Templates are canonical.** Update HTML/SVG templates in `crates/mocktioneer-core/static/templates/` and render them through `render.rs`. Do not inline ad markup in handlers.
 - **Tests prevent drift.** Extend `crates/mocktioneer-core/tests/endpoints.rs` or add unit tests near the code you touch. Adapter crates should stay free of business logic tests beyond thin smoke checks.
 - **Prefer helper functions over copy/paste.** When a handler or renderer grows shared behaviour (e.g., size parsing, query parsing), extract it into `routes.rs` or `render.rs` as a dedicated helper and reuse it everywhere.
 
 ## DRY Playbook
 
-- Adding a new endpoint? Implement it in `mocktioneer-core/src/routes.rs`, register it in `build_app()`, and rely on the adapters to expose it automatically.
+- Adding a new endpoint? Implement it in `mocktioneer-core/src/routes.rs` and add it to `anyedge.toml`; the manifest-driven router will pick it up for both adapters.
 - Introducing new OpenRTB fields? Update the data structures in `mocktioneer-core/src/openrtb.rs`, adjust serializers once, and reuse them across responses.
 - Need shared constants (sizes, cookie names, headers)? Centralize them in the core crate rather than duplicating strings in handlers or tests.
 - Shared price/size calculations belong in `auction.rs`; keep creative rendering details in `render.rs` so they are not reimplemented downstream.
@@ -46,9 +47,9 @@ This guide gives coding agents a concise playbook for contributing to Mocktionee
 
 ## Workflow Tips
 
-1. Start changes in `mocktioneer-core`; adapters should only require wiring updates when provider APIs change.
+1. Start changes in `mocktioneer-core`; adapters should only require wiring updates when adapter APIs change.
 2. Run `cargo fmt` and `cargo test` from the repo root before sending patches.
-3. For Fastly-specific checks, `fastly compute serve` in `crates/mocktioneer-adapter-fastly/` uses the same core app, so behaviour differences usually mean the adapter mapping needs attention rather than route logic duplication.
+3. For Fastly-specific checks, run `anyedge-cli serve --adapter fastly` (wraps `fastly compute serve -C crates/mocktioneer-adapter-fastly` via the manifest) so you exercise the same config the Cloudflare adapter reads. If you prefer not to install the binary, use `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- serve --adapter fastly`.
 4. Document new behaviour in `README.md` and update this guide if the best practices change.
 
 Keeping these rules in mind prevents divergence between edge targets and safeguards the deterministic behaviour that Mocktioneer promises to clients.

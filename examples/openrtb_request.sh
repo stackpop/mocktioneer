@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Start local with: (fastly compute serve -C crates/mocktioneer-adapter-fastly)
+# Start local with: (anyedge-cli serve --adapter fastly)
 # Then run this script in another terminal. Override the base URL by setting
 # MOCKTIONEER_BASE_URL, e.g., MOCKTIONEER_BASE_URL=https://mocktioneer.edgecompute.app
 # Pass a custom payload file as the first argument or a custom endpoint path

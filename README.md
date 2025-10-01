@@ -4,15 +4,16 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
 
 ## Highlights
 
-- Built on the provider-agnostic [AnyEdge](https://github.com/stackpop/prebid/blob/main/anyedge/README.md) core so the same app runs on Fastly Compute@Edge and Cloudflare Workers.
+- Built on the adapter-agnostic [AnyEdge](https://github.com/stackpop/prebid/blob/main/anyedge/README.md) core so the same app runs on Fastly Compute@Edge and Cloudflare Workers.
+- Manifest-driven: a single `anyedge.toml` defines routes, adapters, logging, and the commands the AnyEdge CLI executes for build/serve/deploy.
 - Deterministic banner bids and simple creative templates for predictable QA flows.
-- Zero backend requirements: all routes render locally from embedded assets and config.
+- Zero backend requirements: all routes render locally from embedded assets and the AnyEdge manifest.
 - Batteries included for integrations: ready-made responses for Prebid.js and Prebid Server, plus static assets for creative previews.
 
 ## Workspace Layout
 
 - `crates/mocktioneer-core`: shared logic (OpenRTB types, request handlers, rendering, config, `MocktioneerApp` Hooks entrypoint).
-- `crates/mocktioneer-adapter-fastly`: Fastly Compute@Edge binary + embedded logging config.
+- `crates/mocktioneer-adapter-fastly`: Fastly Compute@Edge binary powered by the shared AnyEdge manifest.
 - `crates/mocktioneer-adapter-cloudflare`: Cloudflare Workers binary (`wrangler` manifests for dev/deploy).
 - `examples/`: helper scripts like `openrtb_request.sh`, `iframe_request.sh`, and `pixel_request.sh` for smoke testing.
 
@@ -22,34 +23,61 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
    - Rust (stable toolchain).
    - Fastly CLI (`brew install fastly/tap/fastly`) and/or Cloudflare `wrangler` if you plan to run those targets.
    - Add `wasm32-wasip1` (Fastly) or `wasm32-unknown-unknown` (Cloudflare) targets via `rustup target add`.
+   - AnyEdge CLI (`cargo install --path anyedge/crates/anyedge-cli --features cli`, or run via `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- --help`).
 2. Clone this repo and enter `mocktioneer/`.
 3. Run unit tests: `cargo test`.
-4. Start a local Fastly sandbox: `cd crates/mocktioneer-adapter-fastly && fastly compute serve` (serves http://127.0.0.1:7676).
-5. (Optional) Start Cloudflare Workers: `cd crates/mocktioneer-adapter-cloudflare && wrangler dev`.
+4. Serve adapters via the manifest-driven CLI (reads `anyedge.toml` automatically):
+   - `anyedge-cli serve --adapter fastly` (wraps `fastly compute serve -C crates/mocktioneer-adapter-fastly`).
+   - `anyedge-cli serve --adapter cloudflare` (wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`).
+   - Without installing the binary, use `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- serve --adapter fastly` (and similar for other adapters).
 
 ## Running the Edge Bundles
 
 ### Fastly Compute@Edge
-- `fastly compute serve -C crates/mocktioneer-adapter-fastly` to iterate locally; responses stream over the embedded AnyEdge router.
-- Logging is controlled by `mocktioneer.toml` (embedded during build). See [Configuration & Logging](#configuration--logging).
+- `anyedge-cli serve --adapter fastly` to iterate locally; this shells out to `fastly compute serve -C crates/mocktioneer-adapter-fastly` after embedding `anyedge.toml`.
+- Logging is controlled by `anyedge.toml` (embedded during build). See [Configuration & Logging](#configuration--logging).
 
 ### Cloudflare Workers
-- `wrangler dev` inside `crates/mocktioneer-adapter-cloudflare` runs the app with the Workers runtime.
+- `anyedge-cli serve --adapter cloudflare` wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`.
 - The adapter reuses the same AnyEdge app and translates Worker requests/responses in-process.
 
 ## Configuration & Logging
 
-`mocktioneer.toml` is compiled into the Fastly binary and controls logging behaviour:
+`anyedge.toml` is compiled into both adapter binaries and drives the AnyEdge CLI:
 
 ```toml
-[logging]
-provider = "fastly"      # fastly | stdout
+[app]
+name = "Mocktioneer"
+entry = "crates/mocktioneer-core"
+middleware = ["anyedge_core::middleware::RequestLogger", "mocktioneer_core::routes::Cors"]
+
+[[triggers.http]]
+id = "openrtb_auction"
+path = "/openrtb2/auction"
+methods = ["POST"]
+handler = "mocktioneer_core::routes::handle_openrtb_auction"
+adapters = ["fastly", "cloudflare"]
+
+[adapters.fastly.adapter]
+crate = "crates/mocktioneer-adapter-fastly"
+manifest = "crates/mocktioneer-adapter-fastly/fastly.toml"
+
+[adapters.fastly.commands]
+serve = "fastly compute serve -C crates/mocktioneer-adapter-fastly"
+deploy = "fastly compute deploy -C crates/mocktioneer-adapter-fastly"
+
+[logging.fastly]
 endpoint = "mocktioneerlog"
-level = "info"           # off|error|warn|info|debug|trace
+level = "info"
+echo_stdout = false
+
+[logging.cloudflare]
+level = "info"
 ```
 
-- `provider=fastly` streams logs to the named endpoint and echoes to stdout when served locally.
-- `provider=stdout` is convenient for native/unit tests.
+- Routes and adapters are declared in the manifest; adding a new handler means updating the `[[triggers.http]]` block once and both adapters inherit it.
+- Adapter command strings are what `anyedge-cli` executes for `build`, `serve`, and `deploy`, so tweaks to local/dev flows happen in one place.
+- Logging defaults live under `[logging.*]` and are turned into adapter-specific logger configs at runtime.
 - Changing the file requires rebuilding because it is embedded with `include_str!`.
 
 ## HTTP API Overview
@@ -114,7 +142,7 @@ Supported creative sizes:
 ### Fastly
 1. `cd crates/mocktioneer-adapter-fastly`
 2. `fastly compute publish` (CLI walks you through service creation, domain binding, deploy).
-3. Configure a log endpoint that matches `mocktioneer.toml` (e.g., `mocktioneerlog`).
+3. Configure a log endpoint that matches `anyedge.toml` (e.g., `mocktioneerlog`).
 4. Optional: `fastly domain create --service-id <SERVICE_ID> --name <your.domain>` to add custom domains.
 
 ### Cloudflare Workers
