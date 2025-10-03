@@ -1,78 +1,143 @@
-# mocktioneer (Fastly Compute@Edge)
+# mocktioneer
 
-## Overview
+Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test client integrations (Prebid.js, Prebid Server, custom SDKs) without depending on third-party bidders or origin backends.
 
-- Minimal OpenRTB mock bidder written in Rust for Fastly Compute@Edge. It returns deterministic banner bids and simple creatives to validate client integrations (Prebid.js, Prebid Server).
-- Built on AnyEdge core types and router; originless (no backends).
+## Highlights
+
+- Built on the adapter-agnostic [AnyEdge](https://github.com/stackpop/prebid/blob/main/anyedge/README.md) core so the same app runs on Fastly Compute@Edge, Cloudflare Workers, and a native Axum server.
+- Manifest-driven: a single `anyedge.toml` defines routes, adapters, logging, and the commands the AnyEdge CLI executes for build/serve/deploy.
+- Deterministic banner bids and simple creative templates for predictable QA flows.
+- Zero backend requirements: all routes render locally from embedded assets and the AnyEdge manifest.
+- Batteries included for integrations: ready-made responses for Prebid.js and Prebid Server, plus static assets for creative previews.
 
 ## Workspace Layout
 
-- `crates/mocktioneer-core`: shared logic (OpenRTB types, routes, rendering, config, build_app()).
-- `crates/mocktioneer-fastly`: Fastly Compute@Edge binary (+ Fastly and logging config).
-- `crates/mocktioneer-cloudflare`: Cloudflare Workers binary (Wrangler config for dev/deploy).
+- `crates/mocktioneer-core`: shared logic (OpenRTB types, request handlers, rendering, config, `MocktioneerApp` Hooks entrypoint).
+- `crates/mocktioneer-adapter-fastly`: Fastly Compute@Edge binary powered by the shared AnyEdge manifest.
+- `crates/mocktioneer-adapter-cloudflare`: Cloudflare Workers binary (`wrangler` manifests for dev/deploy).
+- `crates/mocktioneer-adapter-axum`: Native Axum HTTP server for local integration testing.
+- `examples/`: helper scripts like `openrtb_request.sh`, `iframe_request.sh`, and `pixel_request.sh` for smoke testing.
 
-## HTTP Endpoints
+## Quick Start
 
-- GET `/` — Info page with basic service metadata.
-  - Headers
-    - `Host`: used for display only on the info page.
+1. Install prerequisites:
+   - Rust (stable toolchain).
+   - Fastly CLI (`brew install fastly/tap/fastly`) and/or Cloudflare `wrangler` if you plan to run those targets.
+   - Add `wasm32-wasip1` (Fastly) or `wasm32-unknown-unknown` (Cloudflare) targets via `rustup target add`.
+   - No extra tooling is required for Axum—the native adapter runs with the default Rust toolchain (`cargo run -p mocktioneer-adapter-axum`).
+   - AnyEdge CLI (`cargo install --path anyedge/crates/anyedge-cli --features cli`, or run via `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- --help`).
+2. Clone this repo and enter `mocktioneer/`.
+3. Run unit tests: `cargo test`.
+4. Serve adapters via the manifest-driven CLI (reads `anyedge.toml` automatically):
+   - `anyedge-cli serve --adapter axum` (spawns the native Axum server for local iteration).
+   - `anyedge-cli serve --adapter fastly` (wraps `fastly compute serve -C crates/mocktioneer-adapter-fastly`).
+   - `anyedge-cli serve --adapter cloudflare` (wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`).
+   - Without installing the binary, use `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- serve --adapter <axum|fastly|cloudflare>`.
 
-- POST `/openrtb2/auction` — Accepts OpenRTB 2.x BidRequest JSON, returns banner BidResponse.
-  - Body (JSON)
-    - `id` (string, required): request ID echoed in response.
-    - `imp[]` (array, required): impressions to bid on.
-      - `id` (string, optional): impression ID; defaults to "1" if empty.
-      - `banner.w` (int, optional): width in pixels.
-      - `banner.h` (int, optional): height in pixels.
-      - `banner.format[]` (array, optional): fallback size candidates; first element used when `w/h` missing.
-      - `ext.mocktioneer.bid` (number, optional): explicit price to return; echoed in `bid.ext.mocktioneer.bid` and rendered on creatives.
-  - Headers
-    - `Host` (string, optional): base host used to build creative iframe URLs.
-  - Response (JSON): contains `seatbid[].bid[]` with `impid`, `price`, `adm` (iframe HTML), `crid`, `w`, `h`, `mtype=1`, `adomain`.
+> AnyEdge crates are now pulled directly from GitHub over SSH, so CI/CD no longer needs a sibling checkout. Provide an `ANYEDGE_SSH_KEY` secret (deploy key or personal access key) in GitHub Actions so the workflows can authenticate, and copy `.cargo/config.local-example` to `.cargo/config.toml` when iterating on AnyEdge locally to point back at `../anyedge`.
 
-- GET `/static/creatives/{W}x{H}.html` — Minimal HTML wrapper that displays the SVG and links to `/click`.
-  - Path params
-    - `W` (int, required): width; must be a standard size.
-    - `H` (int, required): height; must be a standard size.
-  - Query params
-    - `crid` (string, optional): creative ID, forwarded to click URL.
-    - `bid` (number, optional): displayed as a price badge on the underlying SVG.
-    - `pixel` (bool, optional, default `true`): if `false`/`0`/`no`/`off`, disables the 1×1 tracking pixel; otherwise includes it.
-  - Notes: non‑standard sizes return 404.
+## Running the Edge Bundles
 
-- GET `/static/img/{W}x{H}.svg` — Dynamic SVG labeled “mocktioneer {W}×{H}``.
-  - Path params
-    - `W` (int, required): width; must be a standard size.
-    - `H` (int, required): height; must be a standard size.
-  - Query params
-    - `bid` (number, optional): displays a `-$` price badge.
-  - Notes: non‑standard sizes return 404.
+### Axum (native)
+- `anyedge-cli serve --adapter axum` launches the native HTTP server (listens on `127.0.0.1:8787` by default; tweak the manifest command if you need a different address).
+- Alternatively, run `cargo run -p mocktioneer-adapter-axum` for direct access without the CLI wrapper.
+- Logging is plain stdout/stderr unless you override `[adapters.axum.logging]` in the manifest.
 
-- GET `/click` — Simple landing page that echoes values.
-  - Query params
-    - `crid` (string, optional): creative ID to echo.
-    - `w` (int, optional): width to echo.
-    - `h` (int, optional): height to echo.
+### Fastly Compute@Edge
+- `anyedge-cli serve --adapter fastly` to iterate locally; this shells out to `fastly compute serve -C crates/mocktioneer-adapter-fastly` after embedding `anyedge.toml`.
+- Logging is controlled by `anyedge.toml` (embedded during build). See [Configuration & Logging](#configuration--logging).
 
-- GET `/pixel` — 1×1 transparent GIF for tracking.
-  - Behavior: sets a `mtkid` cookie if absent.
-  - Cookie
-    - `name`: `mtkid`
-    - `value`: UUIDv7 string
-    - `attributes`: `Path=/; Max-Age=31536000; SameSite=None; Secure; HttpOnly`
+### Cloudflare Workers
+- `anyedge-cli serve --adapter cloudflare` wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`.
+- The adapter reuses the same AnyEdge app and translates Worker requests/responses in-process.
 
-## Standard Sizes
+## Configuration & Logging
 
-- Supported: 300x250, 320x50, 728x90, 160x600, 300x50, 300x600, 970x250, 468x60, 336x280, 320x100.
-- Static assets: non‑standard sizes return 404. Auction responses: non‑standard sizes default to 300x250.
+`anyedge.toml` is compiled into every adapter binary and drives the AnyEdge CLI:
 
-## OpenRTB Mapping
+```toml
+[app]
+name = "mocktioneer"
+entry = "crates/mocktioneer-core"
+middleware = ["anyedge_core::middleware::RequestLogger", "mocktioneer_core::routes::Cors"]
 
-- See `src/openrtb.rs`.
-- `imp[].banner` with `w/h` or `format[]` is supported.
-- Optional echo price: `imp[i].ext.mocktioneer.bid` (number). If set, used as `seatbid.bid[].price` and echoed in `seatbid.bid[].ext.mocktioneer.bid`. The iframe creative also shows the price badge.
+[[triggers.http]]
+id = "openrtb_auction"
+path = "/openrtb2/auction"
+methods = ["POST"]
+handler = "mocktioneer_core::routes::handle_openrtb_auction"
+adapters = ["axum", "cloudflare", "fastly"]
 
-### Minimal BidRequest example
+[adapters.axum.adapter]
+crate = "crates/mocktioneer-adapter-axum"
+manifest = "crates/mocktioneer-adapter-axum/axum.toml"
+
+[adapters.axum.commands]
+serve = "cargo run -p mocktioneer-adapter-axum"
+deploy = "# configure deployment for Axum"
+
+[adapters.axum.logging]
+level = "info"
+echo_stdout = true
+
+[adapters.cloudflare.commands]
+serve = "wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
+
+[adapters.cloudflare.logging]
+level = "info"
+echo_stdout = true
+
+[adapters.fastly.commands]
+serve = "fastly compute serve -C crates/mocktioneer-adapter-fastly"
+
+[adapters.fastly.logging]
+endpoint = "mocktioneerlog"
+level = "info"
+echo_stdout = false
+```
+
+- Routes and adapters are declared in the manifest; adding a new handler means updating the `[[triggers.http]]` block once and every adapter inherits it.
+- Adapter command strings under `[adapters.<name>.commands]` are what `anyedge-cli` executes for `build`, `serve`, and `deploy`, so tweaks to local/dev flows happen in one place.
+- Logging defaults live under `[adapters.<name>.logging]` and are turned into adapter-specific logger configs at runtime.
+- Changing the file requires rebuilding because it is embedded with `include_str!`.
+
+## HTTP API Overview
+
+| Method | Path                               | Purpose |
+| ------ | ---------------------------------- | ------- |
+| GET    | `/`                                | Service info page rendered from template (uses `Host` header for display). |
+| POST   | `/openrtb2/auction`                | Accepts OpenRTB 2.x banner requests and returns deterministic bids. |
+| GET    | `/static/creatives/{W}x{H}.html`   | HTML wrapper around the SVG creative and optional tracking pixel. |
+| GET    | `/static/img/{W}x{H}.svg`          | Dynamic SVG showing size + optional bid badge. |
+| GET    | `/click`                           | Landing page that echoes creative metadata. |
+| GET    | `/pixel?pid={id}`                  | 1×1 transparent GIF that sets a long-lived `mtkid` cookie (requires `pid` query). |
+
+### Auction (`/openrtb2/auction`)
+- Supports `imp[].banner.w/h` or `imp[].banner.format[0]` size hints.
+- Optional price override via `imp[i].ext.mocktioneer.bid` (float). When set, it drives the returned CPM and is echoed in the creative.
+- Builds iframe HTML pointing to `/static/creatives/{size}.html?crid=...&bid=...` using the incoming `Host` header (defaults to `mocktioneer.edgecompute.app`).
+
+### Creatives & Assets
+- `pixel` query parameter on `/static/creatives/...` toggles the tracking pixel (`true` by default). Accepts `false|0|no|off` to disable. When enabled, the rendered HTML auto-generates a random `pid` query string for `/pixel`.
+- `/static/img/...` accepts a `bid` query parameter (rendered as a badge like `-$2.50`).
+- `/pixel` (with a required `pid` query parameter) issues `Set-Cookie: mtkid=<UUIDv7>; Path=/; Max-Age=31536000; SameSite=None; Secure; HttpOnly` when no cookie is present and marks the response as non-cacheable.
+  Provide any non-empty ID when calling the endpoint directly; creatives rendered by Mocktioneer generate a random value automatically.
+
+### Standard Sizes
+
+Supported creative sizes:
+
+`300x250`, `320x50`, `728x90`, `160x600`, `300x50`, `300x600`, `970x250`, `468x60`, `336x280`, `320x100`
+
+- Static asset routes return `404` for non-standard sizes.
+- Auction responses coerce unknown sizes to `300x250` to keep creatives valid.
+
+### OpenRTB Mapping
+
+- Definition lives in [`crates/mocktioneer-core/src/openrtb.rs`](crates/mocktioneer-core/src/openrtb.rs).
+- `Bid.mtype` is set to `1` (Banner). `adomain` is populated with `example.com` for compatibility.
+- Creatives are rendered via [`render::iframe_html`](crates/mocktioneer-core/src/render.rs).
+- Example request:
 
 ```json
 {
@@ -87,73 +152,58 @@
 }
 ```
 
-## Local Development
+## Testing & Tooling
 
-- Prereqs: Fastly CLI logged in (`fastly profile create` or `fastly login`), Rust stable, target `wasm32-wasip1`.
-- From `mocktioneer/`:
-  - Run dev server (Fastly): `cd crates/mocktioneer-fastly && fastly compute serve` (serves http://127.0.0.1:7676)
-  - Run dev server (Cloudflare): `cd crates/mocktioneer-cloudflare && wrangler dev` (requires `cargo install worker-build`)
-  - Quick test: `./examples/curl_local_test.sh`
-  - Unit tests: `cargo test`
+- Unit tests: `cargo test` (covers routes, OpenRTB mapping, SVG rendering, cookie behaviour).
+- Smoke test: `./examples/openrtb_request.sh` posts a sample OpenRTB request against a local Fastly dev server (override the host with `MOCKTIONEER_BASE_URL`).
+- When adjusting routes or templates, update `crates/mocktioneer-core/tests/endpoints.rs` to keep coverage meaningful.
 
-## Logging
+## Deployment
 
-- Config: `mocktioneer/mocktioneer.toml` is embedded at build time for the Fastly target.
+### Axum
+- Native server is mainly for local integration testing; package and deploy it like any other Rust binary if you want to run it outside CI.
+- The manifest ships with a placeholder `deploy` command—replace it with whatever fits your environment (e.g., Docker build, systemd service, or container platform CLI).
 
-```toml
-[logging]
-endpoint = "mocktioneerlog"   # Fastly log endpoint name on your service
-level = "info"                # one of: off|error|warn|info|debug|trace
-provider = "fastly"           # one of: fastly|stdout (optional; default fastly)
+### Fastly
+1. `cd crates/mocktioneer-adapter-fastly`
+2. `fastly compute publish` (CLI walks you through service creation, domain binding, deploy).
+3. Configure a log endpoint that matches `anyedge.toml` (e.g., `mocktioneerlog`).
+4. Optional: `fastly domain create --service-id <SERVICE_ID> --name <your.domain>` to add custom domains.
+
+### Cloudflare Workers
+- `wrangler publish` from `crates/mocktioneer-adapter-cloudflare` builds and deploys the WASM bundle.
+- Ensure the account/project configuration in `wrangler.toml` is correct before publishing.
+
+## Integrations
+
+### Prebid.js
+- Adapter source: `Prebid.js/modules/mocktioneerBidAdapter.js`.
+- Default endpoint: `https://mocktioneer.edgecompute.app/openrtb2/auction`.
+- Per-ad unit override example:
+
+```js
+params: {
+  endpoint: 'https://<your-domain>/openrtb2/auction',
+  bid: 2.5
+}
 ```
 
-### Logging parameters
-
-- `logging.provider`: log sink. `fastly` streams to a Fastly logging endpoint; `stdout` prints to console (useful locally).
-- `logging.endpoint`: Fastly log endpoint name on your service (required when `provider=fastly`).
-- `logging.level`: minimum level to emit (`off|error|warn|info|debug|trace`).
-
-- Behavior:
-  - Fastly (`wasm32-wasip1`): uses Fastly log streaming. During `fastly compute serve`, logs are also echoed to the local console.
-  - Changing `mocktioneer.toml` requires rebuild (compiled in via `include_str!`).
-
-## Deploy to Fastly
-
-- First publish (run inside the Fastly crate):
-  - `cd crates/mocktioneer-fastly`
-  - `fastly compute publish` (CLI guides through creating a service, attaching a domain, deploying)
-- Optional: add a custom domain: `fastly domain create --service-id <SERVICE_ID> --name <your.domain.example>`
-- Ensure your service has a log endpoint named in `mocktioneer.toml` (e.g., `mocktioneerlog`).
-
-## Using with Prebid.js
-
-- Adapter: see `Prebid.js/modules/mocktioneerBidAdapter.js`. Default endpoint: `https://mocktioneer.edgecompute.app/openrtb2/auction`.
-- Per‑adunit override:
-  - `params: { endpoint: 'https://<your-domain>/openrtb2/auction', bid: 2.5 }`
-  - `params.bid` (number) is passed through as `imp.ext.mocktioneer.bid` and echoed as `bid.meta.mocktioneer.bid`.
-
-### Adapter params
-
-- `endpoint` (string, required): URL of `/openrtb2/auction` on your deployment.
-- `bid` (number, optional): fixed CPM to return for that ad unit.
-
-## Using with Prebid Server (PBS)
-
-- Enable bidder and set endpoint (host config), or override per‑imp:
-  - Host config: `adapters.mocktioneer.enabled: true`, `adapters.mocktioneer.endpoint: https://<your-domain>/openrtb2/auction`
-  - Per‑imp override: `imp[i].ext.bidder.endpoint`
-  - Optional echo price: `imp[i].ext.prebid.bidder.mocktioneer.bid: 2.5`
-
-### PBS parameters
-
-- `adapters.mocktioneer.enabled` (bool): enable the bidder in host config.
-- `adapters.mocktioneer.endpoint` (string): default endpoint for all requests.
-- `imp[i].ext.bidder.endpoint` (string): per‑imp endpoint override.
-- `imp[i].ext.prebid.bidder.mocktioneer.bid` (number): fixed CPM to return for the impression.
+### Prebid Server (PBS)
+- Enable and set the bidder endpoint in host config:
+  - `adapters.mocktioneer.enabled: true`
+  - `adapters.mocktioneer.endpoint: https://<your-domain>/openrtb2/auction`
+- Per-impression overrides:
+  - `imp[i].ext.bidder.endpoint` to point at a custom deployment.
+  - `imp[i].ext.prebid.bidder.mocktioneer.bid` to force a CPM.
 
 ## Examples
 
-- Local cURL:
+- Helper scripts in `examples/` (override the host with `MOCKTIONEER_BASE_URL`):
+  - `./examples/openrtb_request.sh [payload.json] [/openrtb2/auction]` - posts the bundled payload (or supplied file) and pretty-prints the response.
+  - `./examples/iframe_request.sh [size] [crid] [bid] [pixel]` - fetches the rendered creative iframe HTML.
+  - `./examples/pixel_request.sh [base64|raw|hexdump]` - requests `/pixel` (supplying a random `pid`, or override with `MOCKTIONEER_PIXEL_ID`) and streams the encoded response body.
+
+- Local cURL smoke test:
 
 ```bash
 curl -sS -X POST \
@@ -162,14 +212,19 @@ curl -sS -X POST \
   http://127.0.0.1:7676/openrtb2/auction | jq .
 ```
 
-- Embed creative:
+- Embedding a creative in HTML:
 
 ```html
-<iframe src="//mocktioneer.edgecompute.app/static/creatives/300x250.html?crid=demo" width="300" height="250" frameborder="0" scrolling="no"></iframe>
+<iframe
+  src="//mocktioneer.edgecompute.app/static/creatives/300x250.html?crid=demo"
+  width="300"
+  height="250"
+  frameborder="0"
+  scrolling="no"></iframe>
 ```
 
 ## Notes
 
-- CORS: `Access-Control-Allow-Origin: *` and preflight supported via OPTIONS with `Allow` header.
-- Host selection: the service builds creative URLs from the `Host` header; if absent, defaults to `mocktioneer.edgecompute.app`.
-- Scope: banner only; video/native are not implemented.
+- CORS: CORS headers (`Access-Control-Allow-Origin: *`) and OPTIONS preflight responses are handled by middleware + the AnyEdge router.
+- Host detection: Creative URLs fall back to `mocktioneer.edgecompute.app` when the request lacks a `Host` header.
+- Scope: Only banner inventory is implemented today; video/native can be layered on with additional route handlers.

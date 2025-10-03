@@ -1,5 +1,6 @@
 use handlebars::Handlebars;
 use serde_json::Value as JsonValue;
+use uuid::Uuid;
 
 pub fn escape_html(input: &str) -> String {
     input
@@ -17,21 +18,21 @@ pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
     reg.render("t", data).unwrap_or_default()
 }
 
-const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html");
+const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html.hbs");
 pub fn iframe_html(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>) -> String {
     let bid_str = bid.map(|b| format!("{:.2}", b)).unwrap_or_default();
     let data = serde_json::json!({
+        "BID": bid_str,
+        "CRID": crid,
+        "H": h,
         "HOST": base_host,
         "W": w,
-        "H": h,
-        "CRID": crid,
-        "BID": bid_str,
     });
     render_template_str(IFRAME_HTML_TMPL, &data)
 }
 
 pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
-    const SVG_TMPL: &str = include_str!("../static/templates/image.svg");
+    const SVG_TMPL: &str = include_str!("../static/templates/image.svg.hbs");
     let pad = ((w.min(h) as f64) * 0.08).round() as i64;
     let mut text_len = w - 2 * pad;
     if text_len < 1 {
@@ -55,30 +56,40 @@ pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
     let cap_y = title_y + ((font as f64 * 0.7).round() as i64);
     let bid_label = bid.map(|b| format!(" — ${:.2}", b)).unwrap_or_default();
     let data = serde_json::json!({
-        "W": w,
-        "H": h,
-        "FONT": font,
-        "TEXTLEN": text_len,
-        "PADDING": pad,
-        "CAPFONT": cap_font,
-        "STROKE": stroke,
-        "XBR": xbr,
-        "YBR": ybr,
-        "XTL": xtl,
-        "YTL": ytl,
-        "CAPY": cap_y,
         "BIDLBL": bid_label,
+        "CAPFONT": cap_font,
+        "CAPY": cap_y,
+        "FONT": font,
+        "H": h,
+        "PADDING": pad,
+        "STROKE": stroke,
+        "TEXTLEN": text_len,
+        "W": w,
+        "XBR": xbr,
+        "XTL": xtl,
+        "YBR": ybr,
+        "YTL": ytl,
     });
     render_template_str(SVG_TMPL, &data)
 }
 
-const CREATIVE_HTML_TMPL: &str = include_str!("../static/templates/creative.html");
-pub fn creative_html(w: i64, h: i64, pixel: bool, host: &str) -> String {
-    let data = serde_json::json!({"W": w, "H": h, "PIXEL": pixel, "HOST": host});
+const CREATIVE_HTML_TMPL: &str = include_str!("../static/templates/creative.html.hbs");
+pub fn creative_html(w: i64, h: i64, pixel_html: bool, pixel_js: bool, host: &str) -> String {
+    let html_pid = Uuid::now_v7().as_simple().to_string();
+    let js_pid = Uuid::now_v7().as_simple().to_string();
+    let data = serde_json::json!({
+        "H": h,
+        "HOST": host,
+        "PID_HTML": html_pid,
+        "PID_JS": js_pid,
+        "PIXEL_HTML": pixel_html,
+        "PIXEL_JS": pixel_js,
+        "W": w,
+    });
     render_template_str(CREATIVE_HTML_TMPL, &data)
 }
 
-const INFO_TMPL: &str = include_str!("../static/templates/info.html");
+const INFO_TMPL: &str = include_str!("../static/templates/info.html.hbs");
 pub fn info_html(host: &str) -> String {
     use std::env;
     let service_id = env::var("FASTLY_SERVICE_ID").unwrap_or_else(|_| "".to_string());
@@ -88,12 +99,12 @@ pub fn info_html(host: &str) -> String {
         .unwrap_or_else(|_| "".to_string());
     let pkg_version = env!("CARGO_PKG_VERSION");
     let data = serde_json::json!({
-        "TITLE": "Mocktioneer Up",
+        "DATACENTER": datacenter,
         "HOST": host,
+        "PKG_VERSION": pkg_version,
         "SERVICE_ID": service_id,
         "SERVICE_VERSION": service_version,
-        "DATACENTER": datacenter,
-        "PKG_VERSION": pkg_version,
+        "TITLE": "Mocktioneer Up",
     });
     render_template_str(INFO_TMPL, &data)
 }

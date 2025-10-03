@@ -1,0 +1,145 @@
+[app]
+name = "mocktioneer"
+entry = "crates/mocktioneer-core"
+middleware = [
+  "anyedge_core::middleware::RequestLogger",
+  "mocktioneer_core::routes::Cors"
+]
+
+[[triggers.http]]
+id = "root"
+path = "/"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_root"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "root_options"
+path = "/"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "openrtb_auction"
+path = "/openrtb2/auction"
+methods = ["POST"]
+handler = "mocktioneer_core::routes::handle_openrtb_auction"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "openrtb_options"
+path = "/openrtb2/auction"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "static_img"
+path = "/static/img/{size}"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_static_img"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "static_img_options"
+path = "/static/img/{size}"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "static_creatives"
+path = "/static/creatives/{size}"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_static_creatives"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "static_creatives_options"
+path = "/static/creatives/{size}"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "click"
+path = "/click"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_click"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "click_options"
+path = "/click"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "pixel"
+path = "/pixel"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_pixel"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "pixel_options"
+path = "/pixel"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[adapters.axum.adapter]
+crate = "crates/mocktioneer-adapter-axum"
+manifest = "crates/mocktioneer-adapter-axum/axum.toml"
+
+[adapters.axum.build]
+target = "native"
+profile = "dev"
+
+[adapters.axum.commands]
+build = "cargo build -p mocktioneer-adapter-axum"
+serve = "cargo run -p mocktioneer-adapter-axum"
+deploy = "# configure deployment for Axum"
+
+[adapters.axum.logging]
+level = "info"
+echo_stdout = true
+
+[adapters.cloudflare.adapter]
+crate = "crates/mocktioneer-adapter-cloudflare"
+manifest = "crates/mocktioneer-adapter-cloudflare/wrangler.toml"
+
+[adapters.cloudflare.build]
+target = "wasm32-unknown-unknown"
+profile = "release"
+features = ["cloudflare"]
+
+[adapters.cloudflare.commands]
+build = "cargo build --release --target wasm32-unknown-unknown -p mocktioneer-adapter-cloudflare"
+serve = "wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
+deploy = "wrangler publish --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
+
+[adapters.cloudflare.logging]
+level = "info"
+echo_stdout = true
+
+[adapters.fastly.adapter]
+crate = "crates/mocktioneer-adapter-fastly"
+manifest = "crates/mocktioneer-adapter-fastly/fastly.toml"
+
+[adapters.fastly.build]
+target = "wasm32-wasip1"
+profile = "release"
+features = ["fastly"]
+
+[adapters.fastly.commands]
+build = "cargo build --release --target wasm32-wasip1 -p mocktioneer-adapter-fastly"
+serve = "fastly compute serve -C crates/mocktioneer-adapter-fastly"
+deploy = "fastly compute deploy -C crates/mocktioneer-adapter-fastly"
+
+[adapters.fastly.logging]
+endpoint = "mocktioneerlog"
+level = "info"
+echo_stdout = false

@@ -44,9 +44,10 @@
         alt="mocktioneer {{W}}x{{H}}"
       />
     </a>
-    {{#if PIXEL}}
+    {{#if PIXEL_HTML}}
     <img
-      src="//{{HOST}}/pixel"
+      src="//{{HOST}}/pixel?pid={{PID_HTML}}"
+      data-static-pid="{{PID_HTML}}"
       width="1"
       height="1"
       alt=""
@@ -60,13 +61,23 @@
         var p = new URLSearchParams(location.search),
           c = p.get("crid") || "",
           b = p.get("bid") || "";
-        // Pass size context too so landing can echo
+        // Wire click-through with creative metadata so the landing can echo it
         document.getElementById("clk").href =
           "//{{HOST}}/click?crid=" + encodeURIComponent(c) + "&w={{W}}&h={{H}}";
-        if (b) {
-          var img = document.getElementById("creative-img");
-          img.src = img.src + "?bid=" + encodeURIComponent(b);
-        }
+
+        {{#if PIXEL_JS}}
+        // Fire an additional JS pixel with a distinct PID for analytics parity
+        var jsPid = "{{PID_JS}}";
+        var trackingImg = new Image();
+        trackingImg.src = "//{{HOST}}/pixel?pid=" + encodeURIComponent(jsPid);
+        trackingImg.width = trackingImg.height = 1;
+        trackingImg.alt = "";
+        trackingImg.setAttribute("aria-hidden", "true");
+        trackingImg.referrerPolicy = "no-referrer";
+        trackingImg.style.cssText =
+          "position:absolute;left:-9999px;top:-9999px;border:0;width:1px;height:1px";
+        document.body.appendChild(trackingImg);
+        {{/if}}
       })();
     </script>
   </body>

@@ -1,8 +1,9 @@
 [workspace]
 members = [
   "crates/mocktioneer-core",
-  "crates/mocktioneer-fastly",
-  "crates/mocktioneer-cloudflare",
+  "crates/mocktioneer-adapter-fastly",
+  "crates/mocktioneer-adapter-cloudflare",
+  "crates/mocktioneer-adapter-axum",
 ]
 resolver = "2"
 
@@ -10,3 +11,28 @@ resolver = "2"
 debug = 1
 codegen-units = 1
 lto = "fat"
+
+[workspace.dependencies]
+anyedge-adapter-cloudflare = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-cloudflare", default-features = false }
+anyedge-adapter-fastly = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-fastly", default-features = false }
+anyedge-adapter-axum = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-axum", default-features = false }
+anyedge-cli = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-cli" }
+anyedge-core = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-core" }
+async-trait = "0.1"
+fastly = "0.11"
+futures = { version = "0.3", features = ["std", "executor"] }
+handlebars = "6"
+log = { version = "0.4", features = ["serde"] }
+mocktioneer-core = { path = "crates/mocktioneer-core" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+simple_logger = "5"
+serde_repr = "0.1"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+toml = "0.9"
+axum = "0.8"
+uuid = { version = "1", features = ["v7"] }
+validator = { version = "0.20", features = ["derive"] }
+worker = { version = "0.6", features = ["http"] }
+tracing = "0.1"

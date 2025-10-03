@@ -253,7 +253,7 @@ mod tests {
         assert!(
             bid_id
                 .chars()
-                .all(|c| c.is_ascii_digit() || (c >= 'a' && c <= 'f')),
+                .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c)),
             "bid id not lower-hex32: {}",
             bid_id
         );

@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_repr::{Deserialize_repr, Serialize_repr};
+use validator::{Validate, ValidationError, ValidationErrors};
 
 // OpenRTB 2.x MarkupType for Bid.mtype (aka media/markup type)
 #[repr(i32)]
@@ -11,9 +12,12 @@ pub enum MediaType {
     Native = 4,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Validate)]
 pub struct OpenRTBRequest {
+    #[validate(length(min = 1))]
     pub id: String,
+    #[validate(length(min = 1))]
+    #[validate(nested)]
     pub imp: Vec<Imp>,
     // Common optional request fields
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -116,9 +120,11 @@ pub struct Banner {
     pub api: Option<Vec<i64>>,
 }
 
-#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Validate)]
 pub struct Format {
+    #[validate(range(min = 1))]
     pub w: i64,
+    #[validate(range(min = 1))]
     pub h: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wratio: Option<i64>,
@@ -128,6 +134,36 @@ pub struct Format {
     pub wmin: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hmin: Option<i64>,
+}
+
+impl Validate for Imp {
+    fn validate(&self) -> Result<(), ValidationErrors> {
+        let mut errors = ValidationErrors::new();
+
+        if self.id.trim().is_empty() {
+            let mut error = ValidationError::new("required");
+            error.message = Some("imp.id must be non-empty".into());
+            errors.add("id", error);
+        }
+
+        let has_media = self.banner.is_some()
+            || self.video.is_some()
+            || self.audio.is_some()
+            || self.native.is_some();
+        if !has_media {
+            let mut error = ValidationError::new("missing_media");
+            error.message = Some(
+                "imp requires at least one creative object (banner/video/audio/native)".into(),
+            );
+            errors.add("media", error);
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]

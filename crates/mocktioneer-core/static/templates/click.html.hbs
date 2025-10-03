@@ -27,11 +27,19 @@
   <body>
     <div class="wrap">
       <h1>mocktioneer</h1>
-      <p>Click received.</p>
+      <h2>Click received.</h2>
       <ul>
         <li>crid: <code>{{CRID}}</code></li>
         <li>size: <code>{{W}}x{{H}}</code></li>
       </ul>
+      {{#if EXTRA}}
+      <h2>Additional Parameters</h2>
+      <ul>
+        {{#each EXTRA}}
+        <li>{{KEY}}: <code>{{VALUE}}</code></li>
+        {{/each}}
+      </ul>
+      {{/if}}
       <p><a href="/">Back to root</a></p>
     </div>
   </body>

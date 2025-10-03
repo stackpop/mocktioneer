@@ -1,0 +1,20 @@
+[package]
+name = "mocktioneer-adapter-axum"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[[bin]]
+name = "mocktioneer-adapter-axum"
+path = "src/main.rs"
+
+[dependencies]
+anyedge-adapter-axum = { workspace = true, features = ["axum"] }
+anyedge-core = { workspace = true }
+anyhow = { workspace = true }
+axum = { workspace = true }
+log = { workspace = true }
+mocktioneer-core = { workspace = true }
+simple_logger = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tracing = { workspace = true }
