@@ -4,7 +4,7 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
 
 ## Highlights
 
-- Built on the adapter-agnostic [AnyEdge](https://github.com/stackpop/prebid/blob/main/anyedge/README.md) core so the same app runs on Fastly Compute@Edge and Cloudflare Workers.
+- Built on the adapter-agnostic [AnyEdge](https://github.com/stackpop/prebid/blob/main/anyedge/README.md) core so the same app runs on Fastly Compute@Edge, Cloudflare Workers, and a native Axum server.
 - Manifest-driven: a single `anyedge.toml` defines routes, adapters, logging, and the commands the AnyEdge CLI executes for build/serve/deploy.
 - Deterministic banner bids and simple creative templates for predictable QA flows.
 - Zero backend requirements: all routes render locally from embedded assets and the AnyEdge manifest.
@@ -15,6 +15,7 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
 - `crates/mocktioneer-core`: shared logic (OpenRTB types, request handlers, rendering, config, `MocktioneerApp` Hooks entrypoint).
 - `crates/mocktioneer-adapter-fastly`: Fastly Compute@Edge binary powered by the shared AnyEdge manifest.
 - `crates/mocktioneer-adapter-cloudflare`: Cloudflare Workers binary (`wrangler` manifests for dev/deploy).
+- `crates/mocktioneer-adapter-axum`: Native Axum HTTP server for local integration testing.
 - `examples/`: helper scripts like `openrtb_request.sh`, `iframe_request.sh`, and `pixel_request.sh` for smoke testing.
 
 ## Quick Start
@@ -23,15 +24,22 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
    - Rust (stable toolchain).
    - Fastly CLI (`brew install fastly/tap/fastly`) and/or Cloudflare `wrangler` if you plan to run those targets.
    - Add `wasm32-wasip1` (Fastly) or `wasm32-unknown-unknown` (Cloudflare) targets via `rustup target add`.
+   - No extra tooling is required for Axum—the native adapter runs with the default Rust toolchain (`cargo run -p mocktioneer-adapter-axum`).
    - AnyEdge CLI (`cargo install --path anyedge/crates/anyedge-cli --features cli`, or run via `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- --help`).
 2. Clone this repo and enter `mocktioneer/`.
 3. Run unit tests: `cargo test`.
 4. Serve adapters via the manifest-driven CLI (reads `anyedge.toml` automatically):
+   - `anyedge-cli serve --adapter axum` (spawns the native Axum server for local iteration).
    - `anyedge-cli serve --adapter fastly` (wraps `fastly compute serve -C crates/mocktioneer-adapter-fastly`).
    - `anyedge-cli serve --adapter cloudflare` (wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`).
-   - Without installing the binary, use `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- serve --adapter fastly` (and similar for other adapters).
+   - Without installing the binary, use `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- serve --adapter <axum|fastly|cloudflare>`.
 
 ## Running the Edge Bundles
+
+### Axum (native)
+- `anyedge-cli serve --adapter axum` launches the native HTTP server (listens on `127.0.0.1:8787` by default; tweak the manifest command if you need a different address).
+- Alternatively, run `cargo run -p mocktioneer-adapter-axum` for direct access without the CLI wrapper.
+- Logging is plain stdout/stderr unless you override `[adapters.axum.logging]` in the manifest.
 
 ### Fastly Compute@Edge
 - `anyedge-cli serve --adapter fastly` to iterate locally; this shells out to `fastly compute serve -C crates/mocktioneer-adapter-fastly` after embedding `anyedge.toml`.
@@ -43,11 +51,11 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
 
 ## Configuration & Logging
 
-`anyedge.toml` is compiled into both adapter binaries and drives the AnyEdge CLI:
+`anyedge.toml` is compiled into every adapter binary and drives the AnyEdge CLI:
 
 ```toml
 [app]
-name = "Mocktioneer"
+name = "mocktioneer"
 entry = "crates/mocktioneer-core"
 middleware = ["anyedge_core::middleware::RequestLogger", "mocktioneer_core::routes::Cors"]
 
@@ -56,28 +64,39 @@ id = "openrtb_auction"
 path = "/openrtb2/auction"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_openrtb_auction"
-adapters = ["fastly", "cloudflare"]
+adapters = ["axum", "cloudflare", "fastly"]
 
-[adapters.fastly.adapter]
-crate = "crates/mocktioneer-adapter-fastly"
-manifest = "crates/mocktioneer-adapter-fastly/fastly.toml"
+[adapters.axum.adapter]
+crate = "crates/mocktioneer-adapter-axum"
+manifest = "crates/mocktioneer-adapter-axum/axum.toml"
+
+[adapters.axum.commands]
+serve = "cargo run -p mocktioneer-adapter-axum"
+deploy = "# configure deployment for Axum"
+
+[adapters.axum.logging]
+level = "info"
+echo_stdout = true
+
+[adapters.cloudflare.commands]
+serve = "wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
+
+[adapters.cloudflare.logging]
+level = "info"
+echo_stdout = true
 
 [adapters.fastly.commands]
 serve = "fastly compute serve -C crates/mocktioneer-adapter-fastly"
-deploy = "fastly compute deploy -C crates/mocktioneer-adapter-fastly"
 
-[logging.fastly]
+[adapters.fastly.logging]
 endpoint = "mocktioneerlog"
 level = "info"
 echo_stdout = false
-
-[logging.cloudflare]
-level = "info"
 ```
 
-- Routes and adapters are declared in the manifest; adding a new handler means updating the `[[triggers.http]]` block once and both adapters inherit it.
-- Adapter command strings are what `anyedge-cli` executes for `build`, `serve`, and `deploy`, so tweaks to local/dev flows happen in one place.
-- Logging defaults live under `[logging.*]` and are turned into adapter-specific logger configs at runtime.
+- Routes and adapters are declared in the manifest; adding a new handler means updating the `[[triggers.http]]` block once and every adapter inherits it.
+- Adapter command strings under `[adapters.<name>.commands]` are what `anyedge-cli` executes for `build`, `serve`, and `deploy`, so tweaks to local/dev flows happen in one place.
+- Logging defaults live under `[adapters.<name>.logging]` and are turned into adapter-specific logger configs at runtime.
 - Changing the file requires rebuilding because it is embedded with `include_str!`.
 
 ## HTTP API Overview
@@ -138,6 +157,10 @@ Supported creative sizes:
 - When adjusting routes or templates, update `crates/mocktioneer-core/tests/endpoints.rs` to keep coverage meaningful.
 
 ## Deployment
+
+### Axum
+- Native server is mainly for local integration testing; package and deploy it like any other Rust binary if you want to run it outside CI.
+- The manifest ships with a placeholder `deploy` command—replace it with whatever fits your environment (e.g., Docker build, systemd service, or container platform CLI).
 
 ### Fastly
 1. `cd crates/mocktioneer-adapter-fastly`
