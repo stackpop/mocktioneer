@@ -14,10 +14,19 @@ jobs:
   format:
     name: cargo fmt
     runs-on: ubuntu-latest
-    env:
-      CARGO_NET_GIT_FETCH_WITH_CLI: true
     steps:
       - uses: actions/checkout@v4
+
+      - name: Configure SSH for git dependencies
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Trust github.com host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+        shell: bash
 
       - name: Cache cargo dependencies
         uses: actions/cache@v4

@@ -1,6 +1,9 @@
 # Copy or symlink to .cargo/config.toml when developing with a sibling anyedge checkout.
 # This overrides the git-based dependencies with local path equivalents.
 
+[net]
+git-fetch-with-cli = true
+
 [patch."git+ssh://git@github.com/stackpop/anyedge.git"]
 anyedge-adapter-axum = { path = "../anyedge/crates/anyedge-adapter-axum" }
 anyedge-adapter-cloudflare = { path = "../anyedge/crates/anyedge-adapter-cloudflare" }
