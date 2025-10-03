@@ -34,6 +34,8 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
    - `anyedge-cli serve --adapter cloudflare` (wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`).
    - Without installing the binary, use `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- serve --adapter <axum|fastly|cloudflare>`.
 
+> AnyEdge crates are now pulled directly from GitHub, so CI/CD no longer needs a sibling checkout. If you're iterating on AnyEdge locally, copy `.cargo/config.local-example` to `.cargo/config.toml` to override those git deps back to `../anyedge`.
+
 ## Running the Edge Bundles
 
 ### Axum (native)

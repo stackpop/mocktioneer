@@ -8,6 +8,7 @@
 
 # env
 .env
+.cargo/config.toml
 
 # OS
 .DS_Store

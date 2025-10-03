@@ -13,11 +13,11 @@ codegen-units = 1
 lto = "fat"
 
 [workspace.dependencies]
-anyedge-adapter-cloudflare = { path = "../anyedge/crates/anyedge-adapter-cloudflare", default-features = false }
-anyedge-adapter-fastly = { path = "../anyedge/crates/anyedge-adapter-fastly", default-features = false }
-anyedge-adapter-axum = { path = "../anyedge/crates/anyedge-adapter-axum", default-features = false }
-anyedge-cli = { path = "../anyedge/crates/anyedge-cli" }
-anyedge-core = { path = "../anyedge/crates/anyedge-core" }
+anyedge-adapter-cloudflare = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-cloudflare", default-features = false }
+anyedge-adapter-fastly = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-fastly", default-features = false }
+anyedge-adapter-axum = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-axum", default-features = false }
+anyedge-cli = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-cli" }
+anyedge-core = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-core" }
 async-trait = "0.1"
 fastly = "0.11"
 futures = { version = "0.3", features = ["std", "executor"] }

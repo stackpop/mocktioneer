@@ -53,6 +53,7 @@ dependencies = [
 [[package]]
 name = "anyedge-adapter-axum"
 version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/anyedge.git#6292cd82a476c7a4bca6d97980f525af027935c5"
 dependencies = [
  "anyedge-core",
  "anyhow",
@@ -72,6 +73,7 @@ dependencies = [
 [[package]]
 name = "anyedge-adapter-cloudflare"
 version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/anyedge.git#6292cd82a476c7a4bca6d97980f525af027935c5"
 dependencies = [
  "anyedge-core",
  "async-trait",
@@ -88,6 +90,7 @@ dependencies = [
 [[package]]
 name = "anyedge-adapter-fastly"
 version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/anyedge.git#6292cd82a476c7a4bca6d97980f525af027935c5"
 dependencies = [
  "anyedge-core",
  "async-stream",
@@ -107,6 +110,7 @@ dependencies = [
 [[package]]
 name = "anyedge-core"
 version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/anyedge.git#6292cd82a476c7a4bca6d97980f525af027935c5"
 dependencies = [
  "anyedge-macros",
  "anyhow",
@@ -133,6 +137,7 @@ dependencies = [
 [[package]]
 name = "anyedge-macros"
 version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/anyedge.git#6292cd82a476c7a4bca6d97980f525af027935c5"
 dependencies = [
  "log",
  "proc-macro2",
