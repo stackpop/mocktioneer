@@ -10,18 +10,24 @@
         "h": 250
       },
       "ext": {
-        "bidder": {
+        "mocktioneer": {
           "endpoint": "http://127.0.0.1:7676/openrtb2/auction"
         }
       }
     }
   ],
   "site": {
+    "domain": "127.0.0.1:7676",
     "page": "https://example.com"
   },
   "device": {
     "ua": "Mozilla/5.0",
     "ip": "127.0.0.1"
+  },
+  "ext": {
+    "trusted_server": {
+      "signature": "example-signature-base64url-encoded",
+      "kid": "test-key-001"
+    }
   }
 }
-
