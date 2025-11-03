@@ -4,7 +4,7 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
 
 ## Highlights
 
-- Built on the adapter-agnostic [AnyEdge](https://github.com/stackpop/prebid/blob/main/anyedge/README.md) core so the same app runs on Fastly Compute@Edge, Cloudflare Workers, and a native Axum server.
+- Built on the adapter-agnostic [AnyEdge](https://github.com/stackpop/anyedge) core so the same app runs on Fastly Compute@Edge, Cloudflare Workers, and a native Axum server.
 - Manifest-driven: a single `anyedge.toml` defines routes, adapters, logging, and the commands the AnyEdge CLI executes for build/serve/deploy.
 - Deterministic banner bids and simple creative templates for predictable QA flows.
 - Zero backend requirements: all routes render locally from embedded assets and the AnyEdge manifest.
