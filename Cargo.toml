@@ -19,7 +19,7 @@ anyedge-adapter-axum = { git = "ssh://git@github.com/stackpop/anyedge.git", pack
 anyedge-cli = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-cli" }
 anyedge-core = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-core" }
 async-trait = "0.1"
-fastly = "0.11"
+fastly = "0.11.9"
 futures = { version = "0.3", features = ["std", "executor"] }
 handlebars = "6"
 log = { version = "0.4", features = ["serde"] }
