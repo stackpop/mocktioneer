@@ -1,7 +1,6 @@
 use anyedge_core::body::Body;
 use anyedge_core::context::RequestContext;
-use anyedge_core::http::{request_builder, Method, StatusCode, Uri};
-use anyedge_core::params::PathParams;
+use anyedge_core::http::{Method, StatusCode, Uri};
 use anyedge_core::proxy::ProxyRequest;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
@@ -46,16 +45,7 @@ pub enum VerificationError {
     NoJwksDomain,
 }
 
-fn create_request_ctx() -> RequestContext {
-    let request = request_builder()
-        .method(Method::GET)
-        .uri("/")
-        .body(Body::empty())
-        .expect("minimal request should be valid");
-    RequestContext::new(request, PathParams::new(HashMap::new()))
-}
-
-async fn fetch_jwks(domain: &str) -> Result<JwksResponse, VerificationError> {
+async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
     let jwks_url = format!("http://{}/.well-known/ts.jwks.json", domain);
 
     log::debug!("Fetching JWKS from {}", jwks_url);
@@ -66,7 +56,6 @@ async fn fetch_jwks(domain: &str) -> Result<JwksResponse, VerificationError> {
 
     log::info!("URI: {}", uri);
     let proxy_request = ProxyRequest::new(Method::GET, uri);
-    let ctx = create_request_ctx();
     let proxy_handle = ctx
         .proxy_handle()
         .ok_or_else(|| VerificationError::HttpError("Proxy not available".to_string()))?;
@@ -103,7 +92,10 @@ async fn fetch_jwks(domain: &str) -> Result<JwksResponse, VerificationError> {
         .map_err(|e| VerificationError::HttpError(format!("JWKS parse failed: {}", e)))
 }
 
-async fn get_cached_jwks(domain: &str) -> Result<JwksResponse, VerificationError> {
+async fn get_cached_jwks(
+    ctx: &RequestContext,
+    domain: &str,
+) -> Result<JwksResponse, VerificationError> {
     let cache_key = domain.to_string();
 
     {
@@ -132,7 +124,7 @@ async fn get_cached_jwks(domain: &str) -> Result<JwksResponse, VerificationError
     }
 
     log::debug!("Fetching fresh JWKS for {}", cache_key);
-    let jwks = fetch_jwks(domain).await?;
+    let jwks = fetch_jwks(ctx, domain).await?;
 
     let mut cache = JWKS_CACHE
         .lock()
@@ -203,6 +195,7 @@ fn verify_ed25519_signature(
 }
 
 pub async fn verify_request_id_signature(
+    ctx: &RequestContext,
     request_id: &str,
     ext: Option<&serde_json::Value>,
     domain: &str,
@@ -229,7 +222,7 @@ pub async fn verify_request_id_signature(
         domain
     );
 
-    let jwks = get_cached_jwks(domain).await?;
+    let jwks = get_cached_jwks(ctx, domain).await?;
     let public_key = find_public_key(&jwks, key_id)?;
     verify_ed25519_signature(public_key, signature, request_id)?;
 
@@ -238,20 +231,35 @@ pub async fn verify_request_id_signature(
 
 #[cfg(test)]
 mod tests {
+    use anyedge_core::http::request_builder;
+    use anyedge_core::params::PathParams;
     use futures::executor::block_on;
+    use std::collections::HashMap;
 
     use super::*;
+
+    fn create_test_context() -> RequestContext {
+        let request = request_builder()
+            .method(Method::POST)
+            .uri("/openrtb2/auction")
+            .body(Body::empty())
+            .unwrap();
+        RequestContext::new(request, PathParams::new(HashMap::new()))
+    }
 
     #[test]
     fn verify_missing_signature_field() {
         let request_id = "test-id";
         let ext = serde_json::json!({
-            "trusted_server": {
-                "kid": "test-key"
-            }
+                "trusted_server": {
+                    "kid": "test-key"
+                }
         });
 
+        let ctx = create_test_context();
+
         let result = block_on(verify_request_id_signature(
+            &ctx,
             request_id,
             Some(&ext),
             "example.com",
@@ -270,7 +278,11 @@ mod tests {
                 "signature": "test-sig"
             }
         });
+
+        let ctx = create_test_context();
+
         let result = block_on(verify_request_id_signature(
+            &ctx,
             request_id,
             Some(&ext),
             "example.com",
@@ -287,7 +299,11 @@ mod tests {
         let ext = serde_json::json!({
             "some_other_field": "value"
         });
+
+        let ctx = create_test_context();
+
         let result = block_on(verify_request_id_signature(
+            &ctx,
             request_id,
             Some(&ext),
             "example.com",
@@ -301,7 +317,15 @@ mod tests {
     #[test]
     fn verify_with_none_ext() {
         let request_id = "test-id";
-        let result = block_on(verify_request_id_signature(request_id, None, "example.com"));
+
+        let ctx = create_test_context();
+
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            request_id,
+            None,
+            "example.com",
+        ));
         assert!(matches!(
             result.unwrap_err(),
             VerificationError::InvalidSignature(_)

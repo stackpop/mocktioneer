@@ -234,12 +234,18 @@ pub async fn handle_root(Headers(headers): Headers) -> Response {
 
 #[action]
 pub async fn handle_openrtb_auction(
+    RequestContext(ctx): RequestContext,
     Headers(headers): Headers,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
 ) -> Response {
     if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref()) {
-        match crate::verification::verify_request_id_signature(&req.id, req.ext.as_ref(), domain)
-            .await
+        match crate::verification::verify_request_id_signature(
+            &ctx,
+            &req.id,
+            req.ext.as_ref(),
+            domain,
+        )
+        .await
         {
             Ok(kid) => {
                 log::info!("✅ Request signature verified with key: {}", kid);
