@@ -36,3 +36,8 @@ uuid = { version = "1", features = ["v7"] }
 validator = { version = "0.20", features = ["derive"] }
 worker = { version = "0.6", features = ["http"] }
 tracing = "0.1"
+ed25519-dalek = "2.1"
+base64 = "0.22"
+thiserror = "1.0"
+url = "2"
+futures-util = "0.3.31"

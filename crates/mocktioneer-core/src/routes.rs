@@ -234,15 +234,37 @@ pub async fn handle_root(Headers(headers): Headers) -> Response {
 
 #[action]
 pub async fn handle_openrtb_auction(
+    RequestContext(ctx): RequestContext,
     Headers(headers): Headers,
-    ValidatedJson(payload): ValidatedJson<OpenRTBRequest>,
+    ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
 ) -> Response {
+    if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref()) {
+        match crate::verification::verify_request_id_signature(
+            &ctx,
+            &req.id,
+            req.ext.as_ref(),
+            domain,
+        )
+        .await
+        {
+            Ok(kid) => {
+                log::info!("✅ Request signature verified with key: {}", kid);
+            }
+            Err(e) => {
+                log::error!("❌ Signature verification skipped or failed: {}", e);
+            }
+        }
+    } else {
+        log::info!("⚠️ Signature verification skipped (no domain)");
+    }
+
     let host = headers
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("mocktioneer.edgecompute.app");
-    log::info!("auction id={}, imps={}", payload.id, payload.imp.len());
-    let resp = build_openrtb_response_with_base_typed(&payload, host);
+    log::info!("auction id={}, imps={}", req.id, req.imp.len());
+
+    let resp = build_openrtb_response_with_base_typed(&req, host);
     let body = Body::json(&resp).unwrap_or_else(|_| Body::text("{}"));
     let mut response = build_response(StatusCode::OK, body);
     response.headers_mut().insert(

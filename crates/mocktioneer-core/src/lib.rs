@@ -2,6 +2,7 @@ pub mod auction;
 pub mod openrtb;
 pub mod render;
 pub mod routes;
+pub mod verification;
 
 anyedge_core::app!("../../anyedge.toml", MocktioneerApp);
 
