@@ -42,106 +42,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "anyedge-adapter-axum"
-version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/anyedge.git#ec10ba46ac8a9d336e425cb7634251b5e227182f"
-dependencies = [
- "anyedge-core",
- "anyhow",
- "async-trait",
- "axum",
- "bytes",
- "futures",
- "futures-util",
- "http",
- "log",
- "reqwest",
- "simple_logger",
- "thiserror 2.0.17",
- "tokio",
- "tower",
- "tracing",
-]
-
-[[package]]
-name = "anyedge-adapter-cloudflare"
-version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/anyedge.git#ec10ba46ac8a9d336e425cb7634251b5e227182f"
-dependencies = [
- "anyedge-core",
- "async-trait",
- "brotli",
- "bytes",
- "flate2",
- "futures",
- "futures-util",
- "log",
- "wasm-bindgen-test",
- "worker",
-]
-
-[[package]]
-name = "anyedge-adapter-fastly"
-version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/anyedge.git#ec10ba46ac8a9d336e425cb7634251b5e227182f"
-dependencies = [
- "anyedge-core",
- "async-stream",
- "async-trait",
- "brotli",
- "bytes",
- "chrono",
- "fastly",
- "fern",
- "flate2",
- "futures",
- "futures-util",
- "log",
- "log-fastly",
-]
-
-[[package]]
-name = "anyedge-core"
-version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/anyedge.git#ec10ba46ac8a9d336e425cb7634251b5e227182f"
-dependencies = [
- "anyedge-macros",
- "anyhow",
- "async-compression",
- "async-stream",
- "async-trait",
- "bytes",
- "futures",
- "futures-util",
- "http",
- "http-body",
- "log",
- "matchit 0.9.0",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "thiserror 2.0.17",
- "toml",
- "tower-service",
- "tracing",
- "validator",
-]
-
-[[package]]
-name = "anyedge-macros"
-version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/anyedge.git#ec10ba46ac8a9d336e425cb7634251b5e227182f"
-dependencies = [
- "log",
- "proc-macro2",
- "quote",
- "serde",
- "syn 2.0.109",
- "toml",
- "validator",
-]
-
-[[package]]
 name = "anyhow"
 version = "1.0.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -605,6 +505,106 @@ dependencies = [
  "sha2 0.10.9",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "edgezero-adapter-axum"
+version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/edgezero.git#5bd894b373ff22a23f5afef3c05671f610e1c5cc"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "bytes",
+ "edgezero-core",
+ "futures",
+ "futures-util",
+ "http",
+ "log",
+ "reqwest",
+ "simple_logger",
+ "thiserror 2.0.17",
+ "tokio",
+ "tower",
+ "tracing",
+]
+
+[[package]]
+name = "edgezero-adapter-cloudflare"
+version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/edgezero.git#5bd894b373ff22a23f5afef3c05671f610e1c5cc"
+dependencies = [
+ "async-trait",
+ "brotli",
+ "bytes",
+ "edgezero-core",
+ "flate2",
+ "futures",
+ "futures-util",
+ "log",
+ "wasm-bindgen-test",
+ "worker",
+]
+
+[[package]]
+name = "edgezero-adapter-fastly"
+version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/edgezero.git#5bd894b373ff22a23f5afef3c05671f610e1c5cc"
+dependencies = [
+ "async-stream",
+ "async-trait",
+ "brotli",
+ "bytes",
+ "chrono",
+ "edgezero-core",
+ "fastly",
+ "fern",
+ "flate2",
+ "futures",
+ "futures-util",
+ "log",
+ "log-fastly",
+]
+
+[[package]]
+name = "edgezero-core"
+version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/edgezero.git#5bd894b373ff22a23f5afef3c05671f610e1c5cc"
+dependencies = [
+ "anyhow",
+ "async-compression",
+ "async-stream",
+ "async-trait",
+ "bytes",
+ "edgezero-macros",
+ "futures",
+ "futures-util",
+ "http",
+ "http-body",
+ "log",
+ "matchit 0.9.0",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "thiserror 2.0.17",
+ "toml",
+ "tower-service",
+ "tracing",
+ "validator",
+]
+
+[[package]]
+name = "edgezero-macros"
+version = "0.1.0"
+source = "git+ssh://git@github.com/stackpop/edgezero.git#5bd894b373ff22a23f5afef3c05671f610e1c5cc"
+dependencies = [
+ "log",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "syn 2.0.109",
+ "toml",
+ "validator",
 ]
 
 [[package]]
@@ -1285,10 +1285,10 @@ dependencies = [
 name = "mocktioneer-adapter-axum"
 version = "0.1.0"
 dependencies = [
- "anyedge-adapter-axum",
- "anyedge-core",
  "anyhow",
  "axum",
+ "edgezero-adapter-axum",
+ "edgezero-core",
  "log",
  "mocktioneer-core",
  "simple_logger",
@@ -1300,8 +1300,8 @@ dependencies = [
 name = "mocktioneer-adapter-cloudflare"
 version = "0.1.0"
 dependencies = [
- "anyedge-adapter-cloudflare",
- "anyedge-core",
+ "edgezero-adapter-cloudflare",
+ "edgezero-core",
  "mocktioneer-core",
  "worker",
 ]
@@ -1310,8 +1310,8 @@ dependencies = [
 name = "mocktioneer-adapter-fastly"
 version = "0.1.0"
 dependencies = [
- "anyedge-adapter-fastly",
- "anyedge-core",
+ "edgezero-adapter-fastly",
+ "edgezero-core",
  "fastly",
  "log",
  "mocktioneer-core",
@@ -1321,10 +1321,10 @@ dependencies = [
 name = "mocktioneer-core"
 version = "0.1.0"
 dependencies = [
- "anyedge-core",
  "async-trait",
  "base64",
  "ed25519-dalek",
+ "edgezero-core",
  "futures",
  "futures-util",
  "handlebars",

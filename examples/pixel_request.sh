@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Start local with: (anyedge-cli serve --adapter fastly)
+# Start local with: (edgezero-cli serve --adapter fastly)
 # Then run this script in another terminal. Set MOCKTIONEER_BASE_URL to override
 # the default http://127.0.0.1:7676 endpoint.
 # Pass an optional format argument: base64 (default), raw, or hexdump.

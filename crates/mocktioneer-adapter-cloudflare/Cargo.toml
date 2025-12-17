@@ -10,13 +10,13 @@ path = "src/main.rs"
 
 [features]
 default = ["cloudflare"]
-cloudflare = ["dep:anyedge-adapter-cloudflare"]
+cloudflare = ["dep:edgezero-adapter-cloudflare"]
 
 [dependencies]
-anyedge-adapter-cloudflare = { workspace = true, optional = true }
+edgezero-adapter-cloudflare = { workspace = true, optional = true }
 mocktioneer-core = { workspace = true }
 worker = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-anyedge-adapter-cloudflare = { workspace = true, features = ["cloudflare"] }
-anyedge-core = { workspace = true }
+edgezero-adapter-cloudflare = { workspace = true, features = ["cloudflare"] }
+edgezero-core = { workspace = true }

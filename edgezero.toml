@@ -2,7 +2,7 @@
 name = "mocktioneer"
 entry = "crates/mocktioneer-core"
 middleware = [
-  "anyedge_core::middleware::RequestLogger",
+  "edgezero_core::middleware::RequestLogger",
   "mocktioneer_core::routes::Cors"
 ]
 

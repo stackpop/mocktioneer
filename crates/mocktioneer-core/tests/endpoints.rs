@@ -1,12 +1,12 @@
-use anyedge_core::body::Body;
-use anyedge_core::http::{header, request_builder, HeaderValue, Method, StatusCode};
+use edgezero_core::body::Body;
+use edgezero_core::http::{header, request_builder, HeaderValue, Method, StatusCode};
 use futures::executor::block_on;
 
-fn app() -> anyedge_core::app::App {
+fn app() -> edgezero_core::app::App {
     mocktioneer_core::build_app()
 }
 
-fn make_request(method: Method, uri: &str, body: Body) -> anyedge_core::http::Request {
+fn make_request(method: Method, uri: &str, body: Body) -> edgezero_core::http::Request {
     request_builder()
         .method(method)
         .uri(uri)

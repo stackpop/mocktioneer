@@ -10,14 +10,14 @@ path = "src/main.rs"
 
 [features]
 default = []
-fastly = ["dep:anyedge-adapter-fastly"]
+fastly = ["dep:edgezero-adapter-fastly"]
 
 [dependencies]
-anyedge-adapter-fastly = { workspace = true, optional = true }
+edgezero-adapter-fastly = { workspace = true, optional = true }
 log = { workspace = true }
 mocktioneer-core = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
-anyedge-adapter-fastly = { workspace = true, features = ["fastly"] }
-anyedge-core = { workspace = true }
+edgezero-adapter-fastly = { workspace = true, features = ["fastly"] }
+edgezero-core = { workspace = true }
 fastly = { workspace = true }

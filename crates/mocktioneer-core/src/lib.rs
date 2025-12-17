@@ -4,10 +4,10 @@ pub mod render;
 pub mod routes;
 pub mod verification;
 
-anyedge_core::app!("../../anyedge.toml", MocktioneerApp);
+edgezero_core::app!("../../edgezero.toml", MocktioneerApp);
 
-use anyedge_core::app::Hooks;
+use edgezero_core::app::Hooks;
 
-pub fn build_app() -> anyedge_core::app::App {
+pub fn build_app() -> edgezero_core::app::App {
     MocktioneerApp::build_app()
 }
