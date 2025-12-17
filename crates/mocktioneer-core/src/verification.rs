@@ -45,7 +45,7 @@ pub enum VerificationError {
     NoJwksDomain,
 }
 
-async fn fetch_jwks(ctx: RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
+async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
     let jwks_url = format!("http://{}/.well-known/ts.jwks.json", domain);
 
     log::debug!("Fetching JWKS from {}", jwks_url);
@@ -93,7 +93,7 @@ async fn fetch_jwks(ctx: RequestContext, domain: &str) -> Result<JwksResponse, V
 }
 
 async fn get_cached_jwks(
-    ctx: RequestContext,
+    ctx: &RequestContext,
     domain: &str,
 ) -> Result<JwksResponse, VerificationError> {
     let cache_key = domain.to_string();
@@ -195,7 +195,7 @@ fn verify_ed25519_signature(
 }
 
 pub async fn verify_request_id_signature(
-    ctx: RequestContext,
+    ctx: &RequestContext,
     request_id: &str,
     ext: Option<&serde_json::Value>,
     domain: &str,
@@ -231,20 +231,35 @@ pub async fn verify_request_id_signature(
 
 #[cfg(test)]
 mod tests {
+    use edgezero_core::http::request_builder;
+    use edgezero_core::params::PathParams;
     use futures::executor::block_on;
+    use std::collections::HashMap;
 
     use super::*;
+
+    fn create_test_context() -> RequestContext {
+        let request = request_builder()
+            .method(Method::POST)
+            .uri("/openrtb2/auction")
+            .body(Body::empty())
+            .unwrap();
+        RequestContext::new(request, PathParams::new(HashMap::new()))
+    }
 
     #[test]
     fn verify_missing_signature_field() {
         let request_id = "test-id";
         let ext = serde_json::json!({
-            "trusted_server": {
-                "kid": "test-key"
-            }
+                "trusted_server": {
+                    "kid": "test-key"
+                }
         });
 
+        let ctx = create_test_context();
+
         let result = block_on(verify_request_id_signature(
+            &ctx,
             request_id,
             Some(&ext),
             "example.com",
@@ -263,7 +278,11 @@ mod tests {
                 "signature": "test-sig"
             }
         });
+
+        let ctx = create_test_context();
+
         let result = block_on(verify_request_id_signature(
+            &ctx,
             request_id,
             Some(&ext),
             "example.com",
@@ -280,7 +299,11 @@ mod tests {
         let ext = serde_json::json!({
             "some_other_field": "value"
         });
+
+        let ctx = create_test_context();
+
         let result = block_on(verify_request_id_signature(
+            &ctx,
             request_id,
             Some(&ext),
             "example.com",
@@ -294,7 +317,15 @@ mod tests {
     #[test]
     fn verify_with_none_ext() {
         let request_id = "test-id";
-        let result = block_on(verify_request_id_signature(request_id, None, "example.com"));
+
+        let ctx = create_test_context();
+
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            request_id,
+            None,
+            "example.com",
+        ));
         assert!(matches!(
             result.unwrap_err(),
             VerificationError::InvalidSignature(_)

@@ -240,7 +240,7 @@ pub async fn handle_openrtb_auction(
 ) -> Response {
     if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref()) {
         match crate::verification::verify_request_id_signature(
-            ctx,
+            &ctx,
             &req.id,
             req.ext.as_ref(),
             domain,
