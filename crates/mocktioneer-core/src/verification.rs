@@ -1,9 +1,9 @@
-use anyedge_core::body::Body;
-use anyedge_core::context::RequestContext;
-use anyedge_core::http::{Method, StatusCode, Uri};
-use anyedge_core::proxy::ProxyRequest;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use edgezero_core::body::Body;
+use edgezero_core::context::RequestContext;
+use edgezero_core::http::{Method, StatusCode, Uri};
+use edgezero_core::proxy::ProxyRequest;
 use futures_util::StreamExt;
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -231,8 +231,8 @@ pub async fn verify_request_id_signature(
 
 #[cfg(test)]
 mod tests {
-    use anyedge_core::http::request_builder;
-    use anyedge_core::params::PathParams;
+    use edgezero_core::http::request_builder;
+    use edgezero_core::params::PathParams;
     use futures::executor::block_on;
     use std::collections::HashMap;
 

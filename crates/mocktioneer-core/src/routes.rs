@@ -1,15 +1,15 @@
 use std::collections::HashMap;
 use std::marker::PhantomData;
 
-use anyedge_core::action;
-use anyedge_core::context::RequestContext;
-use anyedge_core::extractor::{FromRequest, Headers, ValidatedJson, ValidatedQuery};
-use anyedge_core::http::{
+use async_trait::async_trait;
+use edgezero_core::action;
+use edgezero_core::context::RequestContext;
+use edgezero_core::extractor::{FromRequest, Headers, ValidatedJson, ValidatedQuery};
+use edgezero_core::http::{
     header, response_builder, HeaderMap, HeaderValue, Method, Response, StatusCode,
 };
-use anyedge_core::middleware::{Middleware, Next};
-use anyedge_core::{body::Body, error::EdgeError};
-use async_trait::async_trait;
+use edgezero_core::middleware::{Middleware, Next};
+use edgezero_core::{body::Body, error::EdgeError};
 use serde::Deserialize;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
@@ -414,12 +414,12 @@ pub async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParam
 #[cfg(test)]
 mod tests {
     use super::*;
-    use anyedge_core::body::Body;
-    use anyedge_core::context::RequestContext;
-    use anyedge_core::error::EdgeError;
-    use anyedge_core::http::{request_builder, Method, Response, StatusCode};
-    use anyedge_core::params::PathParams;
-    use anyedge_core::response::IntoResponse;
+    use edgezero_core::body::Body;
+    use edgezero_core::context::RequestContext;
+    use edgezero_core::error::EdgeError;
+    use edgezero_core::http::{request_builder, Method, Response, StatusCode};
+    use edgezero_core::params::PathParams;
+    use edgezero_core::response::IntoResponse;
     use futures::executor::block_on;
     use std::collections::HashMap;
 

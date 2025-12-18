@@ -4,16 +4,16 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
 
 ## Highlights
 
-- Built on the adapter-agnostic [AnyEdge](https://github.com/stackpop/anyedge) core so the same app runs on Fastly Compute@Edge, Cloudflare Workers, and a native Axum server.
-- Manifest-driven: a single `anyedge.toml` defines routes, adapters, logging, and the commands the AnyEdge CLI executes for build/serve/deploy.
+- Built on the adapter-agnostic [EdgeZero](https://github.com/stackpop/edgezero) core so the same app runs on Fastly Compute@Edge, Cloudflare Workers, and a native Axum server.
+- Manifest-driven: a single `edgezero.toml` defines routes, adapters, logging, and the commands the EdgeZero CLI executes for build/serve/deploy.
 - Deterministic banner bids and simple creative templates for predictable QA flows.
-- Zero backend requirements: all routes render locally from embedded assets and the AnyEdge manifest.
+- Zero backend requirements: all routes render locally from embedded assets and the EdgeZero manifest.
 - Batteries included for integrations: ready-made responses for Prebid.js and Prebid Server, plus static assets for creative previews.
 
 ## Workspace Layout
 
 - `crates/mocktioneer-core`: shared logic (OpenRTB types, request handlers, rendering, config, `MocktioneerApp` Hooks entrypoint).
-- `crates/mocktioneer-adapter-fastly`: Fastly Compute@Edge binary powered by the shared AnyEdge manifest.
+- `crates/mocktioneer-adapter-fastly`: Fastly Compute@Edge binary powered by the shared EdgeZero manifest.
 - `crates/mocktioneer-adapter-cloudflare`: Cloudflare Workers binary (`wrangler` manifests for dev/deploy).
 - `crates/mocktioneer-adapter-axum`: Native Axum HTTP server for local integration testing.
 - `examples/`: helper scripts like `openrtb_request.sh`, `iframe_request.sh`, and `pixel_request.sh` for smoke testing.
@@ -25,41 +25,41 @@ Deterministic OpenRTB banner bidder for edge platforms. Mocktioneer helps test c
    - Fastly CLI (`brew install fastly/tap/fastly`) and/or Cloudflare `wrangler` if you plan to run those targets.
    - Add `wasm32-wasip1` (Fastly) or `wasm32-unknown-unknown` (Cloudflare) targets via `rustup target add`.
    - No extra tooling is required for Axum—the native adapter runs with the default Rust toolchain (`cargo run -p mocktioneer-adapter-axum`).
-   - AnyEdge CLI (`cargo install --path anyedge/crates/anyedge-cli --features cli`, or run via `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- --help`).
+   - EdgeZero CLI (`cargo install --path edgezero/crates/edgezero-cli --features cli`, or run via `cargo run --manifest-path ../edgezero/Cargo.toml -p edgezero-cli --features cli -- --help`).
 2. Clone this repo and enter `mocktioneer/`.
 3. Run unit tests: `cargo test`.
-4. Serve adapters via the manifest-driven CLI (reads `anyedge.toml` automatically):
-   - `anyedge-cli serve --adapter axum` (spawns the native Axum server for local iteration).
-   - `anyedge-cli serve --adapter fastly` (wraps `fastly compute serve -C crates/mocktioneer-adapter-fastly`).
-   - `anyedge-cli serve --adapter cloudflare` (wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`).
-   - Without installing the binary, use `cargo run --manifest-path ../anyedge/Cargo.toml -p anyedge-cli --features cli -- serve --adapter <axum|fastly|cloudflare>`.
+4. Serve adapters via the manifest-driven CLI (reads `edgezero.toml` automatically):
+   - `edgezero-cli serve --adapter axum` (spawns the native Axum server for local iteration).
+   - `edgezero-cli serve --adapter fastly` (wraps `fastly compute serve -C crates/mocktioneer-adapter-fastly`).
+   - `edgezero-cli serve --adapter cloudflare` (wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`).
+   - Without installing the binary, use `cargo run --manifest-path ../edgezero/Cargo.toml -p edgezero-cli --features cli -- serve --adapter <axum|fastly|cloudflare>`.
 
-> AnyEdge crates are now pulled directly from GitHub over SSH, so CI/CD no longer needs a sibling checkout. Provide an `ANYEDGE_SSH_KEY` secret (deploy key or personal access key) in GitHub Actions so the workflows can authenticate, and copy `.cargo/config.local-example` to `.cargo/config.toml` when iterating on AnyEdge locally to point back at `../anyedge`.
+> EdgeZero crates are now pulled directly from GitHub over SSH, so CI/CD no longer needs a sibling checkout. Provide an `EDGEZERO_SSH_KEY` secret (deploy key or personal access key) in GitHub Actions so the workflows can authenticate, and copy `.cargo/config.local-example` to `.cargo/config.toml` when iterating on EdgeZero locally to point back at `../edgezero`.
 
 ## Running the Edge Bundles
 
 ### Axum (native)
-- `anyedge-cli serve --adapter axum` launches the native HTTP server (listens on `127.0.0.1:8787` by default; tweak the manifest command if you need a different address).
+- `edgezero-cli serve --adapter axum` launches the native HTTP server (listens on `127.0.0.1:8787` by default; tweak the manifest command if you need a different address).
 - Alternatively, run `cargo run -p mocktioneer-adapter-axum` for direct access without the CLI wrapper.
 - Logging is plain stdout/stderr unless you override `[adapters.axum.logging]` in the manifest.
 
 ### Fastly Compute@Edge
-- `anyedge-cli serve --adapter fastly` to iterate locally; this shells out to `fastly compute serve -C crates/mocktioneer-adapter-fastly` after embedding `anyedge.toml`.
-- Logging is controlled by `anyedge.toml` (embedded during build). See [Configuration & Logging](#configuration--logging).
+- `edgezero-cli serve --adapter fastly` to iterate locally; this shells out to `fastly compute serve -C crates/mocktioneer-adapter-fastly` after embedding `edgezero.toml`.
+- Logging is controlled by `edgezero.toml` (embedded during build). See [Configuration & Logging](#configuration--logging).
 
 ### Cloudflare Workers
-- `anyedge-cli serve --adapter cloudflare` wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`.
-- The adapter reuses the same AnyEdge app and translates Worker requests/responses in-process.
+- `edgezero-cli serve --adapter cloudflare` wraps `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`.
+- The adapter reuses the same EdgeZero app and translates Worker requests/responses in-process.
 
 ## Configuration & Logging
 
-`anyedge.toml` is compiled into every adapter binary and drives the AnyEdge CLI:
+`edgezero.toml` is compiled into every adapter binary and drives the EdgeZero CLI:
 
 ```toml
 [app]
 name = "mocktioneer"
 entry = "crates/mocktioneer-core"
-middleware = ["anyedge_core::middleware::RequestLogger", "mocktioneer_core::routes::Cors"]
+middleware = ["edgezero_core::middleware::RequestLogger", "mocktioneer_core::routes::Cors"]
 
 [[triggers.http]]
 id = "openrtb_auction"
@@ -97,7 +97,7 @@ echo_stdout = false
 ```
 
 - Routes and adapters are declared in the manifest; adding a new handler means updating the `[[triggers.http]]` block once and every adapter inherits it.
-- Adapter command strings under `[adapters.<name>.commands]` are what `anyedge-cli` executes for `build`, `serve`, and `deploy`, so tweaks to local/dev flows happen in one place.
+- Adapter command strings under `[adapters.<name>.commands]` are what `edgezero-cli` executes for `build`, `serve`, and `deploy`, so tweaks to local/dev flows happen in one place.
 - Logging defaults live under `[adapters.<name>.logging]` and are turned into adapter-specific logger configs at runtime.
 - Changing the file requires rebuilding because it is embedded with `include_str!`.
 
@@ -167,7 +167,7 @@ Supported creative sizes:
 ### Fastly
 1. `cd crates/mocktioneer-adapter-fastly`
 2. `fastly compute publish` (CLI walks you through service creation, domain binding, deploy).
-3. Configure a log endpoint that matches `anyedge.toml` (e.g., `mocktioneerlog`).
+3. Configure a log endpoint that matches `edgezero.toml` (e.g., `mocktioneerlog`).
 4. Optional: `fastly domain create --service-id <SERVICE_ID> --name <your.domain>` to add custom domains.
 
 ### Cloudflare Workers
@@ -225,6 +225,6 @@ curl -sS -X POST \
 
 ## Notes
 
-- CORS: CORS headers (`Access-Control-Allow-Origin: *`) and OPTIONS preflight responses are handled by middleware + the AnyEdge router.
+- CORS: CORS headers (`Access-Control-Allow-Origin: *`) and OPTIONS preflight responses are handled by middleware + the EdgeZero router.
 - Host detection: Creative URLs fall back to `mocktioneer.edgecompute.app` when the request lacks a `Host` header.
 - Scope: Only banner inventory is implemented today; video/native can be layered on with additional route handlers.

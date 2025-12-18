@@ -9,8 +9,8 @@ name = "mocktioneer-adapter-axum"
 path = "src/main.rs"
 
 [dependencies]
-anyedge-adapter-axum = { workspace = true, features = ["axum"] }
-anyedge-core = { workspace = true }
+edgezero-adapter-axum = { workspace = true, features = ["axum"] }
+edgezero-core = { workspace = true }
 anyhow = { workspace = true }
 axum = { workspace = true }
 log = { workspace = true }

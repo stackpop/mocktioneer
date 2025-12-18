@@ -16,15 +16,15 @@ Working backlog and per-task plans live here. Before coding, capture an approved
 - [x] Allow static asset size parsing to tolerate malformed query delimiters (e.g., `&crid=...`) and cover with tests.
 - [x] Simplify query extractors by limiting the string helper to click params and letting other extractors use serde defaults.
 
-### 2025-09-21 – Align Mocktioneer with latest AnyEdge core
-- [x] Update path dependencies (core, adapters) and shared crates to match the reorganised AnyEdge workspace; drop `anyedge-controller`, align `validator` version, and refresh the lockfile.
+### 2025-09-21 – Align Mocktioneer with latest EdgeZero core
+- [x] Update path dependencies (core, adapters) and shared crates to match the reorganised EdgeZero workspace; drop `edgezero-controller`, align `validator` version, and refresh the lockfile.
 - [x] Refactor `mocktioneer-core` routes for the new async handler + `RouterService` API (response builders, CORS/logger middleware) and ensure helpers cover headers/cookies.
 - [x] Revise crate-level tests (module + integration) to drive handlers via the new request/context types and router entrypoints.
 - [x] Adapt Fastly and Cloudflare bins to the new adapter APIs (dispatch helpers, logging init) while preserving config-driven logging behaviour.
 - [x] Run `cargo check` for the `mocktioneer` workspace to confirm the updated code compiles without regressions.
 
 ### 2025-09-21 – Restore action macro ergonomics
-- [x] Convert `mocktioneer-core` route handlers to use `#[anyedge_core::action]` with async functions and extractor inputs (`ValidatedPath`, `ValidatedQuery`, `ValidatedJson`, etc.).
+- [x] Convert `mocktioneer-core` route handlers to use `#[edgezero_core::action]` with async functions and extractor inputs (`ValidatedPath`, `ValidatedQuery`, `ValidatedJson`, etc.).
 - [x] Adjust middleware wiring/tests to call the macro-generated handlers while keeping CORS/logger behaviour.
 - [x] Ensure Fastly/Cloudflare bins still compile after handler signature changes and run the core crate tests.
 
@@ -42,4 +42,4 @@ Working backlog and per-task plans live here. Before coding, capture an approved
 - **2025-09-18 02:53 UTC** – Added validator-backed `OpenRTBRequest` (with required `id`/`imp`), updated auction handler to use `ValidatedJson`, and introduced rejection tests for malformed payloads. `cargo test -p mocktioneer-core`.
 - **2025-09-18 03:06 UTC** – Simplified click query extraction by parsing width/height as numbers (validated range) and dropping generic string coercion; full test suite still passes. `cargo test -p mocktioneer-core`.
 - **2025-09-18 02:55 UTC** – Trimmed query extraction helpers to only coerce click params into strings; booleans now use native serde handling. `cargo test -p mocktioneer-core`.
-- **2025-09-20 01:38 UTC** – Updated dependencies and rewrote the AnyEdge integration (middleware, async handlers, tests, Fastly/Cloudflare adapters) to match the latest core API; `cargo check` on the mocktioneer workspace succeeds.
+- **2025-09-20 01:38 UTC** – Updated dependencies and rewrote the EdgeZero integration (middleware, async handlers, tests, Fastly/Cloudflare adapters) to match the latest core API; `cargo check` on the mocktioneer workspace succeeds.

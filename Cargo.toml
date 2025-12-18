@@ -13,11 +13,11 @@ codegen-units = 1
 lto = "fat"
 
 [workspace.dependencies]
-anyedge-adapter-cloudflare = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-cloudflare", default-features = false }
-anyedge-adapter-fastly = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-fastly", default-features = false }
-anyedge-adapter-axum = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-adapter-axum", default-features = false }
-anyedge-cli = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-cli" }
-anyedge-core = { git = "ssh://git@github.com/stackpop/anyedge.git", package = "anyedge-core" }
+edgezero-adapter-cloudflare = { git = "ssh://git@github.com/stackpop/edgezero.git", package = "edgezero-adapter-cloudflare", default-features = false }
+edgezero-adapter-fastly = { git = "ssh://git@github.com/stackpop/edgezero.git", package = "edgezero-adapter-fastly", default-features = false }
+edgezero-adapter-axum = { git = "ssh://git@github.com/stackpop/edgezero.git", package = "edgezero-adapter-axum", default-features = false }
+edgezero-cli = { git = "ssh://git@github.com/stackpop/edgezero.git", package = "edgezero-cli" }
+edgezero-core = { git = "ssh://git@github.com/stackpop/edgezero.git", package = "edgezero-core" }
 async-trait = "0.1"
 fastly = "0.11.9"
 futures = { version = "0.3", features = ["std", "executor"] }

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Start local with: (anyedge-cli serve --adapter fastly)
+# Start local with: (edgezero-cli serve --adapter fastly)
 # Then run this script in another terminal. You can override the base URL by
 # setting MOCKTIONEER_BASE_URL, e.g., MOCKTIONEER_BASE_URL=https://mocktioneer.edgecompute.app
 
