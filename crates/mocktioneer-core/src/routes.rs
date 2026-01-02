@@ -14,7 +14,8 @@ use serde::Deserialize;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
-use crate::auction::{build_openrtb_response_with_base_typed, is_standard_size};
+use crate::aps::ApsBidRequest;
+use crate::auction::{build_aps_response, build_openrtb_response_with_base_typed, is_standard_size};
 use crate::openrtb::OpenRTBRequest;
 use crate::render::{creative_html, info_html, render_svg, render_template_str};
 
@@ -380,6 +381,48 @@ pub async fn handle_pixel(
     response
 }
 
+#[derive(Deserialize, Validate)]
+struct ApsWinParams {
+    #[validate(length(min = 1))]
+    slot: String,
+    #[validate(range(min = 0.0))]
+    price: f64,
+}
+
+#[action]
+pub async fn handle_aps_bid(
+    Headers(headers): Headers,
+    ValidatedJson(req): ValidatedJson<ApsBidRequest>,
+) -> Response {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("mocktioneer.edgecompute.app");
+    
+    log::info!("APS auction pubId={}, slots={}", req.pub_id, req.slots.len());
+
+    let resp = build_aps_response(&req, host);
+    let body = Body::json(&resp).unwrap_or_else(|_| Body::text("{}"));
+    let mut response = build_response(StatusCode::OK, body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    response
+}
+
+#[action]
+pub async fn handle_aps_win(
+    ValidatedQuery(params): ValidatedQuery<ApsWinParams>,
+) -> Response {
+    log::info!(
+        "APS win notification slot={}, price={:.2}",
+        params.slot,
+        params.price
+    );
+    build_response(StatusCode::NO_CONTENT, Body::empty())
+}
+
 #[action]
 pub async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParams>) -> Response {
     let ClickQueryParams { crid, w, h, extra } = params;
@@ -743,5 +786,125 @@ mod tests {
         assert!(body.contains("bar"));
         assert!(body.contains("baz"));
         assert!(body.contains("qux"));
+    }
+
+    #[test]
+    fn handle_aps_bid_valid_request() {
+        let body = serde_json::json!({
+            "pubId": "5128",
+            "slots": [
+                {
+                    "slotID": "header-banner",
+                    "slotName": "header-banner",
+                    "sizes": [[728, 90], [970, 250]]
+                }
+            ],
+            "pageUrl": "https://example.com/article",
+            "ua": "Mozilla/5.0",
+            "timeout": 800
+        });
+        let ctx = ctx(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::json(&body).expect("json body"),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let ct = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(ct, "application/json");
+
+        // Parse response and check structure
+        let body_bytes = response.into_body().into_bytes();
+        let resp_json: serde_json::Value =
+            serde_json::from_slice(&body_bytes).expect("valid json");
+        assert!(resp_json.get("bids").is_some());
+        let bids = resp_json.get("bids").unwrap().as_array().unwrap();
+        assert_eq!(bids.len(), 1);
+        let bid = &bids[0];
+        assert_eq!(bid.get("slotID").unwrap().as_str().unwrap(), "header-banner");
+        assert_eq!(bid.get("price").unwrap().as_f64().unwrap(), 2.50);
+    }
+
+    #[test]
+    fn handle_aps_bid_empty_slots() {
+        let body = serde_json::json!({
+            "pubId": "5128",
+            "slots": []
+        });
+        let ctx = ctx(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::json(&body).expect("json body"),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        // Empty slots should fail validation
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn handle_aps_bid_invalid_json() {
+        let ctx = ctx(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::from("not-json"),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_aps_win_valid() {
+        let ctx = ctx(
+            Method::GET,
+            "/aps/win?slot=header-banner&price=2.50",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_win(ctx)));
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[test]
+    fn handle_aps_win_missing_slot() {
+        let ctx = ctx(
+            Method::GET,
+            "/aps/win?price=2.50",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_win(ctx)));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_aps_win_missing_price() {
+        let ctx = ctx(
+            Method::GET,
+            "/aps/win?slot=header-banner",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_win(ctx)));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_aps_win_negative_price() {
+        let ctx = ctx(
+            Method::GET,
+            "/aps/win?slot=header-banner&price=-1.0",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_win(ctx)));
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 }

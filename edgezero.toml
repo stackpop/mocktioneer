@@ -90,6 +90,34 @@ methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
 adapters = ["axum", "cloudflare", "fastly"]
 
+[[triggers.http]]
+id = "aps_bid"
+path = "/e/dtb/bid"
+methods = ["POST"]
+handler = "mocktioneer_core::routes::handle_aps_bid"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "aps_bid_options"
+path = "/e/dtb/bid"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "aps_win"
+path = "/aps/win"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_aps_win"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "aps_win_options"
+path = "/aps/win"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
 [adapters.axum.adapter]
 crate = "crates/mocktioneer-adapter-axum"
 manifest = "crates/mocktioneer-adapter-axum/axum.toml"

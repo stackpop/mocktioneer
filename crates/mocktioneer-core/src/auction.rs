@@ -1,10 +1,10 @@
+use crate::aps::{ApsBidRequest, ApsBidResponse, ApsContextual, ApsSlotResponse};
 use crate::openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
+use crate::render::iframe_html;
 use serde_json::json;
 use uuid::Uuid;
-
-use crate::render::iframe_html;
 
 fn new_id() -> String {
     Uuid::now_v7().simple().to_string()
@@ -151,6 +151,128 @@ pub fn build_openrtb_response_with_base_typed(
             ..Default::default()
         }],
         ..Default::default()
+    }
+}
+
+// ============================================================================
+// APS TAM API Response Builder
+// ============================================================================
+
+/// Generate APS-style encoded price string.
+/// Amazon uses proprietary encoding that only their system can decode.
+/// We generate random-looking encoded strings similar to real APS (e.g., "1kt0jk0", "ewpurk").
+/// The actual price is NOT recoverable from this string - it's only known to Amazon/GAM.
+fn encode_aps_price(_price: f64, slot_id: &str) -> String {
+    // Generate a deterministic but opaque string based on slot_id
+    // Use first 7 chars of a hash-like value to match real APS format
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    slot_id.hash(&mut hasher);
+    let hash = hasher.finish();
+
+    // Convert to alphanumeric string similar to real APS encoding
+    let chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let mut result = String::new();
+    let mut h = hash;
+    for _ in 0..7 {
+        result.push(chars.chars().nth((h % 36) as usize).unwrap());
+        h /= 36;
+    }
+    result
+}
+
+/// Build APS TAM response from an APS bid request matching real Amazon API format.
+///
+/// This function generates mock bids for all slots with standard sizes:
+/// - Fixed bid price: $2.50 CPM
+/// - 100% fill rate for standard sizes
+/// - Returns contextual format matching real Amazon APS API
+/// - No creative HTML (APS doesn't return adm field)
+/// - Generates encoded price strings and targeting keys
+pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidResponse {
+    let mut slots: Vec<ApsSlotResponse> = Vec::new();
+
+    for slot in req.slots.iter() {
+        // Take the first size from the sizes array
+        let size_option = slot.sizes.first();
+        if size_option.is_none() {
+            // No sizes provided, skip this slot
+            continue;
+        }
+
+        let [w, h] = *size_option.unwrap();
+        let w_i64 = w as i64;
+        let h_i64 = h as i64;
+
+        // Only bid on standard sizes
+        if !is_standard_size(w_i64, h_i64) {
+            log::debug!(
+                "APS: Skipping non-standard size {}x{} for slot '{}'",
+                w,
+                h,
+                slot.slot_id
+            );
+            continue;
+        }
+
+        // Generate bid components
+        let impression_id = new_id();
+        let price = 2.50_f64;
+        let crid = format!("{}-{}", new_id(), "mocktioneer");
+        let size_str = format!("{}x{}", w, h);
+
+        // Generate APS-style encoded price string (proprietary encoding)
+        let encoded_price = encode_aps_price(price, &slot.slot_id);
+
+        // Build slot response matching real Amazon format
+        slots.push(ApsSlotResponse {
+            slot_id: slot.slot_id.clone(),
+            size: size_str.clone(),
+            crid: Some(crid),
+            media_type: Some("d".to_string()), // "d" for display
+            fif: Some("1".to_string()),        // "1" = filled
+            targeting: vec![
+                "amzniid".to_string(),
+                "amznp".to_string(),
+                "amznsz".to_string(),
+                "amznbid".to_string(),
+                "amznactt".to_string(),
+            ],
+            meta: vec![
+                "slotID".to_string(),
+                "mediaType".to_string(),
+                "size".to_string(),
+            ],
+            // Targeting key-value pairs (flat on slot object)
+            amzniid: Some(impression_id),
+            amznbid: Some(encoded_price.clone()),
+            amznp: Some(encoded_price), // Same encoding for both fields
+            amznsz: Some(size_str),
+            amznactt: Some("OPEN".to_string()),
+        });
+
+        log::debug!(
+            "APS: Generated bid for slot '{}' ({}x{}) at ${:.2}",
+            slot.slot_id,
+            w,
+            h,
+            price
+        );
+    }
+
+    ApsBidResponse {
+        contextual: ApsContextual {
+            slots,
+            host: Some(format!("https://{}", base_host)),
+            status: Some("ok".to_string()),
+            cfe: Some(true),
+            ev: Some(true),
+            cfn: Some("bao-csm/direct/csm_othersv6.js".to_string()),
+            cb: Some("6".to_string()),
+            cmp: None, // Optional campaign tracking URL
+        },
     }
 }
 
