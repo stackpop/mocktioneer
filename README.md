@@ -139,7 +139,7 @@ Amazon Publisher Services (APS) Transparent Ad Marketplace endpoint. Accepts APS
 Example request:
 ```json
 {
-  "pubId": "5128",
+  "pubId": "1234",
   "slots": [
     {
       "slotID": "header-banner",

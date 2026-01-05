@@ -13,7 +13,7 @@ use validator::Validate;
 /// APS TAM bid request format based on /e/dtb/bid endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ApsBidRequest {
-    /// Publisher ID (e.g., "5128")
+    /// Publisher ID (e.g., "5555")
     #[serde(rename = "pubId")]
     pub pub_id: String,
 

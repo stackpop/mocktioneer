@@ -158,29 +158,52 @@ pub fn build_openrtb_response_with_base_typed(
 // APS TAM API Response Builder
 // ============================================================================
 
-/// Generate APS-style encoded price string.
-/// Amazon uses proprietary encoding that only their system can decode.
-/// We generate random-looking encoded strings similar to real APS (e.g., "1kt0jk0", "ewpurk").
-/// The actual price is NOT recoverable from this string - it's only known to Amazon/GAM.
-fn encode_aps_price(_price: f64, slot_id: &str) -> String {
-    // Generate a deterministic but opaque string based on slot_id
-    // Use first 7 chars of a hash-like value to match real APS format
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+/// Calculate mock APS price based on ad size.
+/// Larger ad sizes typically command higher CPMs.
+fn calculate_aps_price(width: i64, height: i64) -> f64 {
+    let area = (width * height) as f64;
 
-    let mut hasher = DefaultHasher::new();
-    slot_id.hash(&mut hasher);
-    let hash = hasher.finish();
+    // Base price calculation: larger ads = higher CPM
+    // Standard ranges: $1.50 - $4.50
+    let base_cpm = match (width, height) {
+        // Premium large formats
+        (970, 250) => 4.20,
+        (970, 90) => 3.80,
+        (300, 600) => 3.50,
+        (160, 600) => 3.20,
 
-    // Convert to alphanumeric string similar to real APS encoding
-    let chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let mut result = String::new();
-    let mut h = hash;
-    for _ in 0..7 {
-        result.push(chars.chars().nth((h % 36) as usize).unwrap());
-        h /= 36;
-    }
-    result
+        // Standard leaderboard
+        (728, 90) => 3.00,
+
+        // Medium rectangle (most common)
+        (300, 250) => 2.50,
+        (336, 280) => 2.60,
+
+        // Mobile/smaller formats
+        (320, 100) => 2.20,
+        (320, 50) => 1.80,
+        (300, 50) => 1.70,
+
+        // Banner
+        (468, 60) => 2.00,
+
+        // Fallback based on area
+        _ => 1.50 + (area / 100000.0).min(3.0),
+    };
+
+    // Round to 2 decimal places
+    (base_cpm * 100.0).round() / 100.0
+}
+
+/// Encode APS price using base64 for mock testing.
+/// Note: Real APS uses proprietary encoding that cannot be decoded without Amazon's keys.
+/// This base64 encoding is only for mock/testing purposes.
+fn encode_aps_price(price: f64) -> String {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    // Encode just the number as a string
+    let price_str = price.to_string();
+    STANDARD.encode(price_str.as_bytes())
 }
 
 /// Build APS TAM response from an APS bid request matching real Amazon API format.
@@ -219,12 +242,12 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidRespons
 
         // Generate bid components
         let impression_id = new_id();
-        let price = 2.50_f64;
+        let price = calculate_aps_price(w_i64, h_i64);
         let crid = format!("{}-{}", new_id(), "mocktioneer");
         let size_str = format!("{}x{}", w, h);
 
-        // Generate APS-style encoded price string (proprietary encoding)
-        let encoded_price = encode_aps_price(price, &slot.slot_id);
+        // Generate base64-encoded price string (mock only - real APS uses proprietary encoding)
+        let encoded_price = encode_aps_price(price);
 
         // Build slot response matching real Amazon format
         slots.push(ApsSlotResponse {

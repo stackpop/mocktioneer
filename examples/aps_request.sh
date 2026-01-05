@@ -8,7 +8,7 @@ if [ -n "$PAYLOAD_FILE" ] && [ -f "$PAYLOAD_FILE" ]; then
   PAYLOAD=$(cat "$PAYLOAD_FILE")
 else
   PAYLOAD='{
-    "pubId": "5128",
+    "pubId": "1234",
     "slots": [
       {
         "slotID": "header-banner",

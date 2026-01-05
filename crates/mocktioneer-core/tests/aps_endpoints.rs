@@ -4,7 +4,7 @@ use mocktioneer_core::auction::build_aps_response;
 #[test]
 fn test_build_aps_response_single_slot() {
     let req = ApsBidRequest {
-        pub_id: "5128".to_string(),
+        pub_id: "5555".to_string(),
         slots: vec![ApsSlot {
             slot_id: "header-banner".to_string(),
             sizes: vec![[300, 250]],
@@ -49,7 +49,7 @@ fn test_build_aps_response_single_slot() {
 #[test]
 fn test_build_aps_response_multiple_slots() {
     let req = ApsBidRequest {
-        pub_id: "5128".to_string(),
+        pub_id: "5555".to_string(),
         slots: vec![
             ApsSlot {
                 slot_id: "header".to_string(),
@@ -92,7 +92,7 @@ fn test_build_aps_response_multiple_slots() {
 #[test]
 fn test_build_aps_response_nonstandard_size_skipped() {
     let req = ApsBidRequest {
-        pub_id: "5128".to_string(),
+        pub_id: "5555".to_string(),
         slots: vec![ApsSlot {
             slot_id: "custom-slot".to_string(),
             sizes: vec![[333, 222]], // Non-standard size
@@ -112,7 +112,7 @@ fn test_build_aps_response_nonstandard_size_skipped() {
 #[test]
 fn test_build_aps_response_mixed_sizes() {
     let req = ApsBidRequest {
-        pub_id: "5128".to_string(),
+        pub_id: "5555".to_string(),
         slots: vec![
             ApsSlot {
                 slot_id: "standard".to_string(),
@@ -181,7 +181,7 @@ fn test_aps_targeting_structure() {
 #[test]
 fn test_aps_bid_multiple_sizes_per_slot() {
     let req = ApsBidRequest {
-        pub_id: "5128".to_string(),
+        pub_id: "5555".to_string(),
         slots: vec![ApsSlot {
             slot_id: "multi-size".to_string(),
             sizes: vec![[728, 90], [970, 250]], // Multiple sizes
@@ -202,7 +202,7 @@ fn test_aps_bid_multiple_sizes_per_slot() {
 #[test]
 fn test_aps_response_empty_slots() {
     let req = ApsBidRequest {
-        pub_id: "5128".to_string(),
+        pub_id: "5555".to_string(),
         slots: vec![],
         page_url: None,
         user_agent: None,
@@ -219,7 +219,7 @@ fn test_aps_response_empty_slots() {
 #[test]
 fn test_aps_contextual_metadata() {
     let req = ApsBidRequest {
-        pub_id: "5128".to_string(),
+        pub_id: "5555".to_string(),
         slots: vec![ApsSlot {
             slot_id: "test-slot".to_string(),
             sizes: vec![[300, 250]],
@@ -253,7 +253,7 @@ fn test_aps_contextual_metadata() {
 #[test]
 fn test_aps_response_no_adm_field() {
     let req = ApsBidRequest {
-        pub_id: "5128".to_string(),
+        pub_id: "5555".to_string(),
         slots: vec![ApsSlot {
             slot_id: "test-slot".to_string(),
             sizes: vec![[300, 250]],

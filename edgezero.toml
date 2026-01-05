@@ -118,6 +118,20 @@ methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
 adapters = ["axum", "cloudflare", "fastly"]
 
+[[triggers.http]]
+id = "adserver_mediate"
+path = "/adserver/mediate"
+methods = ["POST"]
+handler = "mocktioneer_core::routes::handle_adserver_mediate"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "adserver_mediate_options"
+path = "/adserver/mediate"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
 [adapters.axum.adapter]
 crate = "crates/mocktioneer-adapter-axum"
 manifest = "crates/mocktioneer-adapter-axum/axum.toml"
