@@ -130,7 +130,7 @@ echo_stdout = false
 Amazon Publisher Services (APS) Transparent Ad Marketplace endpoint. Accepts APS-specific bid requests and returns bids in APS format.
 
 - Request format matches APS TAM API: `{ "pubId": "...", "slots": [...], "pageUrl": "...", "ua": "...", "timeout": 800 }`
-- Response format: `{ "bids": [{ "slotID": "...", "price": 2.50, "adm": "...", "w": 300, "h": 250, ... }] }`
+- Response format matches real Amazon APS with `contextual` wrapper: `{ "contextual": { "slots": [...], "host": "...", "status": "ok", ... } }`
 - Variable bid prices based on ad size: $1.70 - $4.20 CPM (e.g., 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80)
 - 100% fill rate for standard sizes
 - APS targeting key-value pairs: `amzniid`, `amznbid`, `amznsz`
@@ -152,23 +152,23 @@ Example request:
 }
 ```
 
-Example response (real Amazon API format):
+Example response:
 ```json
 {
   "contextual": {
     "slots": [
       {
         "slotID": "header-banner",
-        "size": "728x90",
+        "size": "970x250",
         "crid": "019b7f82e8de7e13-mocktioneer",
         "mediaType": "d",
         "fif": "1",
         "targeting": ["amzniid", "amznp", "amznsz", "amznbid", "amznactt"],
         "meta": ["slotID", "mediaType", "size"],
         "amzniid": "019b7f82e8de7e139d6d6a593171e7a0",
-        "amznbid": "mjuw",
-        "amznp": "mjuw",
-        "amznsz": "728x90",
+        "amznbid": "NC4yMA==",
+        "amznp": "NC4yMA==",
+        "amznsz": "970x250",
         "amznactt": "OPEN"
       }
     ],
