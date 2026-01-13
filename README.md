@@ -131,7 +131,7 @@ Amazon Publisher Services (APS) Transparent Ad Marketplace endpoint. Accepts APS
 
 - Request format matches APS TAM API: `{ "pubId": "...", "slots": [...], "pageUrl": "...", "ua": "...", "timeout": 800 }`
 - Response format: `{ "bids": [{ "slotID": "...", "price": 2.50, "adm": "...", "w": 300, "h": 250, ... }] }`
-- Fixed bid price: $2.50 CPM
+- Variable bid prices based on ad size: $1.50 - $4.50 CPM (e.g., 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80)
 - 100% fill rate for standard sizes
 - Creatives rendered as iframes pointing to mocktioneer's `/static/creatives/` endpoints
 - APS targeting key-value pairs: `amzniid`, `amznbid`, `amznsz`
@@ -185,13 +185,14 @@ Example response (real Amazon API format):
 
 **Important Notes:**
 - Response format matches real Amazon APS API exactly (with `contextual` wrapper)
-- **Price encoding is proprietary**: `amznbid` values like `"1kt0jk0"`, `"ewpurk"` use Amazon's proprietary encoding that only their system can decode
-  - Only Amazon and trusted partners (like GAM) can decode these prices
-  - Our mock generates similar-looking encoded strings for testing
-  - The actual bid price is **not recoverable** from these strings in our mock
+- **Price encoding differs between real APS and our mock**:
+  - **Real Amazon APS**: Uses proprietary encoding that only Amazon and trusted partners (like GAM) can decode
+  - **Our mock**: Uses base64 encoding for testing purposes - prices ARE recoverable
+  - Example decoding: `echo "Mi41MA==" | base64 -d` → `2.50`
+  - Mock encoding is transparent to support debugging and test validation workflows
 - **No creative HTML (`adm` field)** - Real APS expects publishers to render creatives client-side using targeting keys
 - Targeting keys are returned as flat fields on each slot object
-- Mock uses fixed **$2.50 CPM** for all bids (price encoding is for format compatibility only)
+- Mock uses **variable pricing based on ad size** ($1.50 - $4.50 CPM)
 - 100% fill rate (`fif: "1"`) for standard sizes only
 
 Test locally:

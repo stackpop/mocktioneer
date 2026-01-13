@@ -869,13 +869,13 @@ mod tests {
         let slots = contextual.get("slots").unwrap().as_array().unwrap();
         assert_eq!(slots.len(), 1);
 
-        // Check slot details
+        // Check slot details (should select 970x250 with highest CPM from [728x90, 970x250])
         let slot = &slots[0];
         assert_eq!(
             slot.get("slotID").unwrap().as_str().unwrap(),
             "header-banner"
         );
-        assert_eq!(slot.get("size").unwrap().as_str().unwrap(), "728x90");
+        assert_eq!(slot.get("size").unwrap().as_str().unwrap(), "970x250");
         assert!(slot.get("amznbid").is_some());
         assert!(slot.get("amzniid").is_some());
     }

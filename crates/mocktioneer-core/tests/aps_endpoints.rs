@@ -194,9 +194,71 @@ fn test_aps_bid_multiple_sizes_per_slot() {
 
     let resp = build_aps_response(&req, "mocktioneer.test");
 
-    // Should bid on the first standard size
+    // Should bid on the highest CPM size (970x250 = $4.20 > 728x90 = $3.00)
     assert_eq!(resp.contextual.slots.len(), 1);
-    assert_eq!(resp.contextual.slots[0].size, "728x90");
+    assert_eq!(resp.contextual.slots[0].size, "970x250");
+}
+
+#[test]
+fn test_aps_bid_non_standard_first_then_standard() {
+    let req = ApsBidRequest {
+        pub_id: "5555".to_string(),
+        slots: vec![ApsSlot {
+            slot_id: "mixed-slot".to_string(),
+            sizes: vec![[999, 999], [300, 250]], // Non-standard first, standard second
+            slot_name: Some("mixed-slot".to_string()),
+        }],
+        page_url: None,
+        user_agent: None,
+        timeout: None,
+    };
+
+    let resp = build_aps_response(&req, "mocktioneer.test");
+
+    // Should skip non-standard size and bid on 300x250
+    assert_eq!(resp.contextual.slots.len(), 1);
+    assert_eq!(resp.contextual.slots[0].size, "300x250");
+}
+
+#[test]
+fn test_aps_bid_selects_highest_cpm_from_multiple_standard_sizes() {
+    let req = ApsBidRequest {
+        pub_id: "5555".to_string(),
+        slots: vec![ApsSlot {
+            slot_id: "multi-standard".to_string(),
+            sizes: vec![[320, 50], [300, 250], [970, 250]], // 320x50=$1.80, 300x250=$2.50, 970x250=$4.20
+            slot_name: Some("multi-standard".to_string()),
+        }],
+        page_url: None,
+        user_agent: None,
+        timeout: None,
+    };
+
+    let resp = build_aps_response(&req, "mocktioneer.test");
+
+    // Should select 970x250 with highest CPM ($4.20)
+    assert_eq!(resp.contextual.slots.len(), 1);
+    assert_eq!(resp.contextual.slots[0].size, "970x250");
+}
+
+#[test]
+fn test_aps_bid_all_non_standard_sizes_skips_slot() {
+    let req = ApsBidRequest {
+        pub_id: "5555".to_string(),
+        slots: vec![ApsSlot {
+            slot_id: "all-non-standard".to_string(),
+            sizes: vec![[999, 999], [888, 888], [777, 777]], // All non-standard
+            slot_name: Some("all-non-standard".to_string()),
+        }],
+        page_url: None,
+        user_agent: None,
+        timeout: None,
+    };
+
+    let resp = build_aps_response(&req, "mocktioneer.test");
+
+    // Should skip slot entirely when no standard sizes found
+    assert_eq!(resp.contextual.slots.len(), 0);
 }
 
 #[test]

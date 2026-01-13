@@ -196,8 +196,10 @@ fn calculate_aps_price(width: i64, height: i64) -> f64 {
 }
 
 /// Encode APS price using base64 for mock testing.
-/// Note: Real APS uses proprietary encoding that cannot be decoded without Amazon's keys.
-/// This base64 encoding is only for mock/testing purposes.
+///
+/// Note: Real Amazon APS uses proprietary encoding that cannot be decoded without Amazon's keys.
+/// Our mock uses transparent base64 encoding that CAN be decoded for testing/debugging purposes.
+/// Example: `echo "Mi41MA==" | base64 -d` → `2.50`
 fn encode_aps_price(price: f64) -> String {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
@@ -209,44 +211,51 @@ fn encode_aps_price(price: f64) -> String {
 /// Build APS TAM response from an APS bid request matching real Amazon API format.
 ///
 /// This function generates mock bids for all slots with standard sizes:
-/// - Fixed bid price: $2.50 CPM
+/// - Variable bid prices based on ad size (calculated via `calculate_aps_price()`)
+///   - Ranges from $1.50 - $4.50 CPM depending on size
+///   - Example: 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80
 /// - 100% fill rate for standard sizes
 /// - Returns contextual format matching real Amazon APS API
 /// - No creative HTML (APS doesn't return adm field)
-/// - Generates encoded price strings and targeting keys
+/// - Generates base64-encoded price strings (recoverable in mock, unlike real APS)
 pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidResponse {
     let mut slots: Vec<ApsSlotResponse> = Vec::new();
 
     for slot in req.slots.iter() {
-        // Take the first size from the sizes array
-        let size_option = slot.sizes.first();
-        if size_option.is_none() {
-            // No sizes provided, skip this slot
-            continue;
-        }
+        // Find the standard size with the highest CPM from all sizes in the slot
+        let best_size = slot
+            .sizes
+            .iter()
+            .filter_map(|&[w, h]| {
+                let w_i64 = w as i64;
+                let h_i64 = h as i64;
+                if is_standard_size(w_i64, h_i64) {
+                    let price = calculate_aps_price(w_i64, h_i64);
+                    Some((w, h, price))
+                } else {
+                    None
+                }
+            })
+            .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
 
-        let [w, h] = *size_option.unwrap();
-        let w_i64 = w as i64;
-        let h_i64 = h as i64;
-
-        // Only bid on standard sizes
-        if !is_standard_size(w_i64, h_i64) {
+        if best_size.is_none() {
+            // No standard sizes found, skip this slot
             log::debug!(
-                "APS: Skipping non-standard size {}x{} for slot '{}'",
-                w,
-                h,
-                slot.slot_id
+                "APS: Skipping slot '{}' - no standard sizes in {:?}",
+                slot.slot_id,
+                slot.sizes
             );
             continue;
         }
 
-        // Generate bid components
+        let (w, h, price) = best_size.unwrap();
+
+        // Generate bid components (price already calculated in best_size selection)
         let impression_id = new_id();
-        let price = calculate_aps_price(w_i64, h_i64);
         let crid = format!("{}-{}", new_id(), "mocktioneer");
         let size_str = format!("{}x{}", w, h);
 
-        // Generate base64-encoded price string (mock only - real APS uses proprietary encoding)
+        // Generate base64-encoded price string (recoverable in mock - real APS uses proprietary encoding)
         let encoded_price = encode_aps_price(price);
 
         // Build slot response matching real Amazon format
