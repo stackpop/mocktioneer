@@ -107,10 +107,12 @@ echo_stdout = false
 | ------ | ---------------------------------- | ------- |
 | GET    | `/`                                | Service info page rendered from template (uses `Host` header for display). |
 | POST   | `/openrtb2/auction`                | Accepts OpenRTB 2.x banner requests and returns deterministic bids. |
+| POST   | `/e/dtb/bid`                       | **APS TAM bid endpoint** - accepts APS-specific request format and returns APS bids. |
 | GET    | `/static/creatives/{W}x{H}.html`   | HTML wrapper around the SVG creative and optional tracking pixel. |
 | GET    | `/static/img/{W}x{H}.svg`          | Dynamic SVG showing size + optional bid badge. |
 | GET    | `/click`                           | Landing page that echoes creative metadata. |
 | GET    | `/pixel?pid={id}`                  | 1×1 transparent GIF that sets a long-lived `mtkid` cookie (requires `pid` query). |
+| GET    | `/aps/win`                         | **APS win notification endpoint** - logs win events (requires `slot` and `price` query params). |
 
 ### Auction (`/openrtb2/auction`)
 - Supports `imp[].banner.w/h` or `imp[].banner.format[0]` size hints.
@@ -123,6 +125,80 @@ echo_stdout = false
 - `/pixel` (with a required `pid` query parameter) issues `Set-Cookie: mtkid=<UUIDv7>; Path=/; Max-Age=31536000; SameSite=None; Secure; HttpOnly` when no cookie is present and marks the response as non-cacheable.
   Provide any non-empty ID when calling the endpoint directly; creatives rendered by Mocktioneer generate a random value automatically.
 
+### APS TAM API (`/e/dtb/bid`)
+
+Amazon Publisher Services (APS) Transparent Ad Marketplace endpoint. Accepts APS-specific bid requests and returns bids in APS format.
+
+- Request format matches APS TAM API: `{ "pubId": "...", "slots": [...], "pageUrl": "...", "ua": "...", "timeout": 800 }`
+- Response format matches real Amazon APS with `contextual` wrapper: `{ "contextual": { "slots": [...], "host": "...", "status": "ok", ... } }`
+- Variable bid prices based on ad size: $1.70 - $4.20 CPM (e.g., 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80)
+- 100% fill rate for standard sizes
+- APS targeting key-value pairs: `amzniid`, `amznbid`, `amznsz`
+
+Example request:
+```json
+{
+  "pubId": "1234",
+  "slots": [
+    {
+      "slotID": "header-banner",
+      "slotName": "header-banner",
+      "sizes": [[728, 90], [970, 250]]
+    }
+  ],
+  "pageUrl": "https://example.com",
+  "ua": "Mozilla/5.0...",
+  "timeout": 800
+}
+```
+
+Example response:
+```json
+{
+  "contextual": {
+    "slots": [
+      {
+        "slotID": "header-banner",
+        "size": "970x250",
+        "crid": "019b7f82e8de7e13-mocktioneer",
+        "mediaType": "d",
+        "fif": "1",
+        "targeting": ["amzniid", "amznp", "amznsz", "amznbid", "amznactt"],
+        "meta": ["slotID", "mediaType", "size"],
+        "amzniid": "019b7f82e8de7e139d6d6a593171e7a0",
+        "amznbid": "NC4yMA==",
+        "amznp": "NC4yMA==",
+        "amznsz": "970x250",
+        "amznactt": "OPEN"
+      }
+    ],
+    "host": "https://mocktioneer.edgecompute.app",
+    "status": "ok",
+    "cfe": true,
+    "ev": true,
+    "cfn": "bao-csm/direct/csm_othersv6.js",
+    "cb": "6"
+  }
+}
+```
+
+**Important Notes:**
+- Response format matches real Amazon APS API exactly (with `contextual` wrapper)
+- **Price encoding differs between real APS and our mock**:
+  - **Real Amazon APS**: Uses proprietary encoding that only Amazon and trusted partners (like GAM) can decode
+  - **Our mock**: Uses base64 encoding for testing purposes - prices ARE recoverable
+  - Example decoding: `echo "Mi41MA==" | base64 -d` → `2.50`
+  - Mock encoding is transparent to support debugging and test validation workflows
+- **No creative HTML (`adm` field)** - Real APS expects publishers to render creatives client-side using targeting keys
+- Targeting keys are returned as flat fields on each slot object
+- Mock uses **variable pricing based on ad size** ($1.70 - $4.20 CPM)
+- 100% fill rate (`fif: "1"`) for standard sizes only
+
+Test locally:
+```bash
+./examples/aps_request.sh
+```
+
 ### Standard Sizes
 
 Supported creative sizes:
@@ -130,7 +206,8 @@ Supported creative sizes:
 `300x250`, `320x50`, `728x90`, `160x600`, `300x50`, `300x600`, `970x250`, `468x60`, `336x280`, `320x100`
 
 - Static asset routes return `404` for non-standard sizes.
-- Auction responses coerce unknown sizes to `300x250` to keep creatives valid.
+- OpenRTB auction responses coerce unknown sizes to `300x250` to keep creatives valid.
+- APS endpoint skips non-standard sizes (returns empty `slots` array for those slots).
 
 ### OpenRTB Mapping
 
@@ -200,6 +277,7 @@ params: {
 
 - Helper scripts in `examples/` (override the host with `MOCKTIONEER_BASE_URL`):
   - `./examples/openrtb_request.sh [payload.json] [/openrtb2/auction]` - posts the bundled payload (or supplied file) and pretty-prints the response.
+  - `./examples/aps_request.sh [payload.json]` - posts an APS TAM bid request and pretty-prints the response.
   - `./examples/iframe_request.sh [size] [crid] [bid] [pixel]` - fetches the rendered creative iframe HTML.
   - `./examples/pixel_request.sh [base64|raw|hexdump]` - requests `/pixel` (supplying a random `pid`, or override with `MOCKTIONEER_PIXEL_ID`) and streams the encoded response body.
 

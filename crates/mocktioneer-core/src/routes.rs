@@ -14,7 +14,10 @@ use serde::Deserialize;
 use uuid::Uuid;
 use validator::{Validate, ValidationError};
 
-use crate::auction::{build_openrtb_response_with_base_typed, is_standard_size};
+use crate::aps::ApsBidRequest;
+use crate::auction::{
+    build_aps_response, build_openrtb_response_with_base_typed, is_standard_size,
+};
 use crate::openrtb::OpenRTBRequest;
 use crate::render::{creative_html, info_html, render_svg, render_template_str};
 
@@ -237,7 +240,7 @@ pub async fn handle_openrtb_auction(
     RequestContext(ctx): RequestContext,
     Headers(headers): Headers,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
-) -> Response {
+) -> Result<Response, EdgeError> {
     if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref()) {
         match crate::verification::verify_request_id_signature(
             &ctx,
@@ -265,13 +268,16 @@ pub async fn handle_openrtb_auction(
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
     let resp = build_openrtb_response_with_base_typed(&req, host);
-    let body = Body::json(&resp).unwrap_or_else(|_| Body::text("{}"));
+    let body = Body::json(&resp).map_err(|e| {
+        log::error!("Failed to serialize OpenRTB response: {}", e);
+        EdgeError::internal(e)
+    })?;
     let mut response = build_response(StatusCode::OK, body);
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    response
+    Ok(response)
 }
 
 #[action]
@@ -378,6 +384,90 @@ pub async fn handle_pixel(
     }
 
     response
+}
+
+#[derive(Deserialize, Validate)]
+struct ApsWinParams {
+    #[validate(length(min = 1))]
+    slot: String,
+    #[validate(range(min = 0.0))]
+    price: f64,
+}
+
+#[action]
+pub async fn handle_aps_bid(
+    Headers(headers): Headers,
+    ValidatedJson(req): ValidatedJson<ApsBidRequest>,
+) -> Result<Response, EdgeError> {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("mocktioneer.edgecompute.app");
+
+    log::info!(
+        "APS auction pubId={}, slots={}",
+        req.pub_id,
+        req.slots.len()
+    );
+
+    let resp = build_aps_response(&req, host);
+    let body = Body::json(&resp).map_err(|e| {
+        log::error!("Failed to serialize APS response: {}", e);
+        EdgeError::internal(e)
+    })?;
+    let mut response = build_response(StatusCode::OK, body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    Ok(response)
+}
+
+#[action]
+pub async fn handle_aps_win(ValidatedQuery(params): ValidatedQuery<ApsWinParams>) -> Response {
+    log::info!(
+        "APS win notification slot={}, price={:.2}",
+        params.slot,
+        params.price
+    );
+    build_response(StatusCode::NO_CONTENT, Body::empty())
+}
+
+#[action]
+pub async fn handle_adserver_mediate(
+    Headers(headers): Headers,
+    ValidatedJson(req): ValidatedJson<crate::mediation::MediationRequest>,
+) -> Result<Response, EdgeError> {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("mocktioneer.edgecompute.app");
+
+    log::info!(
+        "Mediation request for auction '{}' with {} impressions and {} bidder responses",
+        req.id,
+        req.imp.len(),
+        req.ext.bidder_responses.len()
+    );
+
+    let resp = crate::mediation::mediate_auction(req, host);
+
+    log::info!(
+        "Mediation complete for auction '{}': {} seatbid(s)",
+        resp.id,
+        resp.seatbid.len()
+    );
+
+    let body = Body::json(&resp).map_err(|e| {
+        log::error!("Failed to serialize mediation response: {}", e);
+        EdgeError::internal(e)
+    })?;
+    let mut response = build_response(StatusCode::OK, body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    Ok(response)
 }
 
 #[action]
@@ -743,5 +833,126 @@ mod tests {
         assert!(body.contains("bar"));
         assert!(body.contains("baz"));
         assert!(body.contains("qux"));
+    }
+
+    #[test]
+    fn handle_aps_bid_valid_request() {
+        let body = serde_json::json!({
+            "pubId": "5555",
+            "slots": [
+                {
+                    "slotID": "header-banner",
+                    "slotName": "header-banner",
+                    "sizes": [[728, 90], [970, 250]]
+                }
+            ],
+            "pageUrl": "https://example.com/article",
+            "ua": "Mozilla/5.0",
+            "timeout": 800
+        });
+        let ctx = ctx(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::json(&body).expect("json body"),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let ct = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(ct, "application/json");
+
+        // Parse response and check structure (real Amazon APS format)
+        let body_bytes = response.into_body().into_bytes();
+        let resp_json: serde_json::Value = serde_json::from_slice(&body_bytes).expect("valid json");
+
+        // Check contextual wrapper
+        assert!(resp_json.get("contextual").is_some());
+        let contextual = resp_json.get("contextual").unwrap();
+
+        // Check slots array
+        let slots = contextual.get("slots").unwrap().as_array().unwrap();
+        assert_eq!(slots.len(), 1);
+
+        // Check slot details (should select 970x250 with highest CPM from [728x90, 970x250])
+        let slot = &slots[0];
+        assert_eq!(
+            slot.get("slotID").unwrap().as_str().unwrap(),
+            "header-banner"
+        );
+        assert_eq!(slot.get("size").unwrap().as_str().unwrap(), "970x250");
+        assert!(slot.get("amznbid").is_some());
+        assert!(slot.get("amzniid").is_some());
+    }
+
+    #[test]
+    fn handle_aps_bid_empty_slots() {
+        let body = serde_json::json!({
+            "pubId": "5555",
+            "slots": []
+        });
+        let ctx = ctx(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::json(&body).expect("json body"),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        // Empty slots should fail validation
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn handle_aps_bid_invalid_json() {
+        let ctx = ctx(Method::POST, "/e/dtb/bid", Body::from("not-json"), &[]);
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_aps_win_valid() {
+        let ctx = ctx(
+            Method::GET,
+            "/aps/win?slot=header-banner&price=2.50",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_win(ctx)));
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[test]
+    fn handle_aps_win_missing_slot() {
+        let ctx = ctx(Method::GET, "/aps/win?price=2.50", Body::empty(), &[]);
+        let response = response_from(block_on(handle_aps_win(ctx)));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_aps_win_missing_price() {
+        let ctx = ctx(
+            Method::GET,
+            "/aps/win?slot=header-banner",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_win(ctx)));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn handle_aps_win_negative_price() {
+        let ctx = ctx(
+            Method::GET,
+            "/aps/win?slot=header-banner&price=-1.0",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_aps_win(ctx)));
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
     }
 }

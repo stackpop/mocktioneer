@@ -1,10 +1,10 @@
+use crate::aps::{ApsBidRequest, ApsBidResponse, ApsContextual, ApsSlotResponse};
 use crate::openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
+use crate::render::iframe_html;
 use serde_json::json;
 use uuid::Uuid;
-
-use crate::render::iframe_html;
 
 fn new_id() -> String {
     Uuid::now_v7().simple().to_string()
@@ -151,6 +151,160 @@ pub fn build_openrtb_response_with_base_typed(
             ..Default::default()
         }],
         ..Default::default()
+    }
+}
+
+// ============================================================================
+// APS TAM API Response Builder
+// ============================================================================
+
+/// Calculate mock APS price based on ad size.
+/// Larger ad sizes typically command higher CPMs.
+fn calculate_aps_price(width: i64, height: i64) -> f64 {
+    let area = (width * height) as f64;
+
+    // Base price calculation: larger ads = higher CPM
+    // Standard ranges: $1.70 - $4.20 (fallback minimum: $1.50 for very small non-standard sizes)
+    let base_cpm = match (width, height) {
+        // Premium large formats
+        (970, 250) => 4.20,
+        (970, 90) => 3.80,
+        (300, 600) => 3.50,
+        (160, 600) => 3.20,
+
+        // Standard leaderboard
+        (728, 90) => 3.00,
+
+        // Medium rectangle (most common)
+        (300, 250) => 2.50,
+        (336, 280) => 2.60,
+
+        // Mobile/smaller formats
+        (320, 100) => 2.20,
+        (320, 50) => 1.80,
+        (300, 50) => 1.70,
+
+        // Banner
+        (468, 60) => 2.00,
+
+        // Fallback based on area
+        _ => 1.50 + (area / 100000.0).min(3.0),
+    };
+
+    // Round to 2 decimal places
+    (base_cpm * 100.0).round() / 100.0
+}
+
+/// Encode APS price using base64 for mock testing.
+///
+/// Note: Real Amazon APS uses proprietary encoding that cannot be decoded without Amazon's keys.
+/// Our mock uses transparent base64 encoding that CAN be decoded for testing/debugging purposes.
+/// Example: `echo "Mi41MA==" | base64 -d` → `2.50`
+fn encode_aps_price(price: f64) -> String {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    // Encode just the number as a string
+    let price_str = price.to_string();
+    STANDARD.encode(price_str.as_bytes())
+}
+
+/// Build APS TAM response from an APS bid request matching real Amazon API format.
+///
+/// This function generates mock bids for all slots with standard sizes:
+/// - Variable bid prices based on ad size (calculated via `calculate_aps_price()`)
+///   - Ranges from $1.70 - $4.20 CPM for standard sizes
+///   - Example: 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80
+/// - 100% fill rate for standard sizes
+/// - Returns contextual format matching real Amazon APS API
+/// - No creative HTML (APS doesn't return adm field)
+/// - Generates base64-encoded price strings (recoverable in mock, unlike real APS)
+pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidResponse {
+    let mut slots: Vec<ApsSlotResponse> = Vec::new();
+
+    for slot in req.slots.iter() {
+        // Find the standard size with the highest CPM from all sizes in the slot
+        let best_size = slot
+            .sizes
+            .iter()
+            .filter_map(|&[w, h]| {
+                let w_i64 = w as i64;
+                let h_i64 = h as i64;
+                if is_standard_size(w_i64, h_i64) {
+                    let price = calculate_aps_price(w_i64, h_i64);
+                    Some((w, h, price))
+                } else {
+                    None
+                }
+            })
+            .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+
+        if best_size.is_none() {
+            // No standard sizes found, skip this slot
+            log::debug!(
+                "APS: Skipping slot '{}' - no standard sizes in {:?}",
+                slot.slot_id,
+                slot.sizes
+            );
+            continue;
+        }
+
+        let (w, h, price) = best_size.unwrap();
+
+        // Generate bid components (price already calculated in best_size selection)
+        let impression_id = new_id();
+        let crid = format!("{}-{}", new_id(), "mocktioneer");
+        let size_str = format!("{}x{}", w, h);
+
+        // Generate base64-encoded price string (recoverable in mock - real APS uses proprietary encoding)
+        let encoded_price = encode_aps_price(price);
+
+        // Build slot response matching real Amazon format
+        slots.push(ApsSlotResponse {
+            slot_id: slot.slot_id.clone(),
+            size: size_str.clone(),
+            crid: Some(crid),
+            media_type: Some("d".to_string()), // "d" for display
+            fif: Some("1".to_string()),        // "1" = filled
+            targeting: vec![
+                "amzniid".to_string(),
+                "amznp".to_string(),
+                "amznsz".to_string(),
+                "amznbid".to_string(),
+                "amznactt".to_string(),
+            ],
+            meta: vec![
+                "slotID".to_string(),
+                "mediaType".to_string(),
+                "size".to_string(),
+            ],
+            // Targeting key-value pairs (flat on slot object)
+            amzniid: Some(impression_id),
+            amznbid: Some(encoded_price.clone()),
+            amznp: Some(encoded_price), // Same encoding for both fields
+            amznsz: Some(size_str),
+            amznactt: Some("OPEN".to_string()),
+        });
+
+        log::debug!(
+            "APS: Generated bid for slot '{}' ({}x{}) at ${:.2}",
+            slot.slot_id,
+            w,
+            h,
+            price
+        );
+    }
+
+    ApsBidResponse {
+        contextual: ApsContextual {
+            slots,
+            host: Some(format!("https://{}", base_host)),
+            status: Some("ok".to_string()),
+            cfe: Some(true),
+            ev: Some(true),
+            cfn: Some("bao-csm/direct/csm_othersv6.js".to_string()),
+            cb: Some("6".to_string()),
+            cmp: None, // Optional campaign tracking URL
+        },
     }
 }
 
