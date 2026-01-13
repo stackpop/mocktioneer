@@ -18,43 +18,53 @@ fn new_id() -> String {
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationRequest {
     /// Auction ID
+    #[validate(length(min = 1))]
     pub id: String,
 
     /// Impression definitions (from original auction request)
+    #[validate(length(min = 1))]
     pub imp: Vec<Imp>,
 
     /// Mediation-specific extensions
+    #[validate(nested)]
     pub ext: MediationExt,
 }
 
 /// Extensions for mediation request
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationExt {
     /// Responses from all bidders
+    #[validate(length(min = 1))]
+    #[validate(nested)]
     pub bidder_responses: Vec<BidderResponse>,
 
     /// Optional mediation configuration
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(nested)]
     pub config: Option<MediationConfig>,
 }
 
 /// Response from a single bidder
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct BidderResponse {
     /// Bidder name/identifier (e.g., "amazon-aps", "prebid")
+    #[validate(length(min = 1))]
     pub bidder: String,
 
     /// Bids from this bidder
+    #[validate(nested)]
     pub bids: Vec<MediationBid>,
 }
 
 /// A single bid from a bidder
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationBid {
     /// Impression ID this bid is for
+    #[validate(length(min = 1))]
     pub imp_id: String,
 
     /// Bid price (CPM)
+    #[validate(range(min = 0.0))]
     pub price: f64,
 
     /// Creative markup (HTML)
@@ -63,9 +73,11 @@ pub struct MediationBid {
     pub adm: Option<String>,
 
     /// Creative width
+    #[validate(range(min = 1))]
     pub w: i64,
 
     /// Creative height
+    #[validate(range(min = 1))]
     pub h: i64,
 
     /// Creative ID
@@ -78,11 +90,12 @@ pub struct MediationBid {
 }
 
 /// Mediation configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationConfig {
     /// Minimum acceptable bid price (CPM)
     /// Bids below this floor will be rejected
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[validate(range(min = 0.0))]
     pub price_floor: Option<f64>,
 }
 
@@ -713,5 +726,183 @@ mod tests {
         // Prebid bid should have original creative
         let prebid_adm = prebid_seat.bid[0].adm.as_ref().unwrap();
         assert_eq!(prebid_adm, "<div>Prebid Ad 2</div>");
+    }
+
+    #[test]
+    fn test_validation_empty_auction_id() {
+        let request = MediationRequest {
+            id: "".to_string(), // Empty ID should fail
+            imp: vec![Imp {
+                id: "imp1".to_string(),
+                ..Default::default()
+            }],
+            ext: MediationExt {
+                bidder_responses: vec![BidderResponse {
+                    bidder: "bidder-a".to_string(),
+                    bids: vec![MediationBid {
+                        imp_id: "imp1".to_string(),
+                        price: 2.50,
+                        adm: Some("<div>Ad</div>".to_string()),
+                        w: 300,
+                        h: 250,
+                        crid: None,
+                        adomain: None,
+                    }],
+                }],
+                config: None,
+            },
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_validation_empty_impressions() {
+        let request = MediationRequest {
+            id: "test-auction".to_string(),
+            imp: vec![], // Empty impressions should fail
+            ext: MediationExt {
+                bidder_responses: vec![BidderResponse {
+                    bidder: "bidder-a".to_string(),
+                    bids: vec![],
+                }],
+                config: None,
+            },
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_validation_empty_bidder_responses() {
+        let request = MediationRequest {
+            id: "test-auction".to_string(),
+            imp: vec![Imp {
+                id: "imp1".to_string(),
+                ..Default::default()
+            }],
+            ext: MediationExt {
+                bidder_responses: vec![], // Empty bidder responses should fail
+                config: None,
+            },
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_validation_negative_price() {
+        let request = MediationRequest {
+            id: "test-auction".to_string(),
+            imp: vec![Imp {
+                id: "imp1".to_string(),
+                ..Default::default()
+            }],
+            ext: MediationExt {
+                bidder_responses: vec![BidderResponse {
+                    bidder: "bidder-a".to_string(),
+                    bids: vec![MediationBid {
+                        imp_id: "imp1".to_string(),
+                        price: -1.0, // Negative price should fail
+                        adm: Some("<div>Ad</div>".to_string()),
+                        w: 300,
+                        h: 250,
+                        crid: None,
+                        adomain: None,
+                    }],
+                }],
+                config: None,
+            },
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_validation_negative_price_floor() {
+        let request = MediationRequest {
+            id: "test-auction".to_string(),
+            imp: vec![Imp {
+                id: "imp1".to_string(),
+                ..Default::default()
+            }],
+            ext: MediationExt {
+                bidder_responses: vec![BidderResponse {
+                    bidder: "bidder-a".to_string(),
+                    bids: vec![MediationBid {
+                        imp_id: "imp1".to_string(),
+                        price: 2.50,
+                        adm: Some("<div>Ad</div>".to_string()),
+                        w: 300,
+                        h: 250,
+                        crid: None,
+                        adomain: None,
+                    }],
+                }],
+                config: Some(MediationConfig {
+                    price_floor: Some(-1.0), // Negative floor should fail
+                }),
+            },
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_validation_invalid_dimensions() {
+        let request = MediationRequest {
+            id: "test-auction".to_string(),
+            imp: vec![Imp {
+                id: "imp1".to_string(),
+                ..Default::default()
+            }],
+            ext: MediationExt {
+                bidder_responses: vec![BidderResponse {
+                    bidder: "bidder-a".to_string(),
+                    bids: vec![MediationBid {
+                        imp_id: "imp1".to_string(),
+                        price: 2.50,
+                        adm: Some("<div>Ad</div>".to_string()),
+                        w: 0, // Zero width should fail
+                        h: 250,
+                        crid: None,
+                        adomain: None,
+                    }],
+                }],
+                config: None,
+            },
+        };
+
+        assert!(request.validate().is_err());
+    }
+
+    #[test]
+    fn test_validation_valid_request() {
+        let request = MediationRequest {
+            id: "test-auction".to_string(),
+            imp: vec![Imp {
+                id: "imp1".to_string(),
+                ..Default::default()
+            }],
+            ext: MediationExt {
+                bidder_responses: vec![BidderResponse {
+                    bidder: "bidder-a".to_string(),
+                    bids: vec![MediationBid {
+                        imp_id: "imp1".to_string(),
+                        price: 2.50,
+                        adm: Some("<div>Ad</div>".to_string()),
+                        w: 300,
+                        h: 250,
+                        crid: None,
+                        adomain: None,
+                    }],
+                }],
+                config: Some(MediationConfig {
+                    price_floor: Some(1.0),
+                }),
+            },
+        };
+
+        assert!(request.validate().is_ok());
     }
 }
