@@ -240,7 +240,7 @@ pub async fn handle_openrtb_auction(
     RequestContext(ctx): RequestContext,
     Headers(headers): Headers,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
-) -> Response {
+) -> Result<Response, EdgeError> {
     if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref()) {
         match crate::verification::verify_request_id_signature(
             &ctx,
@@ -268,13 +268,16 @@ pub async fn handle_openrtb_auction(
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
     let resp = build_openrtb_response_with_base_typed(&req, host);
-    let body = Body::json(&resp).unwrap_or_else(|_| Body::text("{}"));
+    let body = Body::json(&resp).map_err(|e| {
+        log::error!("Failed to serialize OpenRTB response: {}", e);
+        EdgeError::internal(e)
+    })?;
     let mut response = build_response(StatusCode::OK, body);
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    response
+    Ok(response)
 }
 
 #[action]
@@ -395,7 +398,7 @@ struct ApsWinParams {
 pub async fn handle_aps_bid(
     Headers(headers): Headers,
     ValidatedJson(req): ValidatedJson<ApsBidRequest>,
-) -> Response {
+) -> Result<Response, EdgeError> {
     let host = headers
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
@@ -408,13 +411,16 @@ pub async fn handle_aps_bid(
     );
 
     let resp = build_aps_response(&req, host);
-    let body = Body::json(&resp).unwrap_or_else(|_| Body::text("{}"));
+    let body = Body::json(&resp).map_err(|e| {
+        log::error!("Failed to serialize APS response: {}", e);
+        EdgeError::internal(e)
+    })?;
     let mut response = build_response(StatusCode::OK, body);
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    response
+    Ok(response)
 }
 
 #[action]
@@ -431,7 +437,7 @@ pub async fn handle_aps_win(ValidatedQuery(params): ValidatedQuery<ApsWinParams>
 pub async fn handle_adserver_mediate(
     Headers(headers): Headers,
     ValidatedJson(req): ValidatedJson<crate::mediation::MediationRequest>,
-) -> Response {
+) -> Result<Response, EdgeError> {
     let host = headers
         .get(header::HOST)
         .and_then(|v| v.to_str().ok())
@@ -452,13 +458,16 @@ pub async fn handle_adserver_mediate(
         resp.seatbid.len()
     );
 
-    let body = Body::json(&resp).unwrap_or_else(|_| Body::text("{}"));
+    let body = Body::json(&resp).map_err(|e| {
+        log::error!("Failed to serialize mediation response: {}", e);
+        EdgeError::internal(e)
+    })?;
     let mut response = build_response(StatusCode::OK, body);
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/json"),
     );
-    response
+    Ok(response)
 }
 
 #[action]
