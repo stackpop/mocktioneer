@@ -164,7 +164,7 @@ fn calculate_aps_price(width: i64, height: i64) -> f64 {
     let area = (width * height) as f64;
 
     // Base price calculation: larger ads = higher CPM
-    // Standard ranges: $1.50 - $4.50
+    // Standard ranges: $1.70 - $4.20 (fallback minimum: $1.50 for very small non-standard sizes)
     let base_cpm = match (width, height) {
         // Premium large formats
         (970, 250) => 4.20,
@@ -212,7 +212,7 @@ fn encode_aps_price(price: f64) -> String {
 ///
 /// This function generates mock bids for all slots with standard sizes:
 /// - Variable bid prices based on ad size (calculated via `calculate_aps_price()`)
-///   - Ranges from $1.50 - $4.50 CPM depending on size
+///   - Ranges from $1.70 - $4.20 CPM for standard sizes
 ///   - Example: 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80
 /// - 100% fill rate for standard sizes
 /// - Returns contextual format matching real Amazon APS API

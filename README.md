@@ -131,9 +131,8 @@ Amazon Publisher Services (APS) Transparent Ad Marketplace endpoint. Accepts APS
 
 - Request format matches APS TAM API: `{ "pubId": "...", "slots": [...], "pageUrl": "...", "ua": "...", "timeout": 800 }`
 - Response format: `{ "bids": [{ "slotID": "...", "price": 2.50, "adm": "...", "w": 300, "h": 250, ... }] }`
-- Variable bid prices based on ad size: $1.50 - $4.50 CPM (e.g., 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80)
+- Variable bid prices based on ad size: $1.70 - $4.20 CPM (e.g., 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80)
 - 100% fill rate for standard sizes
-- Creatives rendered as iframes pointing to mocktioneer's `/static/creatives/` endpoints
 - APS targeting key-value pairs: `amzniid`, `amznbid`, `amznsz`
 
 Example request:
@@ -192,7 +191,7 @@ Example response (real Amazon API format):
   - Mock encoding is transparent to support debugging and test validation workflows
 - **No creative HTML (`adm` field)** - Real APS expects publishers to render creatives client-side using targeting keys
 - Targeting keys are returned as flat fields on each slot object
-- Mock uses **variable pricing based on ad size** ($1.50 - $4.50 CPM)
+- Mock uses **variable pricing based on ad size** ($1.70 - $4.20 CPM)
 - 100% fill rate (`fif: "1"`) for standard sizes only
 
 Test locally:
