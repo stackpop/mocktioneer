@@ -14,6 +14,26 @@ fn new_id() -> String {
     Uuid::now_v7().simple().to_string()
 }
 
+/// Decode base64-encoded APS price.
+///
+/// Real APS uses proprietary encoding that only Amazon/GAM can decode.
+/// Our mock uses transparent base64 encoding for testing purposes.
+/// Example: `echo "Mi41MA==" | base64 -d` → `2.50`
+fn decode_aps_price(encoded: &str) -> Result<f64, String> {
+    use base64::{engine::general_purpose::STANDARD, Engine as _};
+
+    let decoded = STANDARD
+        .decode(encoded)
+        .map_err(|e| format!("Failed to base64 decode price '{}': {}", encoded, e))?;
+
+    let price_str = std::str::from_utf8(&decoded)
+        .map_err(|e| format!("Failed to convert decoded price to UTF-8: {}", e))?;
+
+    price_str
+        .parse::<f64>()
+        .map_err(|e| format!("Failed to parse price '{}' as f64: {}", price_str, e))
+}
+
 /// Mediation request containing impression definitions and bidder responses
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationRequest {
@@ -63,9 +83,17 @@ pub struct MediationBid {
     #[validate(length(min = 1))]
     pub imp_id: String,
 
-    /// Bid price (CPM)
+    /// Bid price (CPM) - used for non-APS bidders with plain prices
+    /// For APS bids, this should be None and encoded_price should be set
+    #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(range(min = 0.0))]
-    pub price: f64,
+    pub price: Option<f64>,
+
+    /// Encoded price string for APS-style bidders
+    /// The mediation layer will decode this to determine the actual price
+    /// This simulates real-world APS where only Amazon/GAM can decode prices
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub encoded_price: Option<String>,
 
     /// Creative markup (HTML)
     /// Optional - if not provided, mediation will generate an iframe creative
@@ -99,30 +127,87 @@ pub struct MediationConfig {
     pub price_floor: Option<f64>,
 }
 
+/// Bid with resolved (decoded) price for mediation comparison
+struct ResolvedBid {
+    bidder: String,
+    bid: MediationBid,
+    resolved_price: f64,
+}
+
 /// Run mediation algorithm and return winning bids
 ///
 /// Algorithm:
 /// 1. Collect all bids grouped by impression ID
-/// 2. For each impression, select highest price bid (above floor if set)
-/// 3. On price tie, first bidder in array wins
-/// 4. Generate creatives for winning bids that don't have adm
-/// 5. Return OpenRTB response with winning bids grouped by seat
-pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBResponse {
+/// 2. Decode any encoded prices (APS-style bids)
+/// 3. For each impression, select highest price bid (above floor if set)
+/// 4. On price tie, first bidder in array wins
+/// 5. Generate creatives for winning bids that don't have adm
+/// 6. Return OpenRTB response with winning bids grouped by seat
+pub fn mediate_auction(
+    request: MediationRequest,
+    base_host: &str,
+) -> Result<OpenRTBResponse, String> {
     log::info!(
         "Mediation: processing {} impressions with {} bidder responses",
         request.imp.len(),
         request.ext.bidder_responses.len()
     );
 
-    // Step 1: Collect all bids grouped by impression ID
-    let mut bids_by_imp: HashMap<String, Vec<(String, MediationBid)>> = HashMap::new();
+    // Step 1: Collect all bids grouped by impression ID, decoding prices as needed
+    let mut bids_by_imp: HashMap<String, Vec<ResolvedBid>> = HashMap::new();
 
     for bidder_response in request.ext.bidder_responses {
         for bid in bidder_response.bids {
+            // Resolve price: either from encoded_price (APS) or direct price
+            let resolved_price = if let Some(ref encoded) = bid.encoded_price {
+                // Decode APS-style encoded price
+                match decode_aps_price(encoded) {
+                    Ok(price) => {
+                        log::info!(
+                            "Mediation: decoded APS price for imp '{}' from bidder '{}': ${:.2}",
+                            bid.imp_id,
+                            bidder_response.bidder,
+                            price
+                        );
+                        price
+                    }
+                    Err(e) => {
+                        log::error!(
+                            "Mediation: failed to decode price for imp '{}' from bidder '{}': {}",
+                            bid.imp_id,
+                            bidder_response.bidder,
+                            e
+                        );
+                        return Err(format!(
+                            "Failed to decode price for impression '{}': {}",
+                            bid.imp_id, e
+                        ));
+                    }
+                }
+            } else if let Some(price) = bid.price {
+                // Direct price from non-APS bidder
+                price
+            } else {
+                // Neither encoded nor direct price - error
+                log::error!(
+                    "Mediation: bid for imp '{}' from bidder '{}' has no price (neither encoded nor direct)",
+                    bid.imp_id,
+                    bidder_response.bidder
+                );
+                return Err(format!(
+                    "Bid for impression '{}' from '{}' has no price",
+                    bid.imp_id, bidder_response.bidder
+                ));
+            };
+
             bids_by_imp
                 .entry(bid.imp_id.clone())
                 .or_default()
-                .push((bidder_response.bidder.clone(), bid));
+                .push(ResolvedBid {
+                    bidder: bidder_response.bidder.clone(),
+                    bid,
+                    resolved_price,
+                });
         }
     }
 
@@ -131,8 +216,8 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
         bids_by_imp.len()
     );
 
-    // Step 2: Select winner per impression (highest price)
-    let mut winning_bids: HashMap<String, (String, MediationBid)> = HashMap::new();
+    // Step 2: Select winner per impression (highest resolved price)
+    let mut winning_bids: HashMap<String, ResolvedBid> = HashMap::new();
     let price_floor = request
         .ext
         .config
@@ -146,8 +231,8 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
             bids.len()
         );
 
-        // Filter by price floor
-        bids.retain(|(_, bid)| bid.price >= price_floor);
+        // Filter by price floor using resolved price
+        bids.retain(|resolved| resolved.resolved_price >= price_floor);
 
         if bids.is_empty() {
             log::debug!(
@@ -159,11 +244,13 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
         }
 
         // Select highest price (first bidder wins on tie)
-        // Use fold to ensure first bidder wins on price tie
         let winner = bids
             .into_iter()
             .reduce(|acc, current| {
-                match current.1.price.partial_cmp(&acc.1.price) {
+                match current
+                    .resolved_price
+                    .partial_cmp(&acc.resolved_price)
+                {
                     Some(Ordering::Greater) => current,
                     _ => acc, // Keep first on tie or equal
                 }
@@ -172,42 +259,45 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
 
         log::info!(
             "Mediation: '{}' wins impression '{}' at ${:.2}",
-            winner.0,
+            winner.bidder,
             imp_id,
-            winner.1.price
+            winner.resolved_price
         );
 
         winning_bids.insert(imp_id, winner);
     }
 
     // Step 3: Build OpenRTB response grouped by seat (bidder)
-    build_openrtb_response(request.id, winning_bids, base_host)
+    Ok(build_openrtb_response(request.id, winning_bids, base_host))
 }
 
 /// Build OpenRTB response from winning bids
 fn build_openrtb_response(
     id: String,
-    winning_bids: HashMap<String, (String, MediationBid)>,
+    winning_bids: HashMap<String, ResolvedBid>,
     base_host: &str,
 ) -> OpenRTBResponse {
     // Group winning bids by seat/bidder
     let mut seats: HashMap<String, Vec<OpenRTBBid>> = HashMap::new();
 
-    for (imp_id, (bidder, bid)) in winning_bids {
+    for (imp_id, resolved) in winning_bids {
+        let bid = resolved.bid;
+        let bidder = resolved.bidder;
+        let price = resolved.resolved_price;
+
         // Generate creative if missing (e.g., for APS bids)
         let adm = if let Some(existing_adm) = bid.adm {
             existing_adm
         } else {
             // Generate iframe creative using same logic as OpenRTB endpoint
             let crid = bid.crid.as_deref().unwrap_or(&imp_id);
-            let bid_price = Some(bid.price);
-            crate::render::iframe_html(base_host, crid, bid.w, bid.h, bid_price)
+            crate::render::iframe_html(base_host, crid, bid.w, bid.h, Some(price))
         };
 
         let ortb_bid = OpenRTBBid {
             id: new_id(),
             impid: imp_id,
-            price: bid.price,
+            price,
             adm: Some(adm),
             w: Some(bid.w),
             h: Some(bid.h),
@@ -248,6 +338,12 @@ fn build_openrtb_response(
 mod tests {
     use super::*;
 
+    /// Helper to encode price as base64 for APS-style testing
+    fn encode_price(price: f64) -> String {
+        use base64::{engine::general_purpose::STANDARD, Engine as _};
+        STANDARD.encode(price.to_string().as_bytes())
+    }
+
     #[test]
     fn test_mediate_single_bidder_single_impression() {
         let request = MediationRequest {
@@ -261,7 +357,8 @@ mod tests {
                     bidder: "bidder-a".to_string(),
                     bids: vec![MediationBid {
                         imp_id: "imp1".to_string(),
-                        price: 2.50,
+                        price: Some(2.50),
+                        encoded_price: None,
                         adm: Some("<div>Ad A</div>".to_string()),
                         w: 300,
                         h: 250,
@@ -273,7 +370,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "test.host");
+        let response = mediate_auction(request, "test.host").unwrap();
 
         assert_eq!(response.id, "test-auction-1");
         assert_eq!(response.seatbid.len(), 1);
@@ -301,7 +398,8 @@ mod tests {
                         bidder: "bidder-a".to_string(),
                         bids: vec![MediationBid {
                             imp_id: "imp1".to_string(),
-                            price: 2.50,
+                            price: Some(2.50),
+                            encoded_price: None,
                             adm: Some("<div>Ad A</div>".to_string()),
                             w: 300,
                             h: 250,
@@ -313,7 +411,8 @@ mod tests {
                         bidder: "bidder-b".to_string(),
                         bids: vec![MediationBid {
                             imp_id: "imp1".to_string(),
-                            price: 3.50,
+                            price: Some(3.50),
+                            encoded_price: None,
                             adm: Some("<div>Ad B</div>".to_string()),
                             w: 300,
                             h: 250,
@@ -326,7 +425,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "test.host");
+        let response = mediate_auction(request, "test.host").unwrap();
 
         assert_eq!(response.seatbid.len(), 1);
         assert_eq!(response.seatbid[0].seat, Some("bidder-b".to_string()));
@@ -347,7 +446,8 @@ mod tests {
                         bidder: "bidder-a".to_string(),
                         bids: vec![MediationBid {
                             imp_id: "imp1".to_string(),
-                            price: 2.50,
+                            price: Some(2.50),
+                            encoded_price: None,
                             adm: Some("<div>Ad A</div>".to_string()),
                             w: 300,
                             h: 250,
@@ -359,7 +459,8 @@ mod tests {
                         bidder: "bidder-b".to_string(),
                         bids: vec![MediationBid {
                             imp_id: "imp1".to_string(),
-                            price: 2.50,
+                            price: Some(2.50),
+                            encoded_price: None,
                             adm: Some("<div>Ad B</div>".to_string()),
                             w: 300,
                             h: 250,
@@ -372,7 +473,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "test.host");
+        let response = mediate_auction(request, "test.host").unwrap();
 
         // First bidder should win on tie
         assert_eq!(response.seatbid.len(), 1);
@@ -393,7 +494,8 @@ mod tests {
                         bidder: "bidder-a".to_string(),
                         bids: vec![MediationBid {
                             imp_id: "imp1".to_string(),
-                            price: 0.50, // Below floor
+                            price: Some(0.50), // Below floor
+                            encoded_price: None,
                             adm: Some("<div>Ad A</div>".to_string()),
                             w: 300,
                             h: 250,
@@ -405,7 +507,8 @@ mod tests {
                         bidder: "bidder-b".to_string(),
                         bids: vec![MediationBid {
                             imp_id: "imp1".to_string(),
-                            price: 2.00, // Above floor
+                            price: Some(2.00), // Above floor
+                            encoded_price: None,
                             adm: Some("<div>Ad B</div>".to_string()),
                             w: 300,
                             h: 250,
@@ -420,7 +523,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "test.host");
+        let response = mediate_auction(request, "test.host").unwrap();
 
         // Only bidder-b should win (above floor)
         assert_eq!(response.seatbid.len(), 1);
@@ -441,7 +544,8 @@ mod tests {
                     bidder: "bidder-a".to_string(),
                     bids: vec![MediationBid {
                         imp_id: "imp1".to_string(),
-                        price: 0.50,
+                        price: Some(0.50),
+                        encoded_price: None,
                         adm: Some("<div>Ad A</div>".to_string()),
                         w: 300,
                         h: 250,
@@ -455,7 +559,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "test.host");
+        let response = mediate_auction(request, "test.host").unwrap();
 
         // No winners (all below floor)
         assert_eq!(response.seatbid.len(), 0);
@@ -482,7 +586,8 @@ mod tests {
                         bids: vec![
                             MediationBid {
                                 imp_id: "imp1".to_string(),
-                                price: 2.50,
+                                price: Some(2.50),
+                                encoded_price: None,
                                 adm: Some("<div>Ad A1</div>".to_string()),
                                 w: 300,
                                 h: 250,
@@ -491,7 +596,8 @@ mod tests {
                             },
                             MediationBid {
                                 imp_id: "imp2".to_string(),
-                                price: 3.00,
+                                price: Some(3.00),
+                                encoded_price: None,
                                 adm: Some("<div>Ad A2</div>".to_string()),
                                 w: 728,
                                 h: 90,
@@ -505,7 +611,8 @@ mod tests {
                         bids: vec![
                             MediationBid {
                                 imp_id: "imp1".to_string(),
-                                price: 3.50, // Higher for imp1
+                                price: Some(3.50), // Higher for imp1
+                                encoded_price: None,
                                 adm: Some("<div>Ad B1</div>".to_string()),
                                 w: 300,
                                 h: 250,
@@ -514,7 +621,8 @@ mod tests {
                             },
                             MediationBid {
                                 imp_id: "imp2".to_string(),
-                                price: 2.00, // Lower for imp2
+                                price: Some(2.00), // Lower for imp2
+                                encoded_price: None,
                                 adm: Some("<div>Ad B2</div>".to_string()),
                                 w: 728,
                                 h: 90,
@@ -528,7 +636,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "test.host");
+        let response = mediate_auction(request, "test.host").unwrap();
 
         // Both bidders should have winning bids (different impressions)
         assert_eq!(response.seatbid.len(), 2);
@@ -568,7 +676,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "test.host");
+        let response = mediate_auction(request, "test.host").unwrap();
 
         // No bids
         assert_eq!(response.seatbid.len(), 0);
@@ -576,7 +684,7 @@ mod tests {
 
     #[test]
     fn test_mediate_missing_adm_generates_creative() {
-        // Test APS-style bid without creative markup
+        // Test APS-style bid without creative markup (using encoded price)
         let request = MediationRequest {
             id: "test-auction-8".to_string(),
             imp: vec![Imp {
@@ -588,8 +696,9 @@ mod tests {
                     bidder: "amazon-aps".to_string(),
                     bids: vec![MediationBid {
                         imp_id: "imp1".to_string(),
-                        price: 3.00,
-                        adm: None, // No creative provided (like APS)
+                        price: None,                             // No decoded price
+                        encoded_price: Some(encode_price(3.00)), // Encoded price like real APS
+                        adm: None,                               // No creative provided (like APS)
                         w: 300,
                         h: 250,
                         crid: Some("aps-creative-123".to_string()),
@@ -600,7 +709,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "mocktioneer.test");
+        let response = mediate_auction(request, "mocktioneer.test").unwrap();
 
         // Should have one winning bid
         assert_eq!(response.seatbid.len(), 1);
@@ -621,12 +730,12 @@ mod tests {
         assert!(adm.contains("<iframe"));
         assert!(adm.contains("//mocktioneer.test/static/creatives/300x250.html"));
         assert!(adm.contains("crid=aps-creative-123"));
-        assert!(adm.contains("bid=3.00"));
+        assert!(adm.contains("bid=3"));
     }
 
     #[test]
     fn test_mediate_mixed_bids_with_and_without_adm() {
-        // Test mediation with both traditional bids (with adm) and APS-style bids (without adm)
+        // Test mediation with both traditional bids (with adm) and APS-style bids (encoded price, no adm)
         let request = MediationRequest {
             id: "test-auction-9".to_string(),
             imp: vec![
@@ -646,8 +755,9 @@ mod tests {
                         bids: vec![
                             MediationBid {
                                 imp_id: "imp1".to_string(),
-                                price: 3.50, // APS wins imp1
-                                adm: None,   // No creative
+                                price: None,                             // APS uses encoded price
+                                encoded_price: Some(encode_price(3.50)), // APS wins imp1
+                                adm: None,                               // No creative
                                 w: 300,
                                 h: 250,
                                 crid: Some("aps-1".to_string()),
@@ -655,7 +765,8 @@ mod tests {
                             },
                             MediationBid {
                                 imp_id: "imp2".to_string(),
-                                price: 2.00, // APS loses imp2
+                                price: None,
+                                encoded_price: Some(encode_price(2.00)), // APS loses imp2
                                 adm: None,
                                 w: 728,
                                 h: 90,
@@ -669,7 +780,8 @@ mod tests {
                         bids: vec![
                             MediationBid {
                                 imp_id: "imp1".to_string(),
-                                price: 2.50, // Prebid loses imp1
+                                price: Some(2.50), // Prebid loses imp1
+                                encoded_price: None,
                                 adm: Some("<div>Prebid Ad 1</div>".to_string()),
                                 w: 300,
                                 h: 250,
@@ -678,7 +790,8 @@ mod tests {
                             },
                             MediationBid {
                                 imp_id: "imp2".to_string(),
-                                price: 3.00, // Prebid wins imp2
+                                price: Some(3.00), // Prebid wins imp2
+                                encoded_price: None,
                                 adm: Some("<div>Prebid Ad 2</div>".to_string()),
                                 w: 728,
                                 h: 90,
@@ -692,7 +805,7 @@ mod tests {
             },
         };
 
-        let response = mediate_auction(request, "test.example.com");
+        let response = mediate_auction(request, "test.example.com").unwrap();
 
         // Both bidders should have winning bids
         assert_eq!(response.seatbid.len(), 2);
@@ -741,7 +854,8 @@ mod tests {
                     bidder: "bidder-a".to_string(),
                     bids: vec![MediationBid {
                         imp_id: "imp1".to_string(),
-                        price: 2.50,
+                        price: Some(2.50),
+                        encoded_price: None,
                         adm: Some("<div>Ad</div>".to_string()),
                         w: 300,
                         h: 250,
@@ -803,7 +917,8 @@ mod tests {
                     bidder: "bidder-a".to_string(),
                     bids: vec![MediationBid {
                         imp_id: "imp1".to_string(),
-                        price: -1.0, // Negative price should fail
+                        price: Some(-1.0), // Negative price should fail
+                        encoded_price: None,
                         adm: Some("<div>Ad</div>".to_string()),
                         w: 300,
                         h: 250,
@@ -831,7 +946,8 @@ mod tests {
                     bidder: "bidder-a".to_string(),
                     bids: vec![MediationBid {
                         imp_id: "imp1".to_string(),
-                        price: 2.50,
+                        price: Some(2.50),
+                        encoded_price: None,
                         adm: Some("<div>Ad</div>".to_string()),
                         w: 300,
                         h: 250,
@@ -861,7 +977,8 @@ mod tests {
                     bidder: "bidder-a".to_string(),
                     bids: vec![MediationBid {
                         imp_id: "imp1".to_string(),
-                        price: 2.50,
+                        price: Some(2.50),
+                        encoded_price: None,
                         adm: Some("<div>Ad</div>".to_string()),
                         w: 0, // Zero width should fail
                         h: 250,
@@ -889,7 +1006,8 @@ mod tests {
                     bidder: "bidder-a".to_string(),
                     bids: vec![MediationBid {
                         imp_id: "imp1".to_string(),
-                        price: 2.50,
+                        price: Some(2.50),
+                        encoded_price: None,
                         adm: Some("<div>Ad</div>".to_string()),
                         w: 300,
                         h: 250,
@@ -904,5 +1022,84 @@ mod tests {
         };
 
         assert!(request.validate().is_ok());
+    }
+
+    #[test]
+    fn test_decode_aps_price_valid() {
+        // Test decoding valid base64-encoded prices
+        assert_eq!(decode_aps_price(&encode_price(2.50)).unwrap(), 2.50);
+        assert_eq!(decode_aps_price(&encode_price(3.00)).unwrap(), 3.00);
+        assert_eq!(decode_aps_price(&encode_price(0.01)).unwrap(), 0.01);
+    }
+
+    #[test]
+    fn test_decode_aps_price_invalid() {
+        // Test decoding invalid encoded prices returns error
+        assert!(decode_aps_price("not-valid-base64!!!").is_err());
+        assert!(decode_aps_price("").is_err());
+    }
+
+    #[test]
+    fn test_mediate_encoded_price_decoding_error() {
+        // Test that invalid encoded price returns error
+        let request = MediationRequest {
+            id: "test-auction".to_string(),
+            imp: vec![Imp {
+                id: "imp1".to_string(),
+                ..Default::default()
+            }],
+            ext: MediationExt {
+                bidder_responses: vec![BidderResponse {
+                    bidder: "amazon-aps".to_string(),
+                    bids: vec![MediationBid {
+                        imp_id: "imp1".to_string(),
+                        price: None,
+                        encoded_price: Some("invalid!!!".to_string()), // Invalid base64
+                        adm: None,
+                        w: 300,
+                        h: 250,
+                        crid: None,
+                        adomain: None,
+                    }],
+                }],
+                config: None,
+            },
+        };
+
+        let result = mediate_auction(request, "test.host");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("Failed to decode price"));
+    }
+
+    #[test]
+    fn test_mediate_bid_without_any_price_returns_error() {
+        // Test that bid without price or encoded_price returns error
+        let request = MediationRequest {
+            id: "test-auction".to_string(),
+            imp: vec![Imp {
+                id: "imp1".to_string(),
+                ..Default::default()
+            }],
+            ext: MediationExt {
+                bidder_responses: vec![BidderResponse {
+                    bidder: "broken-bidder".to_string(),
+                    bids: vec![MediationBid {
+                        imp_id: "imp1".to_string(),
+                        price: None,         // No price
+                        encoded_price: None, // No encoded price either
+                        adm: Some("<div>Ad</div>".to_string()),
+                        w: 300,
+                        h: 250,
+                        crid: None,
+                        adomain: None,
+                    }],
+                }],
+                config: None,
+            },
+        };
+
+        let result = mediate_auction(request, "test.host");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("has no price"));
     }
 }

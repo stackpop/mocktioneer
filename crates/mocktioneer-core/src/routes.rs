@@ -450,7 +450,10 @@ pub async fn handle_adserver_mediate(
         req.ext.bidder_responses.len()
     );
 
-    let resp = crate::mediation::mediate_auction(req, host);
+    let resp = crate::mediation::mediate_auction(req, host).map_err(|e| {
+        log::error!("Mediation failed: {}", e);
+        EdgeError::bad_request(e)
+    })?;
 
     log::info!(
         "Mediation complete for auction '{}': {} seatbid(s)",
