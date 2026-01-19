@@ -247,10 +247,7 @@ pub fn mediate_auction(
         let winner = bids
             .into_iter()
             .reduce(|acc, current| {
-                match current
-                    .resolved_price
-                    .partial_cmp(&acc.resolved_price)
-                {
+                match current.resolved_price.partial_cmp(&acc.resolved_price) {
                     Some(Ordering::Greater) => current,
                     _ => acc, // Keep first on tie or equal
                 }
@@ -755,9 +752,9 @@ mod tests {
                         bids: vec![
                             MediationBid {
                                 imp_id: "imp1".to_string(),
-                                price: None,                             // APS uses encoded price
+                                price: None, // APS uses encoded price
                                 encoded_price: Some(encode_price(3.50)), // APS wins imp1
-                                adm: None,                               // No creative
+                                adm: None,   // No creative
                                 w: 300,
                                 h: 250,
                                 crid: Some("aps-1".to_string()),
