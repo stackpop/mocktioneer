@@ -51,11 +51,14 @@ pub fn is_standard_size(w: i64, h: i64) -> bool {
 
 /// Get CPM for a size. Returns configured CPM for standard sizes, area-based fallback otherwise.
 pub fn get_cpm(w: i64, h: i64) -> f64 {
-    SIZE_MAP.get(size_key(w, h).as_str()).copied().unwrap_or_else(|| {
-        // Fallback: area-based pricing for non-standard sizes
-        let area = (w * h) as f64;
-        ((DEFAULT_CPM + (area / 100000.0).min(MAX_AREA_BONUS)) * 100.0).round() / 100.0
-    })
+    SIZE_MAP
+        .get(size_key(w, h).as_str())
+        .copied()
+        .unwrap_or_else(|| {
+            // Fallback: area-based pricing for non-standard sizes
+            let area = (w * h) as f64;
+            ((DEFAULT_CPM + (area / 100000.0).min(MAX_AREA_BONUS)) * 100.0).round() / 100.0
+        })
 }
 
 /// Returns an iterator over all standard ad sizes as (width, height) tuples.
@@ -113,10 +116,7 @@ pub fn standard_or_default((w, h): (i64, i64)) -> (i64, i64) {
 /// - Enforces standard ad sizes (non-standard sizes default to 300x250)
 /// - Uses size-based CPM pricing ($1.70 - $4.20 depending on size)
 /// - Price can be overridden via `imp.ext.mocktioneer.bid`
-pub fn build_openrtb_response(
-    req: &OpenRTBRequest,
-    base_host: &str,
-) -> OpenRTBResponse {
+pub fn build_openrtb_response(req: &OpenRTBRequest, base_host: &str) -> OpenRTBResponse {
     let mut bids: Vec<OpenrtbBid> = Vec::new();
     for imp in req.imp.iter() {
         let impid = if imp.id.is_empty() { "1" } else { &imp.id };
