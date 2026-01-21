@@ -1,0 +1,13 @@
+{
+  "name": "mocktioneer-playwright-tests",
+  "version": "1.0.0",
+  "description": "Playwright visibility tests for mocktioneer creatives",
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "test:debug": "playwright test --debug"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.50.0"
+  }
+}

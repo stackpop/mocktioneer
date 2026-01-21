@@ -132,6 +132,20 @@ methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
 adapters = ["axum", "cloudflare", "fastly"]
 
+[[triggers.http]]
+id = "sizes"
+path = "/_/sizes"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_sizes"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "sizes_options"
+path = "/_/sizes"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
 [adapters.axum.adapter]
 crate = "crates/mocktioneer-adapter-axum"
 manifest = "crates/mocktioneer-adapter-axum/axum.toml"

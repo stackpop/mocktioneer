@@ -16,7 +16,7 @@ use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
 use crate::auction::{
-    build_aps_response, build_openrtb_response_with_base_typed, is_standard_size,
+    build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
 use crate::openrtb::OpenRTBRequest;
 use crate::render::{creative_html, info_html, render_svg, render_template_str};
@@ -267,7 +267,7 @@ pub async fn handle_openrtb_auction(
         .unwrap_or("mocktioneer.edgecompute.app");
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
-    let resp = build_openrtb_response_with_base_typed(&req, host);
+    let resp = build_openrtb_response(&req, host);
     let body = Body::json(&resp).map_err(|e| {
         log::error!("Failed to serialize OpenRTB response: {}", e);
         EdgeError::internal(e)
@@ -497,6 +497,42 @@ pub async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParam
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    response
+}
+
+/// Returns all standard ad sizes as JSON array.
+/// Useful for test fixtures and keeping external configs in sync with SIZE_MAP.
+///
+/// Response format:
+/// ```json
+/// {
+///   "sizes": [
+///     {"width": 300, "height": 250, "cpm": 2.5},
+///     {"width": 728, "height": 90, "cpm": 3.0},
+///     ...
+///   ]
+/// }
+/// ```
+#[action]
+pub async fn handle_sizes() -> Response {
+    use crate::auction::get_cpm;
+
+    let sizes: Vec<serde_json::Value> = standard_sizes()
+        .map(|(w, h)| {
+            serde_json::json!({
+                "width": w,
+                "height": h,
+                "cpm": get_cpm(w, h)
+            })
+        })
+        .collect();
+
+    let body = serde_json::json!({ "sizes": sizes });
+    let mut response = build_response(StatusCode::OK, Body::from(body.to_string()));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
     );
     response
 }
@@ -954,5 +990,28 @@ mod tests {
         );
         let response = response_from(block_on(handle_aps_win(ctx)));
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn handle_sizes_returns_json() {
+        let ctx = ctx(Method::GET, "/_/sizes", Body::empty(), &[]);
+        let response = response_from(block_on(handle_sizes(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let ct = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(ct, "application/json");
+        let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let sizes = json["sizes"].as_array().unwrap();
+        assert_eq!(sizes.len(), standard_sizes().count());
+        // Check one size has all expected fields
+        let first = &sizes[0];
+        assert!(first["width"].is_i64());
+        assert!(first["height"].is_i64());
+        assert!(first["cpm"].is_f64());
     }
 }

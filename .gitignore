@@ -2,6 +2,7 @@
 /bin
 /pkg
 /target
+
 # crate-local outputs
 **/bin/
 **/pkg/
@@ -9,14 +10,20 @@
 # env
 .env
 
-
 # OS
 .DS_Store
 
 # IDE - VSCode
+.claude/
+.specstory
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
 !.vscode/launch.json
 !.vscode/extensions.json
-.specstory
+
+# Node / Playwright
+.cache/
+node_modules/
+playwright-report/
+test-results/
