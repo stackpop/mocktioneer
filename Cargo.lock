@@ -580,7 +580,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=feature%2Fhost-header-with-x-forwarded#ecb926fcdd6ca62e8cc8123ad8373ee860fcc91c"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -602,7 +602,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=feature%2Fhost-header-with-x-forwarded#ecb926fcdd6ca62e8cc8123ad8373ee860fcc91c"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
 dependencies = [
  "async-trait",
  "brotli",
@@ -619,7 +619,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=feature%2Fhost-header-with-x-forwarded#ecb926fcdd6ca62e8cc8123ad8373ee860fcc91c"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -639,7 +639,7 @@ dependencies = [
 [[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=feature%2Fhost-header-with-x-forwarded#ecb926fcdd6ca62e8cc8123ad8373ee860fcc91c"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -666,7 +666,7 @@ dependencies = [
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=feature%2Fhost-header-with-x-forwarded#ecb926fcdd6ca62e8cc8123ad8373ee860fcc91c"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
 dependencies = [
  "log",
  "proc-macro2",
