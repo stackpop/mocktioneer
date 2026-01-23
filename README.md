@@ -108,11 +108,13 @@ echo_stdout = false
 | GET    | `/`                                | Service info page rendered from template (uses `Host` header for display). |
 | POST   | `/openrtb2/auction`                | Accepts OpenRTB 2.x banner requests and returns deterministic bids. |
 | POST   | `/e/dtb/bid`                       | **APS TAM bid endpoint** - accepts APS-specific request format and returns APS bids. |
+| POST   | `/adserver/mediate`                | **Ad server mediation endpoint** - accepts mediation requests. |
 | GET    | `/static/creatives/{W}x{H}.html`   | HTML wrapper around the SVG creative and optional tracking pixel. |
 | GET    | `/static/img/{W}x{H}.svg`          | Dynamic SVG showing size + optional bid badge. |
 | GET    | `/click`                           | Landing page that echoes creative metadata. |
 | GET    | `/pixel?pid={id}`                  | 1×1 transparent GIF that sets a long-lived `mtkid` cookie (requires `pid` query). |
 | GET    | `/aps/win`                         | **APS win notification endpoint** - logs win events (requires `slot` and `price` query params). |
+| GET    | `/_/sizes`                         | Returns JSON array of all standard sizes with CPM pricing. |
 
 ### Auction (`/openrtb2/auction`)
 - Supports `imp[].banner.w/h` or `imp[].banner.format[0]` size hints.
@@ -131,7 +133,7 @@ Amazon Publisher Services (APS) Transparent Ad Marketplace endpoint. Accepts APS
 
 - Request format matches APS TAM API: `{ "pubId": "...", "slots": [...], "pageUrl": "...", "ua": "...", "timeout": 800 }`
 - Response format matches real Amazon APS with `contextual` wrapper: `{ "contextual": { "slots": [...], "host": "...", "status": "ok", ... } }`
-- Variable bid prices based on ad size: $1.70 - $4.20 CPM (e.g., 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80)
+- Variable bid prices based on ad size (see [Standard Sizes & Pricing](#standard-sizes--pricing))
 - 100% fill rate for standard sizes
 - APS targeting key-value pairs: `amzniid`, `amznbid`, `amznsz`
 
@@ -191,7 +193,7 @@ Example response:
   - Mock encoding is transparent to support debugging and test validation workflows
 - **No creative HTML (`adm` field)** - Real APS expects publishers to render creatives client-side using targeting keys
 - Targeting keys are returned as flat fields on each slot object
-- Mock uses **variable pricing based on ad size** ($1.70 - $4.20 CPM)
+- Mock uses **variable pricing based on ad size** ($1.70 - $4.20 CPM, see [Standard Sizes & Pricing](#standard-sizes--pricing))
 - 100% fill rate (`fif: "1"`) for standard sizes only
 
 Test locally:
@@ -199,15 +201,50 @@ Test locally:
 ./examples/aps_request.sh
 ```
 
-### Standard Sizes
+### Sizes API (`/_/sizes`)
 
-Supported creative sizes:
+Returns all standard sizes with their CPM pricing as JSON:
+```bash
+curl http://127.0.0.1:8787/_/sizes | jq .
+```
 
-`300x250`, `320x50`, `728x90`, `160x600`, `300x50`, `300x600`, `970x250`, `468x60`, `336x280`, `320x100`
+Response:
+```json
+{
+  "sizes": [
+    { "width": 300, "height": 250, "cpm": 2.5 },
+    { "width": 728, "height": 90, "cpm": 3.0 },
+    ...
+  ]
+}
+```
+
+This endpoint is used by Playwright tests to dynamically fetch the authoritative size list.
+
+### Standard Sizes & Pricing
+
+Supported creative sizes with their CPM pricing:
+
+| Size | Name | CPM |
+|------|------|-----|
+| 300x250 | Medium Rectangle | $2.50 |
+| 336x280 | Large Rectangle | $2.60 |
+| 728x90 | Leaderboard | $3.00 |
+| 970x90 | Large Leaderboard | $3.80 |
+| 160x600 | Wide Skyscraper | $3.20 |
+| 300x600 | Half Page | $3.50 |
+| 970x250 | Billboard | $4.20 |
+| 468x60 | Banner | $2.00 |
+| 320x50 | Mobile Leaderboard | $1.80 |
+| 300x50 | Mobile Banner | $1.70 |
+| 320x100 | Large Mobile Banner | $2.20 |
+| 320x480 | Mobile Interstitial Portrait | $2.80 |
+| 480x320 | Mobile Interstitial Landscape | $2.80 |
 
 - Static asset routes return `404` for non-standard sizes.
 - OpenRTB auction responses coerce unknown sizes to `300x250` to keep creatives valid.
 - APS endpoint skips non-standard sizes (returns empty `slots` array for those slots).
+- Non-standard sizes use area-based fallback pricing: `$1.50 + min(area/100000, $3.00)`
 
 ### OpenRTB Mapping
 
@@ -231,9 +268,27 @@ Supported creative sizes:
 
 ## Testing & Tooling
 
-- Unit tests: `cargo test` (covers routes, OpenRTB mapping, SVG rendering, cookie behaviour).
-- Smoke test: `./examples/openrtb_request.sh` posts a sample OpenRTB request against a local Fastly dev server (override the host with `MOCKTIONEER_BASE_URL`).
-- When adjusting routes or templates, update `crates/mocktioneer-core/tests/endpoints.rs` to keep coverage meaningful.
+### Unit Tests
+```bash
+cargo test --workspace
+```
+Covers routes, OpenRTB mapping, APS responses, SVG rendering, and cookie behaviour.
+
+### Playwright Tests
+End-to-end tests for creative rendering and visibility:
+```bash
+cd tests/playwright
+npm install
+npm test
+```
+Tests verify that SVG creatives render correctly at all standard sizes, text is visible and not clipped, and the `/_/sizes` endpoint returns valid data. Playwright automatically starts the Axum server.
+
+### Smoke Tests
+Helper scripts in `examples/` (override the host with `MOCKTIONEER_BASE_URL`):
+- `./examples/openrtb_request.sh` - posts a sample OpenRTB request
+- `./examples/aps_request.sh` - posts an APS TAM bid request
+
+When adjusting routes or templates, update `crates/mocktioneer-core/tests/endpoints.rs` to keep coverage meaningful.
 
 ## Deployment
 
