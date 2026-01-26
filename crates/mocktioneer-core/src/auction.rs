@@ -2,7 +2,7 @@ use crate::aps::{ApsBidRequest, ApsBidResponse, ApsContextual, ApsSlotResponse};
 use crate::openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
-use crate::render::iframe_html;
+use crate::render::{iframe_html, iframe_html_with_metadata, CreativeMetadata, SignatureStatus};
 use phf::phf_map;
 use serde_json::json;
 use uuid::Uuid;
@@ -159,6 +159,113 @@ pub fn build_openrtb_response(req: &OpenRTBRequest, base_host: &str) -> OpenRTBR
         seatbid: vec![SeatBid {
             seat: Some("mocktioneer".to_string()),
             bid: bids,
+            ..Default::default()
+        }],
+        ..Default::default()
+    }
+}
+
+/// Build an OpenRTB bid response with embedded metadata for debugging.
+///
+/// This function embeds signature verification status, the original request,
+/// and a preview of the response as HTML comments in each creative.
+pub fn build_openrtb_response_with_base_typed(
+    req: &OpenRTBRequest,
+    base_host: &str,
+    signature_status: SignatureStatus,
+) -> OpenRTBResponse {
+    // Build bids without adm
+    let mut bids: Vec<OpenrtbBid> = Vec::new();
+    for imp in req.imp.iter() {
+        let impid = if imp.id.is_empty() { "1" } else { &imp.id };
+        let (w, h) = standard_or_default(size_from_imp(imp));
+        let bid_id = new_id();
+        let crid = format!("mocktioneer-{}", impid);
+
+        // Extract custom bid from imp.ext.mocktioneer.bid if present
+        let custom_bid = imp
+            .ext
+            .as_ref()
+            .and_then(|e| e.mocktioneer.as_ref())
+            .and_then(|m| m.bid);
+
+        // Use custom bid if provided, otherwise use size-based CPM
+        let price = custom_bid.unwrap_or_else(|| get_cpm(w, h));
+        let bid_ext = custom_bid.map(|b| json!({"mocktioneer": {"bid": b}}));
+
+        bids.push(OpenrtbBid {
+            id: bid_id,
+            impid: impid.to_string(),
+            price,
+            adm: None, // Filled after metadata is built
+            crid: Some(crid),
+            w: Some(w),
+            h: Some(h),
+            mtype: Some(MediaType::Banner),
+            adomain: Some(vec!["example.com".to_string()]),
+            ext: bid_ext,
+            ..Default::default()
+        });
+    }
+
+    // Build preview response for metadata
+    let response_id = if req.id.is_empty() {
+        "req".to_string()
+    } else {
+        req.id.clone()
+    };
+
+    let preview_response = OpenRTBResponse {
+        id: response_id.clone(),
+        cur: Some("USD".to_string()),
+        seatbid: vec![SeatBid {
+            seat: Some("mocktioneer".to_string()),
+            bid: bids.clone(),
+            ..Default::default()
+        }],
+        ..Default::default()
+    };
+
+    // Serialize response for metadata
+    let sanitized_response = serde_json::to_value(&preview_response).ok();
+
+    // Build metadata with sanitized response
+    let metadata = CreativeMetadata {
+        signature: signature_status,
+        request: req,
+        response: sanitized_response,
+    };
+
+    // Fill in adm for each bid
+    let final_bids: Vec<OpenrtbBid> = bids
+        .into_iter()
+        .map(|mut bid| {
+            let bid_for_iframe = if bid.ext.is_some() {
+                Some(bid.price)
+            } else {
+                None
+            };
+            let crid = bid.crid.as_deref().unwrap_or("unknown");
+            let w = bid.w.unwrap_or(300);
+            let h = bid.h.unwrap_or(250);
+            bid.adm = Some(iframe_html_with_metadata(
+                base_host,
+                crid,
+                w,
+                h,
+                bid_for_iframe,
+                &metadata,
+            ));
+            bid
+        })
+        .collect();
+
+    OpenRTBResponse {
+        id: response_id,
+        cur: Some("USD".to_string()),
+        seatbid: vec![SeatBid {
+            seat: Some("mocktioneer".to_string()),
+            bid: final_bids,
             ..Default::default()
         }],
         ..Default::default()

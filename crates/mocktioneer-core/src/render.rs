@@ -1,7 +1,31 @@
 use handlebars::Handlebars;
+use serde::Serialize;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
+use crate::openrtb::OpenRTBRequest;
+
+/// Signature verification status for creative metadata
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "status", content = "details")]
+pub enum SignatureStatus {
+    /// Signature was present and successfully verified
+    Verified { kid: String },
+    /// Signature verification failed
+    Failed { reason: String },
+    /// No signature was present in the request
+    NotPresent { reason: String },
+}
+
+/// Metadata to embed in creative HTML comments
+#[derive(Debug, Clone, Serialize)]
+pub struct CreativeMetadata<'a> {
+    pub signature: SignatureStatus,
+    pub request: &'a OpenRTBRequest,
+    /// The OpenRTB response with `adm` fields stripped (to avoid recursion)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<JsonValue>,
+}
 pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
     let mut reg = Handlebars::new();
     // We want HTML escaping on by default (to protect attribute injection)
@@ -20,6 +44,34 @@ pub fn iframe_html(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>
         "W": w,
     });
     render_template_str(IFRAME_HTML_TMPL, &data)
+}
+
+/// Render iframe HTML with embedded metadata as an HTML comment.
+///
+/// The metadata is serialized as pretty-printed JSON and wrapped in an HTML comment
+/// before the iframe element. Any `--` sequences in the JSON are escaped to prevent
+/// breaking the HTML comment syntax.
+pub fn iframe_html_with_metadata(
+    base_host: &str,
+    crid: &str,
+    w: i64,
+    h: i64,
+    bid: Option<f64>,
+    metadata: &CreativeMetadata,
+) -> String {
+    let base_html = iframe_html(base_host, crid, w, h, bid);
+
+    // Serialize metadata as pretty JSON
+    let meta_json = serde_json::to_string_pretty(metadata)
+        .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize metadata: {}\"}}", e));
+
+    // Escape -- sequences to prevent breaking HTML comment syntax
+    let safe_json = meta_json.replace("--", "- -");
+
+    format!(
+        "<!-- MOCKTIONEER_METADATA\n{}\n-->\n{}",
+        safe_json, base_html
+    )
 }
 
 pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
@@ -101,5 +153,147 @@ mod tests {
         let adm = iframe_html("host.test", "crid123", 320, 50, Some(3.75));
         assert!(adm.contains("//host.test/static/creatives/320x50.html"));
         assert!(adm.contains("bid=3.75"));
+    }
+
+    #[test]
+    fn test_iframe_html_with_metadata_includes_comment() {
+        use crate::openrtb::OpenRTBRequest;
+
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "test-req-123",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+        }))
+        .unwrap();
+
+        let metadata = CreativeMetadata {
+            signature: SignatureStatus::Verified {
+                kid: "key-001".to_string(),
+            },
+            request: &req,
+            response: None,
+        };
+
+        let adm =
+            iframe_html_with_metadata("host.test", "crid123", 300, 250, Some(1.23), &metadata);
+
+        // Check the comment structure
+        assert!(adm.starts_with("<!-- MOCKTIONEER_METADATA"));
+        assert!(adm.contains("-->\n<iframe"));
+
+        // Check signature status is included
+        assert!(adm.contains("\"status\": \"Verified\""));
+        assert!(adm.contains("\"kid\": \"key-001\""));
+
+        // Check request data is included
+        assert!(adm.contains("\"id\": \"test-req-123\""));
+
+        // Check the iframe is still there
+        assert!(adm.contains("//host.test/static/creatives/300x250.html"));
+    }
+
+    #[test]
+    fn test_iframe_html_with_metadata_escapes_dashes() {
+        use crate::openrtb::OpenRTBRequest;
+
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "test--with--dashes",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+        }))
+        .unwrap();
+
+        let metadata = CreativeMetadata {
+            signature: SignatureStatus::Failed {
+                reason: "Test--failure--reason".to_string(),
+            },
+            request: &req,
+            response: None,
+        };
+
+        let adm = iframe_html_with_metadata("host.test", "crid123", 300, 250, None, &metadata);
+
+        // The -- sequences should be escaped to "- -" to not break HTML comments
+        // "test--with--dashes" becomes "test- -with- -dashes"
+        assert!(adm.contains("test- -with- -dashes"));
+        assert!(adm.contains("Test- -failure- -reason"));
+
+        // The metadata section should not contain "--" (except for the comment delimiters)
+        let metadata_content = adm
+            .strip_prefix("<!-- MOCKTIONEER_METADATA\n")
+            .unwrap()
+            .split("\n-->")
+            .next()
+            .unwrap();
+        assert!(
+            !metadata_content.contains("--"),
+            "Metadata should not contain -- sequence: {}",
+            metadata_content
+        );
+    }
+
+    #[test]
+    fn test_iframe_html_with_metadata_signature_not_present() {
+        use crate::openrtb::OpenRTBRequest;
+
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "no-sig-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+        }))
+        .unwrap();
+
+        let metadata = CreativeMetadata {
+            signature: SignatureStatus::NotPresent {
+                reason: "No site.domain present".to_string(),
+            },
+            request: &req,
+            response: None,
+        };
+
+        let adm = iframe_html_with_metadata("host.test", "crid123", 300, 250, None, &metadata);
+
+        assert!(adm.contains("\"status\": \"NotPresent\""));
+        assert!(adm.contains("No site.domain present"));
+    }
+
+    #[test]
+    fn test_iframe_html_with_metadata_includes_response() {
+        use crate::openrtb::OpenRTBRequest;
+
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "req-with-response",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+        }))
+        .unwrap();
+
+        let response = serde_json::json!({
+            "id": "req-with-response",
+            "cur": "USD",
+            "seatbid": [{
+                "seat": "mocktioneer",
+                "bid": [{
+                    "id": "bid-1",
+                    "impid": "1",
+                    "price": 1.23,
+                    "crid": "mocktioneer-1",
+                    "w": 300,
+                    "h": 250
+                }]
+            }]
+        });
+
+        let metadata = CreativeMetadata {
+            signature: SignatureStatus::Verified {
+                kid: "key-001".to_string(),
+            },
+            request: &req,
+            response: Some(response),
+        };
+
+        let adm = iframe_html_with_metadata("host.test", "crid123", 300, 250, None, &metadata);
+
+        // Check response is included
+        assert!(adm.contains("\"response\":"));
+        assert!(adm.contains("\"seatbid\":"));
+        assert!(adm.contains("\"seat\": \"mocktioneer\""));
+        assert!(adm.contains("\"price\": 1.23"));
     }
 }
