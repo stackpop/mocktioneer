@@ -1,0 +1,15 @@
+{
+  "name": "mocktioneer-docs",
+  "version": "1.0.0",
+  "description": "Documentation site for Mocktioneer",
+  "license": "ISC",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.5.0"
+  }
+}
