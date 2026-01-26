@@ -1,0 +1,12 @@
+.git
+.github
+target
+**/target
+.DS_Store
+.vscode
+.idea
+*.swp
+*.swo
+edgezero/.git
+edgezero/target
+edgezero/examples
