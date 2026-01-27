@@ -2,6 +2,12 @@
 
 Mocktioneer can be used as a bidder in Prebid Server for server-side header bidding testing.
 
+::: warning Fork Required
+The Mocktioneer adapter is not yet merged into upstream Prebid Server. Use the Stackpop fork:
+
+**[github.com/stackpop/prebid-server](https://github.com/stackpop/prebid-server)**
+:::
+
 ## Configuration
 
 ### Host Configuration

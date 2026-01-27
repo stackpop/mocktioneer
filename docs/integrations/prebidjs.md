@@ -2,44 +2,24 @@
 
 Mocktioneer works with Prebid.js for client-side header bidding integration.
 
-## Adapter Options
+::: warning Fork Required
+The Mocktioneer adapter is not yet merged into upstream Prebid.js. Use the Stackpop fork:
 
-### Option 1: Use Generic OpenRTB Adapter (Recommended)
+**[github.com/stackpop/Prebid.js](https://github.com/stackpop/Prebid.js)**
+:::
 
-Prebid.js includes a generic OpenRTB adapter that works with any OpenRTB-compliant endpoint. No custom adapter required:
+## Installation
 
-```javascript
-var adUnits = [
-  {
-    code: 'div-banner-1',
-    mediaTypes: {
-      banner: { sizes: [[300, 250]] },
-    },
-    bids: [
-      {
-        bidder: 'genericOrtb',
-        params: {
-          endpoint: 'http://localhost:8787/openrtb2/auction',
-        },
-      },
-    ],
-  },
-]
-```
-
-### Option 2: Custom Mocktioneer Adapter
-
-For a dedicated adapter with Mocktioneer-specific features (like price override), create a custom adapter:
-
-```
-your-prebid-fork/modules/mocktioneerBidAdapter.js
-```
-
-Build Prebid with your custom adapter:
+Clone and build from the Stackpop fork:
 
 ```bash
+git clone https://github.com/stackpop/Prebid.js.git
+cd Prebid.js
+npm install
 gulp build --modules=mocktioneerBidAdapter
 ```
+
+The built `prebid.js` will include the Mocktioneer adapter.
 
 ## Configuration
 
