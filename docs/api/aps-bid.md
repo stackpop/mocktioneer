@@ -18,7 +18,10 @@ Content-Type: application/json
     {
       "slotID": "header-banner",
       "slotName": "header-banner",
-      "sizes": [[728, 90], [970, 250]]
+      "sizes": [
+        [728, 90],
+        [970, 250]
+      ]
     }
   ],
   "pageUrl": "https://example.com/article",
@@ -29,16 +32,16 @@ Content-Type: application/json
 
 ### Request Fields
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `pubId` | string | Yes | Publisher ID |
-| `slots` | array | Yes | Array of ad slots (min 1) |
-| `slots[].slotID` | string | Yes | Unique slot identifier |
-| `slots[].slotName` | string | Yes | Slot name |
-| `slots[].sizes` | array | Yes | Array of `[width, height]` pairs |
-| `pageUrl` | string | No | Page URL |
-| `ua` | string | No | User agent |
-| `timeout` | integer | No | Request timeout in ms |
+| Field              | Type    | Required | Description                      |
+| ------------------ | ------- | -------- | -------------------------------- |
+| `pubId`            | string  | Yes      | Publisher ID                     |
+| `slots`            | array   | Yes      | Array of ad slots (min 1)        |
+| `slots[].slotID`   | string  | Yes      | Unique slot identifier           |
+| `slots[].slotName` | string  | No       | Slot name                        |
+| `slots[].sizes`    | array   | Yes      | Array of `[width, height]` pairs |
+| `pageUrl`          | string  | No       | Page URL                         |
+| `ua`               | string  | No       | User agent                       |
+| `timeout`          | integer | No       | Request timeout in ms            |
 
 ## Response Format
 
@@ -75,41 +78,28 @@ The response matches the real Amazon APS API format with a `contextual` wrapper:
 
 ### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `contextual` | object | Wrapper object (matches real APS) |
-| `contextual.slots` | array | Array of bid responses |
-| `contextual.slots[].slotID` | string | Slot identifier |
-| `contextual.slots[].size` | string | Selected size (e.g., "970x250") |
-| `contextual.slots[].crid` | string | Creative ID |
-| `contextual.slots[].mediaType` | string | Media type ("d" = display) |
-| `contextual.slots[].fif` | string | Fill indicator ("1" = filled) |
-| `contextual.slots[].targeting` | array | Targeting key names |
-| `contextual.slots[].meta` | array | Metadata field names |
-| `contextual.slots[].amzniid` | string | Amazon impression ID |
-| `contextual.slots[].amznbid` | string | Base64-encoded bid price |
-| `contextual.slots[].amznp` | string | Base64-encoded price |
-| `contextual.slots[].amznsz` | string | Size string |
-| `contextual.slots[].amznactt` | string | Account type ("OPEN") |
-| `contextual.host` | string | Service host |
-| `contextual.status` | string | Status ("ok") |
+| Field                          | Type   | Description                       |
+| ------------------------------ | ------ | --------------------------------- |
+| `contextual`                   | object | Wrapper object (matches real APS) |
+| `contextual.slots`             | array  | Array of bid responses            |
+| `contextual.slots[].slotID`    | string | Slot identifier                   |
+| `contextual.slots[].size`      | string | Selected size (e.g., "970x250")   |
+| `contextual.slots[].crid`      | string | Creative ID                       |
+| `contextual.slots[].mediaType` | string | Media type ("d" = display)        |
+| `contextual.slots[].fif`       | string | Fill indicator ("1" = filled)     |
+| `contextual.slots[].targeting` | array  | Targeting key names               |
+| `contextual.slots[].meta`      | array  | Metadata field names              |
+| `contextual.slots[].amzniid`   | string | Amazon impression ID              |
+| `contextual.slots[].amznbid`   | string | Base64-encoded bid price          |
+| `contextual.slots[].amznp`     | string | Base64-encoded price              |
+| `contextual.slots[].amznsz`    | string | Size string                       |
+| `contextual.slots[].amznactt`  | string | Account type ("OPEN")             |
+| `contextual.host`              | string | Service host                      |
+| `contextual.status`            | string | Status ("ok")                     |
 
 ## Size Selection
 
-When multiple sizes are provided, Mocktioneer selects the size with the highest CPM:
-
-| Size | CPM |
-|------|-----|
-| 970x250 | $4.20 |
-| 300x600 | $3.50 |
-| 728x90 | $2.00 |
-| 300x250 | $2.50 |
-| 336x280 | $2.40 |
-| 320x50 | $1.80 |
-| 320x100 | $1.90 |
-| 160x600 | $2.20 |
-| 468x60 | $1.70 |
-| 300x50 | $1.70 |
+When multiple sizes are provided, Mocktioneer selects the size with the highest CPM. See the [complete pricing table](/api/#supported-sizes) for all supported sizes and their CPM values.
 
 Non-standard sizes are skipped (no bid returned for that slot).
 
@@ -120,9 +110,10 @@ The price encoding differs between real APS and Mocktioneer:
 
 - **Real Amazon APS**: Uses proprietary encoding that only Amazon and trusted partners can decode
 - **Mocktioneer**: Uses Base64 encoding for testing purposes
-:::
+  :::
 
 Decode Mocktioneer prices:
+
 ```bash
 echo "Mi41MA==" | base64 -d
 # Output: 2.50
@@ -206,22 +197,43 @@ curl -X POST http://127.0.0.1:8787/e/dtb/bid \
 
 ## Differences from Real APS
 
-| Feature | Real APS | Mocktioneer |
-|---------|----------|-------------|
-| Price encoding | Proprietary | Base64 |
+| Feature            | Real APS                   | Mocktioneer                |
+| ------------------ | -------------------------- | -------------------------- |
+| Price encoding     | Proprietary                | Base64                     |
 | Creative rendering | Client-side with targeting | Client-side with targeting |
-| Fill rate | Variable | 100% for standard sizes |
-| Response time | Network latency | Instant |
-| `adm` field | Not provided | Not provided |
+| Fill rate          | Variable                   | 100% for standard sizes    |
+| Response time      | Network latency            | Instant                    |
+| `adm` field        | Not provided               | Not provided               |
+
+## Creative Rendering
+
+Unlike OpenRTB responses, APS does not return an `adm` field with creative markup. Instead, creatives are rendered client-side using the targeting keys. For testing with Mocktioneer, you can render creatives directly using the static asset endpoints:
+
+```javascript
+// After receiving APS bid response
+const slot = response.contextual.slots[0]
+const size = slot.amznsz // e.g., "300x250"
+const [width, height] = size.split('x')
+
+// Render Mocktioneer creative directly (for testing)
+const iframe = document.createElement('iframe')
+iframe.src = `${response.contextual.host}/static/creatives/${size}.html`
+iframe.width = width
+iframe.height = height
+iframe.frameBorder = '0'
+document.getElementById('ad-container').appendChild(iframe)
+```
 
 ## Integration with GAM
 
 APS targeting keys can be passed to Google Ad Manager:
 
 ```javascript
-googletag.pubads().setTargeting('amzniid', slot.amzniid);
-googletag.pubads().setTargeting('amznbid', slot.amznbid);
-googletag.pubads().setTargeting('amznsz', slot.amznsz);
+googletag.pubads().setTargeting('amzniid', slot.amzniid)
+googletag.pubads().setTargeting('amznbid', slot.amznbid)
+googletag.pubads().setTargeting('amznsz', slot.amznsz)
 ```
+
+In production, GAM line items configured with APS targeting will serve the Amazon creative. For Mocktioneer testing, configure GAM line items to redirect to Mocktioneer's creative endpoints based on the `amznsz` targeting key.
 
 See the [APS Win Notification](./aps-win) endpoint for reporting wins.

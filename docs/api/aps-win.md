@@ -10,10 +10,10 @@ GET /aps/win?slot={slotID}&price={price}
 
 ## Parameters
 
-| Parameter | Location | Type | Required | Description |
-|-----------|----------|------|----------|-------------|
-| `slot` | Query | string | Yes | Slot ID that won |
-| `price` | Query | float | Yes | Winning price (min 0) |
+| Parameter | Location | Type   | Required | Description           |
+| --------- | -------- | ------ | -------- | --------------------- |
+| `slot`    | Query    | string | Yes      | Slot ID that won      |
+| `price`   | Query    | float  | Yes      | Winning price (min 0) |
 
 ## Response
 
@@ -50,15 +50,15 @@ In a real APS integration, you would fire this endpoint when your ad server repo
 ```javascript
 // After GAM reports APS line item win
 function reportApsWin(slotId, price) {
-  const url = new URL('https://mocktioneer.edgecompute.app/aps/win');
-  url.searchParams.set('slot', slotId);
-  url.searchParams.set('price', price);
-  
-  navigator.sendBeacon(url.toString());
+  const url = new URL('https://mocktioneer.edgecompute.app/aps/win')
+  url.searchParams.set('slot', slotId)
+  url.searchParams.set('price', price)
+
+  navigator.sendBeacon(url.toString())
 }
 
 // Example usage
-reportApsWin('header-banner', 2.50);
+reportApsWin('header-banner', 2.5)
 ```
 
 ### Using Fetch
@@ -67,10 +67,10 @@ reportApsWin('header-banner', 2.50);
 async function reportWin(slot, price) {
   const response = await fetch(
     `http://127.0.0.1:8787/aps/win?slot=${slot}&price=${price}`
-  );
-  
+  )
+
   if (response.status === 204) {
-    console.log('Win reported successfully');
+    console.log('Win reported successfully')
   }
 }
 ```
@@ -86,7 +86,7 @@ curl "http://127.0.0.1:8787/aps/win?price=2.50"
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR", 
+    "code": "VALIDATION_ERROR",
     "message": "slot: missing required field"
   }
 }
@@ -155,6 +155,8 @@ The typical APS win notification flow:
 
 ### Full Example
 
+::: details Complete Integration Example (click to expand)
+
 ```javascript
 // 1. Get APS bids
 const apsResponse = await fetch('/e/dtb/bid', {
@@ -162,25 +164,26 @@ const apsResponse = await fetch('/e/dtb/bid', {
   headers: { 'Content-Type': 'application/json' },
   body: JSON.stringify({
     pubId: '1234',
-    slots: [{ slotID: 'header', slotName: 'header', sizes: [[728, 90]] }]
-  })
-});
-const apsData = await apsResponse.json();
+    slots: [{ slotID: 'header', slotName: 'header', sizes: [[728, 90]] }],
+  }),
+})
+const apsData = await apsResponse.json()
 
 // 2. Pass targeting to GAM
-const slot = apsData.contextual.slots[0];
-googletag.pubads().setTargeting('amzniid', slot.amzniid);
-googletag.pubads().setTargeting('amznbid', slot.amznbid);
+const slot = apsData.contextual.slots[0]
+googletag.pubads().setTargeting('amzniid', slot.amzniid)
+googletag.pubads().setTargeting('amznbid', slot.amznbid)
 
 // 3. When APS wins, report it
 googletag.pubads().addEventListener('slotRenderEnded', (event) => {
   if (event.advertiserId === APS_ADVERTISER_ID) {
-    // Decode price from amznbid (in mock, it's base64)
-    const price = atob(slot.amznbid);
-    fetch(`/aps/win?slot=${slot.slotID}&price=${price}`);
+    const price = atob(slot.amznbid) // Base64 decode (Mocktioneer only)
+    fetch(`/aps/win?slot=${slot.slotID}&price=${price}`)
   }
-});
+})
 ```
+
+:::
 
 ## Use Cases
 
@@ -196,6 +199,7 @@ Verify your win reporting logic fires correctly:
 ### Analytics Integration
 
 Use win notifications to track:
+
 - Win rates by slot
 - Average winning prices
 - Fill rate analysis
@@ -203,6 +207,7 @@ Use win notifications to track:
 ### Debugging
 
 Compare win notifications against bid requests to identify:
+
 - Missing win reports
 - Price discrepancies
 - Slot ID mismatches

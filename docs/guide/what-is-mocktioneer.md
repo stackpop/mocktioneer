@@ -17,7 +17,7 @@ Mocktioneer provides:
 
 - **Deterministic responses** - Same input always produces the same output
 - **Zero external dependencies** - Everything runs locally or at the edge
-- **Full OpenRTB 2.x compliance** - Works with any standard OpenRTB client
+- **OpenRTB 2.x banner support** - Works with standard OpenRTB banner clients
 - **APS TAM compatibility** - Test Amazon Publisher Services integrations
 - **Predictable creatives** - SVG banners with size and bid information for visual verification
 
@@ -44,14 +44,14 @@ Mocktioneer provides:
 
 ## Key Features
 
-| Feature | Description |
-|---------|-------------|
-| Multi-platform | Runs on Fastly, Cloudflare, and native Axum |
+| Feature         | Description                                  |
+| --------------- | -------------------------------------------- |
+| Multi-platform  | Runs on Fastly, Cloudflare, and native Axum  |
 | Manifest-driven | Single `edgezero.toml` configures everything |
-| Price control | Override bid prices via request extensions |
-| Standard sizes | Supports common IAB ad sizes |
-| Cookie tracking | Optional pixel tracking with `mtkid` cookie |
-| CORS enabled | Works with browser-based clients |
+| Price control   | Override bid prices via request extensions   |
+| Standard sizes  | Supports common IAB ad sizes                 |
+| Cookie tracking | Optional pixel tracking with `mtkid` cookie  |
+| CORS enabled    | Works with browser-based clients             |
 
 ## How It Works
 

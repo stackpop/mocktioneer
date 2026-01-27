@@ -4,11 +4,11 @@ Mocktioneer runs on multiple edge platforms through the adapter pattern. Each ad
 
 ## Available Adapters
 
-| Adapter | Platform | Use Case |
-|---------|----------|----------|
-| [Axum](./axum) | Native Rust | Local development, integration testing |
-| [Fastly](./fastly) | Fastly Compute | Production edge deployment |
-| [Cloudflare](./cloudflare) | Cloudflare Workers | Production edge deployment |
+| Adapter                    | Platform           | Use Case                               |
+| -------------------------- | ------------------ | -------------------------------------- |
+| [Axum](./axum)             | Native Rust        | Local development, integration testing |
+| [Fastly](./fastly)         | Fastly Compute     | Production edge deployment             |
+| [Cloudflare](./cloudflare) | Cloudflare Workers | Production edge deployment             |
 
 ## How Adapters Work
 
@@ -45,6 +45,7 @@ All adapters share the same core logic from `mocktioneer-core`. The adapter laye
 ### For Development
 
 Use the **Axum adapter**:
+
 - Fastest compile times (native target)
 - Standard Rust debugging
 - No platform CLI required
@@ -61,17 +62,18 @@ Choose based on your infrastructure:
 - **Cloudflare Workers** - If you're already using Cloudflare or prefer their platform
 
 Both provide:
+
 - Global edge deployment
 - Low latency
 - Automatic scaling
 
 ## EdgeZero CLI
 
-The EdgeZero CLI provides a unified interface for all adapters:
+The EdgeZero CLI provides a unified interface for all adapters. It's maintained in the EdgeZero repository and isn't vendored here, so install it separately if you want to use it.
 
 ```bash
-# Install
-cargo install --path edgezero/crates/edgezero-cli --features cli
+# Install (requires access to EdgeZero repo)
+cargo install --git ssh://git@github.com/stackpop/edgezero.git edgezero-cli --features cli
 
 # Serve any adapter
 edgezero-cli serve --adapter axum
@@ -83,6 +85,7 @@ edgezero-cli build --adapter fastly
 ```
 
 The CLI reads `edgezero.toml` and executes the appropriate commands for each adapter.
+If you don't have `edgezero-cli`, use the direct adapter commands on the pages below.
 
 ## Common Configuration
 

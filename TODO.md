@@ -6,6 +6,17 @@ Working backlog and per-task plans live here. Before coding, capture an approved
 - [ ] _(add upcoming work items here)_
 
 ## Active Plan
+- [x] 2026-01-27: Follow-up doc fixes after user edits (schema accuracy, setup guidance, verbosity).
+- [x] Re-audit remaining mismatches (mediation schema, signature verification fields, non-standard size behavior, Docker/CI references).
+- [x] Update API docs to match current handlers (mediation request shape, signature fields, static asset error codes, pricing/default behavior).
+- [x] Update guide/integration docs for repo/tooling reality (EdgeZero CLI install/run, Cloudflare wrangler config, remove/qualify Docker/CI, correct "no-bid" guidance).
+- [x] Capture formatting/test status and summarize in Review with timestamp.
+- [x] 2026-01-27: Review documentation exposure changes vs main (redundancy, inconsistency, missing docs, thoroughness, verbosity).
+- [x] Capture diff scope vs `main` and list touched documentation files.
+- [x] Review for redundancy and inconsistency across docs/README/edgezero config references.
+- [x] Review for missing or thin documentation coverage.
+- [x] Review for thoroughness and verbosity (clarity vs noise).
+- [x] Summarize findings, assumptions, unresolved items in Review section with timestamp.
 - [x] 2026-01-21: Low finding #1 — stabilize `/_/sizes` output (safe parsing, deterministic ordering) and align the test with dynamic size count.
 - [x] 2026-01-21: Low finding #2 — reduce `decode_aps_price` visibility to test-only or crate-only.
 - [x] 2026-01-21: Low finding #3 — reduce `size_key` allocation overhead in size lookups.
@@ -58,3 +69,18 @@ Working backlog and per-task plans live here. Before coding, capture an approved
 - Summary: Switched size lookups to packed integer keys to avoid string allocations; finished the remaining low findings.
 - Assumptions: Packed size keys (u32 width/height) cover all supported sizes.
 - Unresolved: None from the low-finding list.
+
+- Date: 2026-01-27 01:06 UTC
+- Summary: Reviewed new documentation set vs `main` for accuracy, redundancy, missing coverage, and verbosity; captured discrepancies against current code/config.
+- Assumptions: The docs should describe the current edgezero-based implementation (no embedded edgezero submodule) and the documented API targets the shipped handlers in `mocktioneer-core`.
+- Unresolved: Clarify intended supported size list/pricing tables, signature verification field names, and whether Docker/CI image guidance is in-scope for this repo.
+
+- Date: 2026-01-27 02:05 UTC
+- Summary: Updated API/guide/integration docs to match current mediation schema, signature verification fields, creative error behaviors, and edge tooling setup; clarified containerization and no-bid guidance.
+- Assumptions: EdgeZero CLI is installed from the EdgeZero repository when needed; Docker usage is optional and requires a user-provided Dockerfile.
+- Unresolved: None.
+
+- Date: 2026-01-27 02:08 UTC
+- Summary: Ran docs formatting and linting (`npm run format:write`, `npm run lint`) to normalize Markdown and confirm lint clean.
+- Assumptions: None.
+- Unresolved: None.

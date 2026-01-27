@@ -14,9 +14,9 @@ Returns a 1x1 transparent GIF and optionally sets a tracking cookie.
 
 ### Parameters
 
-| Parameter | Location | Type | Required | Description |
-|-----------|----------|------|----------|-------------|
-| `pid` | Query | string | Yes | Pixel ID (1-128 chars) |
+| Parameter | Location | Type   | Required | Description            |
+| --------- | -------- | ------ | -------- | ---------------------- |
+| `pid`     | Query    | string | Yes      | Pixel ID (1-128 chars) |
 
 ### Behavior
 
@@ -38,15 +38,15 @@ The `Set-Cookie` header is only present when creating a new cookie.
 
 ### Cookie Details
 
-| Property | Value |
-|----------|-------|
-| Name | `mtkid` |
-| Value | UUIDv7 |
-| Path | `/` |
-| Max-Age | 31536000 (1 year) |
-| SameSite | None |
-| Secure | Yes |
-| HttpOnly | Yes |
+| Property | Value             |
+| -------- | ----------------- |
+| Name     | `mtkid`           |
+| Value    | UUIDv7            |
+| Path     | `/`               |
+| Max-Age  | 31536000 (1 year) |
+| SameSite | None              |
+| Secure   | Yes               |
+| HttpOnly | Yes               |
 
 ### Examples
 
@@ -117,16 +117,17 @@ Returns an HTML page that echoes the creative metadata. Used as a click landing 
 
 ### Parameters
 
-| Parameter | Location | Type | Required | Description |
-|-----------|----------|------|----------|-------------|
-| `crid` | Query | string | No | Creative ID (max 128 chars) |
-| `w` | Query | integer | No | Width (min 1) |
-| `h` | Query | integer | No | Height (min 1) |
-| `*` | Query | any | No | Additional parameters are echoed |
+| Parameter | Location | Type    | Required | Description                      |
+| --------- | -------- | ------- | -------- | -------------------------------- |
+| `crid`    | Query    | string  | No       | Creative ID (max 128 chars)      |
+| `w`       | Query    | integer | No       | Width (min 1)                    |
+| `h`       | Query    | integer | No       | Height (min 1)                   |
+| `*`       | Query    | any     | No       | Additional parameters are echoed |
 
 ### Response
 
 Returns an HTML page displaying:
+
 - Creative ID
 - Dimensions
 - Any additional query parameters
@@ -134,23 +135,23 @@ Returns an HTML page displaying:
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Click Landing Page</title>
-</head>
-<body>
-  <h1>Mocktioneer Click</h1>
-  <dl>
-    <dt>Creative ID</dt>
-    <dd>demo-creative</dd>
-    <dt>Size</dt>
-    <dd>300x250</dd>
-  </dl>
-  <h2>Additional Parameters</h2>
-  <dl>
-    <dt>campaign</dt>
-    <dd>summer-sale</dd>
-  </dl>
-</body>
+  <head>
+    <title>Click Landing Page</title>
+  </head>
+  <body>
+    <h1>Mocktioneer Click</h1>
+    <dl>
+      <dt>Creative ID</dt>
+      <dd>demo-creative</dd>
+      <dt>Size</dt>
+      <dd>300x250</dd>
+    </dl>
+    <h2>Additional Parameters</h2>
+    <dl>
+      <dt>campaign</dt>
+      <dd>summer-sale</dd>
+    </dl>
+  </body>
 </html>
 ```
 
@@ -169,11 +170,11 @@ curl http://127.0.0.1:8787/click
 
 ### Click URL in Creatives
 
-The creative HTML wraps the image in a link to the click endpoint:
+The creative HTML wraps the image in a link to the click endpoint and rewrites it in JS to include `crid`, `w`, and `h` from the query string:
 
 ```html
-<a href="//localhost:8787/click?w=300&h=250&crid=demo" target="_blank">
-  <img src="//localhost:8787/static/img/300x250.svg" ...>
+<a href="//localhost:8787/click" target="_blank">
+  <img src="//localhost:8787/static/img/300x250.svg" ... />
 </a>
 ```
 

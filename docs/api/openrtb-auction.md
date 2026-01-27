@@ -50,36 +50,41 @@ Content-Type: application/json
       },
       "ext": {
         "mocktioneer": {
-          "bid": 2.50
+          "bid": 2.5
         }
       }
     }
   ],
   "ext": {
-    "signature": "base64-encoded-signature",
-    "kid": "key-id"
+    "trusted_server": {
+      "signature": "base64-encoded-signature",
+      "kid": "key-id"
+    }
   }
 }
 ```
 
 ### Request Fields
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | Yes | Request ID |
-| `imp` | array | Yes | Array of impressions (min 1) |
-| `imp[].id` | string | Yes | Impression ID |
-| `imp[].banner` | object | Yes* | Banner object (*or other media type) |
-| `imp[].banner.w` | integer | No | Width in pixels |
-| `imp[].banner.h` | integer | No | Height in pixels |
-| `imp[].banner.format` | array | No | Array of size objects |
-| `imp[].ext.mocktioneer.bid` | float | No | Override bid price |
-| `site` | object | No | Site information |
-| `site.domain` | string | No | Domain for signature verification |
+| Field                          | Type    | Required | Description                           |
+| ------------------------------ | ------- | -------- | ------------------------------------- |
+| `id`                           | string  | Yes      | Request ID                            |
+| `imp`                          | array   | Yes      | Array of impressions (min 1)          |
+| `imp[].id`                     | string  | Yes      | Impression ID                         |
+| `imp[].banner`                 | object  | Yes\*    | Banner object (\*or other media type) |
+| `imp[].banner.w`               | integer | No       | Width in pixels                       |
+| `imp[].banner.h`               | integer | No       | Height in pixels                      |
+| `imp[].banner.format`          | array   | No       | Array of size objects                 |
+| `imp[].ext.mocktioneer.bid`    | float   | No       | Override bid price                    |
+| `ext.trusted_server.signature` | string  | No       | Signature for request ID verification |
+| `ext.trusted_server.kid`       | string  | No       | Key ID for signature verification     |
+| `site`                         | object  | No       | Site information                      |
+| `site.domain`                  | string  | No       | Domain for signature verification     |
 
 ### Size Resolution
 
 Size is determined in this order:
+
 1. `imp[].banner.w` and `imp[].banner.h`
 2. First entry in `imp[].banner.format[]`
 3. Default: 300x250
@@ -94,12 +99,12 @@ Size is determined in this order:
       "seat": "mocktioneer",
       "bid": [
         {
-          "id": "019abc123-mocktioneer",
+          "id": "019abc123",
           "impid": "imp-1",
-          "price": 1.50,
-          "adm": "<iframe src=\"//localhost:8787/static/creatives/300x250.html?crid=019abc123-mocktioneer&bid=1.50\" width=\"300\" height=\"250\" frameborder=\"0\" scrolling=\"no\"></iframe>",
+          "price": 2.5,
+          "adm": "<iframe src=\"//localhost:8787/static/creatives/300x250.html?crid=mocktioneer-imp-1&bid=2.50\" width=\"300\" height=\"250\" frameborder=\"0\" scrolling=\"no\"></iframe>",
           "adomain": ["example.com"],
-          "crid": "019abc123-mocktioneer",
+          "crid": "mocktioneer-imp-1",
           "w": 300,
           "h": 250,
           "mtype": 1
@@ -113,22 +118,22 @@ Size is determined in this order:
 
 ### Response Fields
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `id` | string | Echoed request ID |
-| `seatbid` | array | Array of seat bids |
-| `seatbid[].seat` | string | Always "mocktioneer" |
-| `seatbid[].bid` | array | Array of bids |
-| `seatbid[].bid[].id` | string | Unique bid ID (UUIDv7) |
-| `seatbid[].bid[].impid` | string | Corresponding impression ID |
-| `seatbid[].bid[].price` | float | Bid price in USD |
-| `seatbid[].bid[].adm` | string | Ad markup (iframe HTML) |
-| `seatbid[].bid[].adomain` | array | Advertiser domains |
-| `seatbid[].bid[].crid` | string | Creative ID |
-| `seatbid[].bid[].w` | integer | Creative width |
-| `seatbid[].bid[].h` | integer | Creative height |
-| `seatbid[].bid[].mtype` | integer | Media type (1 = banner) |
-| `cur` | string | Currency (USD) |
+| Field                     | Type    | Description                 |
+| ------------------------- | ------- | --------------------------- |
+| `id`                      | string  | Echoed request ID           |
+| `seatbid`                 | array   | Array of seat bids          |
+| `seatbid[].seat`          | string  | Always "mocktioneer"        |
+| `seatbid[].bid`           | array   | Array of bids               |
+| `seatbid[].bid[].id`      | string  | Unique bid ID (UUIDv7)      |
+| `seatbid[].bid[].impid`   | string  | Corresponding impression ID |
+| `seatbid[].bid[].price`   | float   | Bid price in USD            |
+| `seatbid[].bid[].adm`     | string  | Ad markup (iframe HTML)     |
+| `seatbid[].bid[].adomain` | array   | Advertiser domains          |
+| `seatbid[].bid[].crid`    | string  | Creative ID                 |
+| `seatbid[].bid[].w`       | integer | Creative width              |
+| `seatbid[].bid[].h`       | integer | Creative height             |
+| `seatbid[].bid[].mtype`   | integer | Media type (1 = banner)     |
+| `cur`                     | string  | Currency (USD)              |
 
 ## Price Override
 
@@ -143,7 +148,7 @@ Override the bid price using the `ext.mocktioneer.bid` field:
       "banner": { "w": 300, "h": 250 },
       "ext": {
         "mocktioneer": {
-          "bid": 5.00
+          "bid": 5.0
         }
       }
     }
@@ -155,16 +160,9 @@ The creative will display this bid amount.
 
 ## Default Pricing
 
-Without a price override, Mocktioneer uses fixed prices based on size:
+Without a price override, Mocktioneer uses fixed CPM prices based on ad size. Prices range from $1.70 (300x50) to $4.20 (970x250). Non-standard sizes use an area-based fallback formula.
 
-| Size | Default CPM |
-|------|-------------|
-| 970x250 | $4.20 |
-| 300x600 | $3.50 |
-| 728x90 | $2.00 |
-| 300x250 | $2.50 |
-| 320x50 | $1.80 |
-| Other | $1.50 |
+See the [complete pricing table](/api/#supported-sizes) for all supported sizes and their CPM values.
 
 ## Examples
 
@@ -251,7 +249,7 @@ curl -X POST http://127.0.0.1:8787/openrtb2/auction \
 
 Mocktioneer supports optional request signature verification. When `site.domain` is present, it attempts to verify the request signature using:
 
-- `ext.signature` - Base64-encoded signature
-- `ext.kid` - Key ID for signature verification
+- `ext.trusted_server.signature` - Base64-encoded signature
+- `ext.trusted_server.kid` - Key ID for signature verification
 
-Verification failures are logged but don't reject the request.
+The JWKS is fetched from `http://{site.domain}/.well-known/ts.jwks.json`. Verification failures are logged but don't reject the request.

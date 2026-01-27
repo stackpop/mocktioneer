@@ -20,10 +20,10 @@ middleware = [
 
 The `[app]` section defines the core application:
 
-| Field | Description |
-|-------|-------------|
-| `name` | Application identifier |
-| `entry` | Path to the core crate |
+| Field        | Description                               |
+| ------------ | ----------------------------------------- |
+| `name`       | Application identifier                    |
+| `entry`      | Path to the core crate                    |
 | `middleware` | List of middleware to apply to all routes |
 
 ## HTTP Triggers
@@ -39,27 +39,28 @@ handler = "mocktioneer_core::routes::handle_openrtb_auction"
 adapters = ["axum", "cloudflare", "fastly"]
 ```
 
-| Field | Description |
-|-------|-------------|
-| `id` | Unique route identifier |
-| `path` | URL path (supports `{param}` placeholders) |
-| `methods` | HTTP methods to accept |
-| `handler` | Rust function path |
-| `adapters` | Which adapters support this route |
+| Field      | Description                                |
+| ---------- | ------------------------------------------ |
+| `id`       | Unique route identifier                    |
+| `path`     | URL path (supports `{param}` placeholders) |
+| `methods`  | HTTP methods to accept                     |
+| `handler`  | Rust function path                         |
+| `adapters` | Which adapters support this route          |
 
 ### Available Routes
 
-| Path | Methods | Handler |
-|------|---------|---------|
-| `/` | GET | `handle_root` |
-| `/openrtb2/auction` | POST | `handle_openrtb_auction` |
-| `/e/dtb/bid` | POST | `handle_aps_bid` |
-| `/static/img/{size}` | GET | `handle_static_img` |
-| `/static/creatives/{size}` | GET | `handle_static_creatives` |
-| `/click` | GET | `handle_click` |
-| `/pixel` | GET | `handle_pixel` |
-| `/aps/win` | GET | `handle_aps_win` |
-| `/adserver/mediate` | POST | `handle_adserver_mediate` |
+| Path                       | Methods | Handler                   | Description             |
+| -------------------------- | ------- | ------------------------- | ----------------------- |
+| `/`                        | GET     | `handle_root`             | Service info page       |
+| `/openrtb2/auction`        | POST    | `handle_openrtb_auction`  | OpenRTB 2.x bid request |
+| `/e/dtb/bid`               | POST    | `handle_aps_bid`          | APS TAM bid request     |
+| `/static/img/{size}`       | GET     | `handle_static_img`       | SVG creative image      |
+| `/static/creatives/{size}` | GET     | `handle_static_creatives` | HTML creative wrapper   |
+| `/click`                   | GET     | `handle_click`            | Click landing page      |
+| `/pixel`                   | GET     | `handle_pixel`            | Tracking pixel          |
+| `/aps/win`                 | GET     | `handle_aps_win`          | APS win notification    |
+| `/adserver/mediate`        | POST    | `handle_adserver_mediate` | Auction mediation       |
+| `/_/sizes`                 | GET     | `handle_sizes`            | Supported sizes as JSON |
 
 All routes also have OPTIONS handlers for CORS preflight.
 
@@ -135,11 +136,11 @@ echo_stdout = true
 
 ## Logging Configuration
 
-| Field | Description |
-|-------|-------------|
-| `endpoint` | Log endpoint name (Fastly-specific) |
-| `level` | Log level: `trace`, `debug`, `info`, `warn`, `error` |
-| `echo_stdout` | Whether to print logs to stdout |
+| Field         | Description                                          |
+| ------------- | ---------------------------------------------------- |
+| `endpoint`    | Log endpoint name (Fastly-specific)                  |
+| `level`       | Log level: `trace`, `debug`, `info`, `warn`, `error` |
+| `echo_stdout` | Whether to print logs to stdout                      |
 
 ## Rebuilding After Changes
 

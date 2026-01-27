@@ -4,29 +4,37 @@ The Cloudflare adapter runs Mocktioneer on Cloudflare Workers, providing global 
 
 ## Overview
 
-| Property | Value |
-|----------|-------|
-| Crate | `mocktioneer-adapter-cloudflare` |
-| Target | `wasm32-unknown-unknown` |
-| Platform | Cloudflare Workers |
-| Use Case | Production edge deployment |
+| Property | Value                            |
+| -------- | -------------------------------- |
+| Crate    | `mocktioneer-adapter-cloudflare` |
+| Target   | `wasm32-unknown-unknown`         |
+| Platform | Cloudflare Workers               |
+| Use Case | Production edge deployment       |
 
 ## Prerequisites
 
 1. **Wrangler CLI**
+
    ```bash
    npm install -g wrangler
    # Or use npx wrangler
    ```
 
 2. **WASM target**
+
    ```bash
    rustup target add wasm32-unknown-unknown
    ```
 
-3. **Cloudflare account** with Workers enabled
+3. **worker-build** (used by the default `wrangler.toml` build command)
 
-4. **Authenticate Wrangler**
+   ```bash
+   cargo install worker-build
+   ```
+
+4. **Cloudflare account** with Workers enabled
+
+5. **Authenticate Wrangler**
    ```bash
    wrangler login
    ```
@@ -56,6 +64,7 @@ cargo build --release --target wasm32-unknown-unknown -p mocktioneer-adapter-clo
 ```
 
 The build produces a WASM binary at:
+
 ```
 target/wasm32-unknown-unknown/release/mocktioneer_adapter_cloudflare.wasm
 ```
@@ -65,13 +74,14 @@ target/wasm32-unknown-unknown/release/mocktioneer_adapter_cloudflare.wasm
 ### First-Time Setup
 
 1. Edit `crates/mocktioneer-adapter-cloudflare/wrangler.toml`:
+
    ```toml
-   name = "mocktioneer"
+   name = "mocktioneer-adapter-cloudflare"
    main = "build/worker/shim.mjs"
-   compatibility_date = "2024-01-01"
-   
+   compatibility_date = "2023-05-01"
+
    [build]
-   command = "cargo build --release --target wasm32-unknown-unknown"
+   command = "worker-build --release"
    ```
 
 2. Deploy:
@@ -109,6 +119,7 @@ echo_stdout = true
 ```
 
 Cloudflare Workers logs are visible in:
+
 - `wrangler tail` for real-time logs
 - Workers Analytics in the dashboard
 
@@ -117,9 +128,9 @@ Cloudflare Workers logs are visible in:
 The `crates/mocktioneer-adapter-cloudflare/wrangler.toml` contains Workers-specific configuration:
 
 ```toml
-name = "mocktioneer"
+name = "mocktioneer-adapter-cloudflare"
 main = "build/worker/shim.mjs"
-compatibility_date = "2024-01-01"
+compatibility_date = "2023-05-01"
 
 [vars]
 # Environment variables
@@ -136,6 +147,7 @@ ENVIRONMENT = "production"
 ### Using workers.dev
 
 By default, your Worker is available at:
+
 ```
 https://mocktioneer.<your-subdomain>.workers.dev
 ```
@@ -148,6 +160,7 @@ https://mocktioneer.<your-subdomain>.workers.dev
 4. Add your domain
 
 Or via wrangler.toml:
+
 ```toml
 routes = [
   { pattern = "mocktioneer.example.com/*", zone_name = "example.com" }
@@ -164,6 +177,7 @@ LOG_LEVEL = "debug"
 ```
 
 Or as secrets:
+
 ```bash
 wrangler secret put API_KEY
 ```
@@ -179,6 +193,7 @@ wrangler tail --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
 ### Dashboard Analytics
 
 In the Cloudflare dashboard under Workers:
+
 - Request count
 - CPU time
 - Error rate
@@ -221,14 +236,15 @@ wrangler publish --dry-run --config crates/mocktioneer-adapter-cloudflare/wrangl
 
 Cloudflare Workers has these limits:
 
-| Limit | Free | Paid |
-|-------|------|------|
-| CPU time | 10ms | 50ms |
-| Memory | 128 MB | 128 MB |
-| Script size | 1 MB | 10 MB |
-| Subrequests | 50 | 1000 |
+| Limit       | Free   | Paid   |
+| ----------- | ------ | ------ |
+| CPU time    | 10ms   | 50ms   |
+| Memory      | 128 MB | 128 MB |
+| Script size | 1 MB   | 10 MB  |
+| Subrequests | 50     | 1000   |
 
 Mocktioneer typically uses:
+
 - < 5ms CPU time per request
 - < 10 MB memory
 - No subrequests
@@ -244,6 +260,7 @@ id = "your-kv-namespace-id"
 ```
 
 Create the namespace:
+
 ```bash
 wrangler kv:namespace create "MOCKTIONEER_KV"
 ```

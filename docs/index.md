@@ -2,9 +2,9 @@
 layout: home
 
 hero:
-  name: "Mocktioneer"
-  text: "Deterministic OpenRTB Bidder"
-  tagline: "Test client integrations without depending on third-party bidders or origin backends"
+  name: 'Mocktioneer'
+  text: 'Deterministic OpenRTB Bidder'
+  tagline: 'Test client integrations without depending on third-party bidders or origin backends'
   actions:
     - theme: brand
       text: Get Started

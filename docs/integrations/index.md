@@ -4,10 +4,10 @@ Mocktioneer integrates with popular ad tech platforms for testing header bidding
 
 ## Supported Integrations
 
-| Platform | Type | Description |
-|----------|------|-------------|
-| [Prebid.js](./prebidjs) | Client-side | Browser-based header bidding |
-| [Prebid Server](./prebid-server) | Server-side | Server-to-server bidding |
+| Platform                         | Type        | Description                  |
+| -------------------------------- | ----------- | ---------------------------- |
+| [Prebid.js](./prebidjs)          | Client-side | Browser-based header bidding |
+| [Prebid Server](./prebid-server) | Server-side | Server-to-server bidding     |
 
 ## How Integration Works
 
@@ -49,10 +49,10 @@ Mocktioneer acts as a drop-in replacement for real bidders during development an
 - Works offline
 - Fast response times
 
-### Full Protocol Compliance
+### OpenRTB Banner Support
 
-- Standard OpenRTB 2.x format
-- Compatible with any OpenRTB client
+- OpenRTB 2.x banner requests and responses
+- Compatible with standard OpenRTB banner clients
 - Valid creative URLs
 
 ## Quick Start
@@ -63,9 +63,9 @@ Mocktioneer acts as a drop-in replacement for real bidders during development an
 pbjs.setBidderConfig({
   bidders: ['mocktioneer'],
   config: {
-    endpoint: 'http://localhost:8787/openrtb2/auction'
-  }
-});
+    endpoint: 'http://localhost:8787/openrtb2/auction',
+  },
+})
 ```
 
 ### Prebid Server
@@ -96,13 +96,13 @@ Deploy to Fastly or Cloudflare for team-wide access:
 
 ### CI/CD
 
-Include Mocktioneer in your test pipeline:
+Include Mocktioneer in your test pipeline (build and publish your own image first):
 
 ```yaml
 # GitHub Actions example
 services:
   mocktioneer:
-    image: mocktioneer:latest
+    image: mocktioneer:latest # replace with your published image
     ports:
       - 8787:8787
 ```
@@ -132,7 +132,7 @@ Test price handling and floor logic:
 ```javascript
 // Override bid price
 params: {
-  bid: 5.00  // Force $5 CPM
+  bid: 5.0 // Force $5 CPM
 }
 ```
 
@@ -140,6 +140,6 @@ params: {
 
 Test error scenarios:
 
-- Empty responses (non-standard sizes)
+- Empty APS responses when all sizes are non-standard (OpenRTB coerces to 300x250)
 - Malformed requests
 - Timeout simulation (not built-in, use network tools)

@@ -4,22 +4,24 @@ The Fastly adapter runs Mocktioneer on Fastly's Compute platform, providing glob
 
 ## Overview
 
-| Property | Value |
-|----------|-------|
-| Crate | `mocktioneer-adapter-fastly` |
-| Target | `wasm32-wasip1` |
-| Platform | Fastly Compute |
-| Use Case | Production edge deployment |
+| Property | Value                        |
+| -------- | ---------------------------- |
+| Crate    | `mocktioneer-adapter-fastly` |
+| Target   | `wasm32-wasip1`              |
+| Platform | Fastly Compute               |
+| Use Case | Production edge deployment   |
 
 ## Prerequisites
 
 1. **Fastly CLI**
+
    ```bash
    brew install fastly/tap/fastly
    # Or download from https://developer.fastly.com/tools/cli
    ```
 
 2. **WASM target**
+
    ```bash
    rustup target add wasm32-wasip1
    ```
@@ -51,6 +53,7 @@ cargo build --release --target wasm32-wasip1 -p mocktioneer-adapter-fastly
 ```
 
 The build produces a WASM binary at:
+
 ```
 target/wasm32-wasip1/release/mocktioneer-adapter-fastly.wasm
 ```
@@ -65,6 +68,7 @@ fastly compute publish
 ```
 
 The CLI will prompt you to:
+
 1. Create a new service or select existing
 2. Configure the domain
 3. Deploy the WASM bundle
@@ -147,6 +151,7 @@ fastly log-tail --service-id <SERVICE_ID>
 ### Metrics
 
 Monitor in the Fastly dashboard:
+
 - Request rate
 - Error rate
 - Response time percentiles
@@ -188,11 +193,11 @@ fastly service describe --service-id <SERVICE_ID>
 
 Fastly Compute has some constraints:
 
-| Limit | Value |
-|-------|-------|
-| Memory | 128 MB |
+| Limit           | Value      |
+| --------------- | ---------- |
+| Memory          | 128 MB     |
 | Request timeout | 60 seconds |
-| Package size | 100 MB |
+| Package size    | 100 MB     |
 
 Mocktioneer is well within these limits for typical usage.
 

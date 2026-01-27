@@ -2,16 +2,16 @@ import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "Mocktioneer",
-  description: "Deterministic OpenRTB banner bidder for edge platforms",
-  base: "/mocktioneer/",
+  title: 'Mocktioneer',
+  description: 'Deterministic OpenRTB banner bidder for edge platforms',
+  base: '/mocktioneer/',
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'API Reference', link: '/api/' },
-      { text: 'Integrations', link: '/integrations/' }
+      { text: 'Integrations', link: '/integrations/' },
     ],
 
     sidebar: [
@@ -19,15 +19,15 @@ export default defineConfig({
         text: 'Introduction',
         items: [
           { text: 'What is Mocktioneer?', link: '/guide/what-is-mocktioneer' },
-          { text: 'Getting Started', link: '/guide/getting-started' }
-        ]
+          { text: 'Getting Started', link: '/guide/getting-started' },
+        ],
       },
       {
         text: 'Configuration',
         items: [
           { text: 'edgezero.toml', link: '/guide/configuration' },
-          { text: 'Architecture', link: '/guide/architecture' }
-        ]
+          { text: 'Architecture', link: '/guide/architecture' },
+        ],
       },
       {
         text: 'Adapters',
@@ -35,8 +35,8 @@ export default defineConfig({
           { text: 'Overview', link: '/guide/adapters/' },
           { text: 'Axum (Native)', link: '/guide/adapters/axum' },
           { text: 'Fastly Compute', link: '/guide/adapters/fastly' },
-          { text: 'Cloudflare Workers', link: '/guide/adapters/cloudflare' }
-        ]
+          { text: 'Cloudflare Workers', link: '/guide/adapters/cloudflare' },
+        ],
       },
       {
         text: 'API Reference',
@@ -47,30 +47,30 @@ export default defineConfig({
           { text: 'Creatives & Assets', link: '/api/creatives' },
           { text: 'Tracking', link: '/api/tracking' },
           { text: 'Mediation', link: '/api/mediation' },
-          { text: 'APS Win Notification', link: '/api/aps-win' }
-        ]
+          { text: 'APS Win Notification', link: '/api/aps-win' },
+        ],
       },
       {
         text: 'Integrations',
         items: [
           { text: 'Overview', link: '/integrations/' },
           { text: 'Prebid.js', link: '/integrations/prebidjs' },
-          { text: 'Prebid Server', link: '/integrations/prebid-server' }
-        ]
-      }
+          { text: 'Prebid Server', link: '/integrations/prebid-server' },
+        ],
+      },
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/stackpop/mocktioneer' }
+      { icon: 'github', link: 'https://github.com/stackpop/mocktioneer' },
     ],
 
     footer: {
       message: 'Built with EdgeZero',
-      copyright: 'Copyright 2024-present Stackpop'
+      copyright: 'Copyright 2024-present Stackpop',
     },
 
     search: {
-      provider: 'local'
-    }
-  }
+      provider: 'local',
+    },
+  },
 })

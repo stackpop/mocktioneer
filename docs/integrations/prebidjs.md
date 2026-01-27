@@ -1,29 +1,44 @@
 # Prebid.js Integration
 
-Mocktioneer provides a Prebid.js bid adapter for client-side header bidding integration.
+Mocktioneer works with Prebid.js for client-side header bidding integration.
 
-## Adapter Installation
+## Adapter Options
 
-The Mocktioneer adapter is available in the Prebid.js modules:
+### Option 1: Use Generic OpenRTB Adapter (Recommended)
+
+Prebid.js includes a generic OpenRTB adapter that works with any OpenRTB-compliant endpoint. No custom adapter required:
+
+```javascript
+var adUnits = [
+  {
+    code: 'div-banner-1',
+    mediaTypes: {
+      banner: { sizes: [[300, 250]] },
+    },
+    bids: [
+      {
+        bidder: 'genericOrtb',
+        params: {
+          endpoint: 'http://localhost:8787/openrtb2/auction',
+        },
+      },
+    ],
+  },
+]
+```
+
+### Option 2: Custom Mocktioneer Adapter
+
+For a dedicated adapter with Mocktioneer-specific features (like price override), create a custom adapter:
 
 ```
-Prebid.js/modules/mocktioneerBidAdapter.js
+your-prebid-fork/modules/mocktioneerBidAdapter.js
 ```
 
-### Building Prebid with Mocktioneer
+Build Prebid with your custom adapter:
 
 ```bash
 gulp build --modules=mocktioneerBidAdapter
-```
-
-Or include in your modules list:
-
-```javascript
-// modules.json
-[
-  "mocktioneerBidAdapter",
-  // ... other adapters
-]
 ```
 
 ## Configuration
@@ -36,20 +51,23 @@ var adUnits = [
     code: 'div-banner-1',
     mediaTypes: {
       banner: {
-        sizes: [[300, 250], [320, 50]]
-      }
+        sizes: [
+          [300, 250],
+          [320, 50],
+        ],
+      },
     },
     bids: [
       {
         bidder: 'mocktioneer',
         params: {
           // Optional: custom endpoint
-          endpoint: 'https://mocktioneer.edgecompute.app/openrtb2/auction'
-        }
-      }
-    ]
-  }
-];
+          endpoint: 'https://mocktioneer.edgecompute.app/openrtb2/auction',
+        },
+      },
+    ],
+  },
+]
 ```
 
 ### Default Endpoint
@@ -72,10 +90,10 @@ params: {
 
 ## Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `endpoint` | string | No | Custom auction endpoint URL |
-| `bid` | float | No | Override bid price (CPM) |
+| Parameter  | Type   | Required | Description                 |
+| ---------- | ------ | -------- | --------------------------- |
+| `endpoint` | string | No       | Custom auction endpoint URL |
+| `bid`      | float  | No       | Override bid price (CPM)    |
 
 ### Price Override
 
@@ -86,9 +104,9 @@ bids: [
   {
     bidder: 'mocktioneer',
     params: {
-      bid: 5.00  // Force $5.00 CPM
-    }
-  }
+      bid: 5.0, // Force $5.00 CPM
+    },
+  },
 ]
 ```
 
@@ -96,52 +114,49 @@ The price override is passed via `imp[].ext.mocktioneer.bid` in the OpenRTB requ
 
 ## Example Page
 
+::: details Full HTML Example (click to expand)
+
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-  <script src="prebid.js"></script>
-  <script>
-    var PREBID_TIMEOUT = 1000;
-
-    var adUnits = [{
-      code: 'div-banner',
-      mediaTypes: {
-        banner: { sizes: [[300, 250]] }
-      },
-      bids: [{
-        bidder: 'mocktioneer',
-        params: {
-          endpoint: 'http://localhost:8787/openrtb2/auction',
-          bid: 2.50
-        }
-      }]
-    }];
-
-    var pbjs = pbjs || {};
-    pbjs.que = pbjs.que || [];
-
-    pbjs.que.push(function() {
-      pbjs.addAdUnits(adUnits);
-      pbjs.requestBids({
-        bidsBackHandler: function(bids) {
-          console.log('Bids received:', bids);
-          // Render winning bid
-          var winner = pbjs.getHighestCpmBids('div-banner')[0];
-          if (winner) {
-            pbjs.renderAd(document.getElementById('div-banner'), winner.adId);
-          }
+  <head>
+    <script src="prebid.js"></script>
+    <script>
+      var adUnits = [
+        {
+          code: 'div-banner',
+          mediaTypes: { banner: { sizes: [[300, 250]] } },
+          bids: [
+            {
+              bidder: 'mocktioneer',
+              params: { endpoint: 'http://localhost:8787/openrtb2/auction' },
+            },
+          ],
         },
-        timeout: PREBID_TIMEOUT
-      });
-    });
-  </script>
-</head>
-<body>
-  <div id="div-banner" style="width:300px;height:250px;"></div>
-</body>
+      ]
+
+      var pbjs = pbjs || {}
+      pbjs.que = pbjs.que || []
+      pbjs.que.push(function () {
+        pbjs.addAdUnits(adUnits)
+        pbjs.requestBids({
+          bidsBackHandler: function () {
+            var winner = pbjs.getHighestCpmBids('div-banner')[0]
+            if (winner)
+              pbjs.renderAd(document.getElementById('div-banner'), winner.adId)
+          },
+          timeout: 1000,
+        })
+      })
+    </script>
+  </head>
+  <body>
+    <div id="div-banner" style="width:300px;height:250px;"></div>
+  </body>
 </html>
 ```
+
+:::
 
 ## Debugging
 
@@ -149,8 +164,8 @@ The price override is passed via `imp[].ext.mocktioneer.bid` in the OpenRTB requ
 
 ```javascript
 pbjs.setConfig({
-  debug: true
-});
+  debug: true,
+})
 ```
 
 ### Check Bid Responses
@@ -175,47 +190,62 @@ var adUnits = [
   {
     code: 'header-banner',
     mediaTypes: {
-      banner: { sizes: [[728, 90], [970, 250]] }
+      banner: {
+        sizes: [
+          [728, 90],
+          [970, 250],
+        ],
+      },
     },
-    bids: [{
-      bidder: 'mocktioneer',
-      params: { bid: 3.00 }
-    }]
+    bids: [
+      {
+        bidder: 'mocktioneer',
+        params: { bid: 3.0 },
+      },
+    ],
   },
   {
     code: 'sidebar',
     mediaTypes: {
-      banner: { sizes: [[300, 250], [300, 600]] }
+      banner: {
+        sizes: [
+          [300, 250],
+          [300, 600],
+        ],
+      },
     },
-    bids: [{
-      bidder: 'mocktioneer',
-      params: { bid: 2.00 }
-    }]
+    bids: [
+      {
+        bidder: 'mocktioneer',
+        params: { bid: 2.0 },
+      },
+    ],
   },
   {
     code: 'mobile-banner',
     mediaTypes: {
-      banner: { sizes: [[320, 50], [320, 100]] }
+      banner: {
+        sizes: [
+          [320, 50],
+          [320, 100],
+        ],
+      },
     },
-    bids: [{
-      bidder: 'mocktioneer',
-      params: { bid: 1.50 }
-    }]
-  }
-];
+    bids: [
+      {
+        bidder: 'mocktioneer',
+        params: { bid: 1.5 },
+      },
+    ],
+  },
+]
 ```
 
 ## Testing Scenarios
 
 ### No Bid Response
 
-Request a non-standard size to get no bid:
-
-```javascript
-mediaTypes: {
-  banner: { sizes: [[999, 999]] }  // Non-standard, will be coerced to 300x250
-}
-```
+Mocktioneer returns a bid for valid banner impressions (non-standard sizes are coerced to 300x250). If you need a no-bid path, filter it on the client side or use the mediation endpoint with a `price_floor` above the bids you send.
 
 ### High CPM Testing
 
@@ -223,7 +253,7 @@ Test price floor logic:
 
 ```javascript
 params: {
-  bid: 100.00  // $100 CPM
+  bid: 100.0 // $100 CPM
 }
 ```
 
@@ -235,12 +265,12 @@ Compare Mocktioneer with other bidders:
 bids: [
   {
     bidder: 'mocktioneer',
-    params: { bid: 2.00 }
+    params: { bid: 2.0 },
   },
   {
     bidder: 'appnexus',
-    params: { placementId: '12345' }
-  }
+    params: { placementId: '12345' },
+  },
 ]
 ```
 
@@ -249,20 +279,20 @@ bids: [
 Send Mocktioneer bids to Google Ad Manager:
 
 ```javascript
-pbjs.que.push(function() {
+pbjs.que.push(function () {
   pbjs.setConfig({
-    priceGranularity: 'dense'
-  });
-  
-  pbjs.addAdUnits(adUnits);
-  
+    priceGranularity: 'dense',
+  })
+
+  pbjs.addAdUnits(adUnits)
+
   pbjs.requestBids({
-    bidsBackHandler: function() {
-      pbjs.setTargetingForGPTAsync();
-      googletag.pubads().refresh();
-    }
-  });
-});
+    bidsBackHandler: function () {
+      pbjs.setTargetingForGPTAsync()
+      googletag.pubads().refresh()
+    },
+  })
+})
 ```
 
 ## Troubleshooting
@@ -284,8 +314,8 @@ pbjs.que.push(function() {
 
 ```javascript
 pbjs.setConfig({
-  bidderTimeout: 3000  // Increase timeout
-});
+  bidderTimeout: 3000, // Increase timeout
+})
 ```
 
 For local development, ensure Mocktioneer is running before requesting bids.

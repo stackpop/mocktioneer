@@ -14,34 +14,49 @@ Returns an HTML page that wraps the SVG creative and optionally includes trackin
 
 ### Parameters
 
-| Parameter | Location | Type | Default | Description |
-|-----------|----------|------|---------|-------------|
-| `{W}x{H}` | Path | string | - | Size (e.g., `300x250`) |
-| `pixel_html` | Query | boolean | `true` | Include HTML pixel |
-| `pixel_js` | Query | boolean | `false` | Include JS pixel |
+| Parameter    | Location | Type    | Default | Description            |
+| ------------ | -------- | ------- | ------- | ---------------------- |
+| `{W}x{H}`    | Path     | string  | -       | Size (e.g., `300x250`) |
+| `pixel_html` | Query    | boolean | `true`  | Include HTML pixel     |
+| `pixel_js`   | Query    | boolean | `false` | Include JS pixel       |
 
 ### Response
 
 ```html
 <!DOCTYPE html>
 <html>
-<head>
-  <style>
-    body { margin: 0; overflow: hidden; }
-    img { display: block; }
-  </style>
-</head>
-<body>
-  <a href="//localhost:8787/click?w=300&h=250" target="_blank">
-    <img src="//localhost:8787/static/img/300x250.svg" 
-         width="300" height="250" alt="300x250 creative">
-  </a>
-  <img src="//localhost:8787/pixel?pid=abc123" 
-       data-static-pid="abc123" 
-       width="1" height="1" style="display:none">
-</body>
+  <head>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      img {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <a href="//localhost:8787/click?w=300&h=250" target="_blank">
+      <img
+        src="//localhost:8787/static/img/300x250.svg"
+        width="300"
+        height="250"
+        alt="300x250 creative"
+      />
+    </a>
+    <img
+      src="//localhost:8787/pixel?pid=abc123"
+      data-static-pid="abc123"
+      width="1"
+      height="1"
+      style="display:none"
+    />
+  </body>
 </html>
 ```
+
+The click URL is rewritten by inline JS to include the `crid`, `w`, and `h` query parameters.
 
 ### Examples
 
@@ -68,14 +83,15 @@ Returns an SVG image displaying the size and optional bid amount.
 
 ### Parameters
 
-| Parameter | Location | Type | Default | Description |
-|-----------|----------|------|---------|-------------|
-| `{W}x{H}` | Path | string | - | Size (e.g., `300x250`) |
-| `bid` | Query | float | - | Bid amount to display |
+| Parameter | Location | Type   | Default | Description            |
+| --------- | -------- | ------ | ------- | ---------------------- |
+| `{W}x{H}` | Path     | string | -       | Size (e.g., `300x250`) |
+| `bid`     | Query    | float  | -       | Bid amount to display  |
 
 ### Response
 
 The SVG displays:
+
 - Ad size (e.g., "300x250")
 - "mocktioneer" text
 - Bid amount badge (if provided)
@@ -109,12 +125,13 @@ curl http://127.0.0.1:8787/static/img/728x90.svg
 The `adm` field in auction responses contains ready-to-use iframe HTML:
 
 ```html
-<iframe 
-  src="//mocktioneer.edgecompute.app/static/creatives/300x250.html?crid=demo" 
-  width="300" 
-  height="250" 
-  frameborder="0" 
-  scrolling="no">
+<iframe
+  src="//mocktioneer.edgecompute.app/static/creatives/300x250.html?crid=demo"
+  width="300"
+  height="250"
+  frameborder="0"
+  scrolling="no"
+>
 </iframe>
 ```
 
@@ -122,34 +139,25 @@ The `adm` field in auction responses contains ready-to-use iframe HTML:
 
 ```html
 <!-- Full creative with tracking -->
-<iframe 
-  src="//mocktioneer.edgecompute.app/static/creatives/300x250.html" 
-  width="300" 
-  height="250" 
-  frameborder="0">
+<iframe
+  src="//mocktioneer.edgecompute.app/static/creatives/300x250.html"
+  width="300"
+  height="250"
+  frameborder="0"
+>
 </iframe>
 
 <!-- SVG only (no tracking) -->
-<img 
-  src="//mocktioneer.edgecompute.app/static/img/300x250.svg?bid=2.50" 
-  width="300" 
-  height="250">
+<img
+  src="//mocktioneer.edgecompute.app/static/img/300x250.svg?bid=2.50"
+  width="300"
+  height="250"
+/>
 ```
 
 ## Supported Sizes
 
-| Size | Description |
-|------|-------------|
-| 300x250 | Medium Rectangle |
-| 320x50 | Mobile Leaderboard |
-| 728x90 | Leaderboard |
-| 160x600 | Wide Skyscraper |
-| 300x50 | Mobile Banner |
-| 300x600 | Half Page |
-| 970x250 | Billboard |
-| 468x60 | Full Banner |
-| 336x280 | Large Rectangle |
-| 320x100 | Large Mobile Banner |
+See the [complete list of supported sizes](/api/#supported-sizes) in the API overview. The HTML creative endpoint returns 404 for non-standard sizes; the SVG endpoint returns 422.
 
 ## Error Responses
 
@@ -158,6 +166,13 @@ The `adm` field in auction responses contains ready-to-use iframe HTML:
 ```bash
 curl http://127.0.0.1:8787/static/creatives/999x999.html
 # Returns 404 Not Found
+```
+
+### Non-Standard Size (422)
+
+```bash
+curl http://127.0.0.1:8787/static/img/999x999.svg
+# Returns 422 Unprocessable Entity
 ```
 
 ### Invalid Format (422)
@@ -186,11 +201,11 @@ curl "http://127.0.0.1:8787/static/img/300x250.svg?bid=-1"
 
 ## Content Types
 
-| Endpoint | Content-Type |
-|----------|--------------|
+| Endpoint                   | Content-Type               |
+| -------------------------- | -------------------------- |
 | `/static/creatives/*.html` | `text/html; charset=utf-8` |
-| `/static/img/*.svg` | `image/svg+xml` |
+| `/static/img/*.svg`        | `image/svg+xml`            |
 
 ## Caching
 
-Creative assets are cacheable. Responses include appropriate headers for CDN caching. The `Host` header affects the generated URLs, so ensure consistent host values for cache efficiency.
+Creative assets don't set explicit cache-control headers. If you front Mocktioneer with a CDN, configure caching there. The `Host` header affects generated URLs, so ensure consistent host values for cache efficiency.

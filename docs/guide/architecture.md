@@ -13,9 +13,10 @@ mocktioneer/
 │   ├── mocktioneer-adapter-axum/       # Native HTTP server
 │   ├── mocktioneer-adapter-fastly/     # Fastly Compute binary
 │   └── mocktioneer-adapter-cloudflare/ # Cloudflare Workers binary
-├── edgezero/               # EdgeZero framework (git submodule)
 └── examples/               # Helper scripts
 ```
+
+EdgeZero is consumed via git dependencies (see `Cargo.toml`).
 
 ## Crate Responsibilities
 
@@ -54,6 +55,7 @@ fn main() {
 ```
 
 The adapter crates handle platform-specific concerns:
+
 - Request/response translation
 - Runtime initialization
 - Platform-specific logging
@@ -69,6 +71,7 @@ edgezero_core::app!("../../edgezero.toml", MocktioneerApp);
 ```
 
 This macro:
+
 1. Parses `edgezero.toml` at compile time
 2. Generates route registration code
 3. Creates the `MocktioneerApp` type with a `build_app()` method
@@ -83,6 +86,7 @@ Middleware is applied to all routes in order:
 ### Request Context
 
 Handlers receive a `RequestContext` that provides:
+
 - Request body and headers
 - Path parameters
 - Query string parsing
@@ -131,7 +135,7 @@ HTTP handlers for all endpoints. Uses extractors for type-safe request parsing:
 #[action]
 pub async fn handle_openrtb_auction(
     RequestContext(ctx): RequestContext,
-    Headers(headers): Headers,
+    ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
 ) -> Result<Response, EdgeError> {
     // ...
@@ -150,7 +154,7 @@ OpenRTB 2.x type definitions with serde serialization:
 
 Bid generation logic:
 
-- `build_openrtb_response_with_base_typed()` - Generate bids for OpenRTB
+- `build_openrtb_response()` - Generate bids for OpenRTB
 - `build_aps_response()` - Generate bids for APS TAM
 - `is_standard_size()` - Check if dimensions are supported
 
@@ -164,19 +168,6 @@ Template rendering:
 
 ## Supported Sizes
 
-Mocktioneer supports these standard IAB ad sizes:
+Mocktioneer supports 13 standard IAB ad sizes, each with a fixed CPM price. See the [full size list with pricing](/api/#supported-sizes) in the API reference.
 
-| Size | Common Name |
-|------|-------------|
-| 300x250 | Medium Rectangle |
-| 320x50 | Mobile Leaderboard |
-| 728x90 | Leaderboard |
-| 160x600 | Wide Skyscraper |
-| 300x50 | Mobile Banner |
-| 300x600 | Half Page |
-| 970x250 | Billboard |
-| 468x60 | Full Banner |
-| 336x280 | Large Rectangle |
-| 320x100 | Large Mobile Banner |
-
-Non-standard sizes return 404 for static assets or are coerced to 300x250 for auction responses.
+Non-standard sizes return 404 for static assets or are coerced to 300x250 for auction responses. Use the [`/_/sizes`](/api/#sizes-endpoint) endpoint to get the current list programmatically.

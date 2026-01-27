@@ -4,12 +4,12 @@ The Axum adapter runs Mocktioneer as a native Rust HTTP server. It's the recomme
 
 ## Overview
 
-| Property | Value |
-|----------|-------|
-| Crate | `mocktioneer-adapter-axum` |
-| Target | Native (no WASM) |
-| Default Port | 8787 |
-| Use Case | Development, testing, CI/CD |
+| Property     | Value                       |
+| ------------ | --------------------------- |
+| Crate        | `mocktioneer-adapter-axum`  |
+| Target       | Native (no WASM)            |
+| Default Port | 8787                        |
+| Use Case     | Development, testing, CI/CD |
 
 ## Quick Start
 
@@ -43,6 +43,7 @@ profile = "dev"
 ```
 
 The Axum adapter uses:
+
 - Native compilation (not WASM)
 - Dev profile for faster builds during development
 
@@ -55,6 +56,7 @@ echo_stdout = true
 ```
 
 Logs are written to stdout. Adjust `level` for more or less verbosity:
+
 - `trace` - Most verbose
 - `debug` - Debug information
 - `info` - Normal operation (default)
@@ -63,7 +65,7 @@ Logs are written to stdout. Adjust `level` for more or less verbosity:
 
 ## Docker Deployment
 
-For containerized deployment:
+This repository does not include a Dockerfile. If you add one, you can containerize the Axum adapter like this:
 
 ```bash
 # Build the image
@@ -131,12 +133,12 @@ hey -n 10000 -c 100 http://127.0.0.1:8787/openrtb2/auction \
 
 The Axum adapter behaves identically to edge adapters for request handling, but:
 
-| Feature | Axum | Edge (Fastly/Cloudflare) |
-|---------|------|--------------------------|
-| Startup time | Instant | Cold start possible |
-| Debugging | Full access | Limited |
-| KV stores | Not available | Platform-specific |
-| Logging | stdout | Platform logging |
+| Feature      | Axum          | Edge (Fastly/Cloudflare) |
+| ------------ | ------------- | ------------------------ |
+| Startup time | Instant       | Cold start possible      |
+| Debugging    | Full access   | Limited                  |
+| KV stores    | Not available | Platform-specific        |
+| Logging      | stdout        | Platform logging         |
 
 ## Customization
 

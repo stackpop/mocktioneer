@@ -72,7 +72,7 @@ adapters:
         "prebid": {
           "bidder": {
             "mocktioneer": {
-              "bid": 5.00
+              "bid": 5.0
             }
           }
         }
@@ -97,7 +97,7 @@ Override the endpoint for specific requests:
         "prebid": {
           "bidder": {
             "mocktioneer": {
-              "bid": 2.50
+              "bid": 2.5
             }
           }
         }
@@ -109,10 +109,10 @@ Override the endpoint for specific requests:
 
 ## Parameters
 
-| Parameter | Location | Type | Description |
-|-----------|----------|------|-------------|
-| `endpoint` | `imp[].ext.bidder` | string | Override auction endpoint |
-| `bid` | `imp[].ext.prebid.bidder.mocktioneer` | float | Override bid price |
+| Parameter  | Location                              | Type   | Description               |
+| ---------- | ------------------------------------- | ------ | ------------------------- |
+| `endpoint` | `imp[].ext.bidder`                    | string | Override auction endpoint |
+| `bid`      | `imp[].ext.prebid.bidder.mocktioneer` | float  | Override bid price        |
 
 ## Response Handling
 
@@ -127,7 +127,7 @@ Prebid Server processes Mocktioneer responses like any other bidder:
         {
           "id": "019abc-mocktioneer",
           "impid": "imp-1",
-          "price": 2.50,
+          "price": 2.5,
           "adm": "<iframe>...</iframe>",
           "crid": "019abc-mocktioneer",
           "w": 300,
@@ -188,33 +188,33 @@ curl -X POST http://localhost:8787/openrtb2/auction \
   "imp": [
     {
       "id": "header",
-      "banner": {"w": 728, "h": 90},
+      "banner": { "w": 728, "h": 90 },
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": {"bid": 2.00}
+            "mocktioneer": { "bid": 2.0 }
           }
         }
       }
     },
     {
       "id": "sidebar",
-      "banner": {"w": 300, "h": 250},
+      "banner": { "w": 300, "h": 250 },
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": {"bid": 2.50}
+            "mocktioneer": { "bid": 2.5 }
           }
         }
       }
     },
     {
       "id": "footer",
-      "banner": {"w": 970, "h": 250},
+      "banner": { "w": 970, "h": 250 },
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": {"bid": 4.00}
+            "mocktioneer": { "bid": 4.0 }
           }
         }
       }
@@ -242,27 +242,21 @@ capabilities:
 
 ## Docker Compose Setup
 
-Run Prebid Server with Mocktioneer locally:
+::: details Docker Compose Example (click to expand)
 
 ```yaml
 # docker-compose.yml
-version: '3'
 services:
   prebid-server:
     image: prebid/prebid-server
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./pbs-config.yaml:/config.yaml
-    environment:
-      - PBS_CONFIG_FILE=/config.yaml
-    depends_on:
-      - mocktioneer
+    ports: ['8000:8000']
+    volumes: ['./pbs-config.yaml:/config.yaml']
+    environment: { PBS_CONFIG_FILE: /config.yaml }
+    depends_on: [mocktioneer]
 
   mocktioneer:
     image: mocktioneer:latest
-    ports:
-      - "8787:8787"
+    ports: ['8787:8787']
 ```
 
 ```yaml
@@ -273,6 +267,8 @@ adapters:
     endpoint: http://mocktioneer:8787/openrtb2/auction
 ```
 
+:::
+
 ## Testing Scenarios
 
 ### Comparing Bidders
@@ -281,16 +277,18 @@ Include Mocktioneer alongside real bidders:
 
 ```json
 {
-  "imp": [{
-    "ext": {
-      "prebid": {
-        "bidder": {
-          "mocktioneer": {"bid": 2.00},
-          "appnexus": {"placementId": "12345"}
+  "imp": [
+    {
+      "ext": {
+        "prebid": {
+          "bidder": {
+            "mocktioneer": { "bid": 2.0 },
+            "appnexus": { "placementId": "12345" }
+          }
         }
       }
     }
-  }]
+  ]
 }
 ```
 
@@ -300,16 +298,18 @@ Test floor enforcement:
 
 ```json
 {
-  "imp": [{
-    "bidfloor": 3.00,
-    "ext": {
-      "prebid": {
-        "bidder": {
-          "mocktioneer": {"bid": 2.50}  // Below floor
+  "imp": [
+    {
+      "bidfloor": 3.0,
+      "ext": {
+        "prebid": {
+          "bidder": {
+            "mocktioneer": { "bid": 2.5 } // Below floor
+          }
         }
       }
     }
-  }]
+  ]
 }
 ```
 
@@ -319,17 +319,19 @@ Mocktioneer responds instantly, making it ideal for timeout testing:
 
 ```json
 {
-  "tmax": 100,  // 100ms timeout
-  "imp": [{
-    "ext": {
-      "prebid": {
-        "bidder": {
-          "mocktioneer": {},
-          "slow-bidder": {}  // Compare response times
+  "tmax": 100, // 100ms timeout
+  "imp": [
+    {
+      "ext": {
+        "prebid": {
+          "bidder": {
+            "mocktioneer": {},
+            "slow-bidder": {} // Compare response times
+          }
         }
       }
     }
-  }]
+  ]
 }
 ```
 
@@ -342,7 +344,7 @@ Ensure Mocktioneer is enabled in config:
 ```yaml
 adapters:
   mocktioneer:
-    enabled: true  # Must be true
+    enabled: true # Must be true
 ```
 
 ### Connection Refused

@@ -22,18 +22,20 @@ git clone https://github.com/stackpop/mocktioneer.git
 cd mocktioneer
 ```
 
-### Install EdgeZero CLI (Optional)
+### EdgeZero CLI (Optional)
 
-The EdgeZero CLI provides a unified interface for all adapters:
+The EdgeZero CLI provides a unified interface for all adapters, but it is maintained in the EdgeZero repository and isn't vendored here. If you already have it installed, you can use it; otherwise, skip this and use the direct adapter commands below.
+
+If you have access to the EdgeZero repo:
 
 ```bash
-cargo install --path edgezero/crates/edgezero-cli --features cli
+cargo install --git ssh://git@github.com/stackpop/edgezero.git edgezero-cli --features cli
 ```
 
-Or run it directly without installing:
+Or run it from a local EdgeZero checkout:
 
 ```bash
-cargo run --manifest-path edgezero/Cargo.toml -p edgezero-cli --features cli -- --help
+cargo run --manifest-path /path/to/edgezero/Cargo.toml -p edgezero-cli --features cli -- --help
 ```
 
 ## Running Locally
