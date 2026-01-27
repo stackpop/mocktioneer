@@ -84,3 +84,8 @@ Working backlog and per-task plans live here. Before coding, capture an approved
 - Summary: Ran docs formatting and linting (`npm run format:write`, `npm run lint`) to normalize Markdown and confirm lint clean.
 - Assumptions: None.
 - Unresolved: None.
+
+- Date: 2026-01-27 (Docker/HTTPS migration)
+- Summary: Switched all edgezero git dependencies from SSH (`ssh://git@github.com/stackpop/edgezero.git`) to public HTTPS (`https://github.com/stackpop/edgezero.git`). Cleaned up Dockerfile to remove the `COPY edgezero/crates` workaround that was needed because Docker builds had no SSH keys. Removed the `.dockerignore` edgezero entries. Removed SSH key setup steps from CI workflows (`test.yml`, `format.yml`) since HTTPS on a public repo needs no authentication. Updated `.cargo/config.toml.local` patch key to match the new HTTPS URL. Regenerated `Cargo.lock` (edgezero crates moved from commit `41d650c0` to `ec449f8c` on main). Docker build tested successfully -- image builds and serves requests inside the container.
+- Assumptions: edgezero repo remains publicly accessible at `https://github.com/stackpop/edgezero.git`. Contributors using `.cargo/config.toml.local` for local dev will need to re-copy the updated file.
+- Unresolved: Container serves correctly from inside (`curl localhost:8787` returns HTML) but external port-forwarded requests get connection reset -- likely a Docker Desktop networking issue, not a code problem.

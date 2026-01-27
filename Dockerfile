@@ -16,7 +16,6 @@ COPY crates/mocktioneer-core/Cargo.toml crates/mocktioneer-core/Cargo.toml
 COPY crates/mocktioneer-adapter-axum/Cargo.toml crates/mocktioneer-adapter-axum/Cargo.toml
 COPY crates/mocktioneer-adapter-cloudflare/Cargo.toml crates/mocktioneer-adapter-cloudflare/Cargo.toml
 COPY crates/mocktioneer-adapter-fastly/Cargo.toml crates/mocktioneer-adapter-fastly/Cargo.toml
-COPY edgezero/crates edgezero/crates
 
 COPY crates ./crates
 COPY edgezero.toml ./edgezero.toml
