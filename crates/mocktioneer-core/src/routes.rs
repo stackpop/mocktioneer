@@ -4,7 +4,9 @@ use std::marker::PhantomData;
 use async_trait::async_trait;
 use edgezero_core::action;
 use edgezero_core::context::RequestContext;
-use edgezero_core::extractor::{FromRequest, Headers, ValidatedJson, ValidatedQuery};
+use edgezero_core::extractor::{
+    ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedQuery,
+};
 use edgezero_core::http::{
     header, response_builder, HeaderMap, HeaderValue, Method, Response, StatusCode,
 };
@@ -16,7 +18,7 @@ use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
 use crate::auction::{
-    build_aps_response, build_openrtb_response_with_base_typed, is_standard_size,
+    build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
 use crate::openrtb::OpenRTBRequest;
 use crate::render::{creative_html, info_html, render_svg, render_template_str};
@@ -221,12 +223,8 @@ fn options_response() -> Response {
 }
 
 #[action]
-pub async fn handle_root(Headers(headers): Headers) -> Response {
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    let html = info_html(host);
+pub async fn handle_root(ForwardedHost(host): ForwardedHost) -> Response {
+    let html = info_html(&host);
     let mut response = build_response(StatusCode::OK, Body::text(html));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -238,7 +236,7 @@ pub async fn handle_root(Headers(headers): Headers) -> Response {
 #[action]
 pub async fn handle_openrtb_auction(
     RequestContext(ctx): RequestContext,
-    Headers(headers): Headers,
+    ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
 ) -> Result<Response, EdgeError> {
     if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref()) {
@@ -261,13 +259,9 @@ pub async fn handle_openrtb_auction(
         log::info!("⚠️ Signature verification skipped (no domain)");
     }
 
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("mocktioneer.edgecompute.app");
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
-    let resp = build_openrtb_response_with_base_typed(&req, host);
+    let resp = build_openrtb_response(&req, &host);
     let body = Body::json(&resp).map_err(|e| {
         log::error!("Failed to serialize OpenRTB response: {}", e);
         EdgeError::internal(e)
@@ -302,7 +296,7 @@ pub async fn handle_static_img(
 pub async fn handle_static_creatives(
     ValidatedSize(size, _): ValidatedSize<HtmlSize>,
     ValidatedQuery(query): ValidatedQuery<StaticCreativeQuery>,
-    Headers(headers): Headers,
+    ForwardedHost(host): ForwardedHost,
 ) -> Response {
     let SizeDimensions {
         width: w,
@@ -310,11 +304,7 @@ pub async fn handle_static_creatives(
     } = size;
     let pixel_html = query.pixel_html.unwrap_or(true);
     let pixel_js = query.pixel_js.unwrap_or(false);
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("mocktioneer.edgecompute.app");
-    let html = creative_html(w, h, pixel_html, pixel_js, host);
+    let html = creative_html(w, h, pixel_html, pixel_js, &host);
     let mut response = build_response(StatusCode::OK, Body::from(html));
     response.headers_mut().insert(
         header::CONTENT_TYPE,
@@ -396,21 +386,16 @@ struct ApsWinParams {
 
 #[action]
 pub async fn handle_aps_bid(
-    Headers(headers): Headers,
+    ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<ApsBidRequest>,
 ) -> Result<Response, EdgeError> {
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("mocktioneer.edgecompute.app");
-
     log::info!(
         "APS auction pubId={}, slots={}",
         req.pub_id,
         req.slots.len()
     );
 
-    let resp = build_aps_response(&req, host);
+    let resp = build_aps_response(&req, &host);
     let body = Body::json(&resp).map_err(|e| {
         log::error!("Failed to serialize APS response: {}", e);
         EdgeError::internal(e)
@@ -435,14 +420,9 @@ pub async fn handle_aps_win(ValidatedQuery(params): ValidatedQuery<ApsWinParams>
 
 #[action]
 pub async fn handle_adserver_mediate(
-    Headers(headers): Headers,
+    ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<crate::mediation::MediationRequest>,
 ) -> Result<Response, EdgeError> {
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("mocktioneer.edgecompute.app");
-
     log::info!(
         "Mediation request for auction '{}' with {} impressions and {} bidder responses",
         req.id,
@@ -450,7 +430,7 @@ pub async fn handle_adserver_mediate(
         req.ext.bidder_responses.len()
     );
 
-    let resp = crate::mediation::mediate_auction(req, host);
+    let resp = crate::mediation::mediate_auction(req, &host);
 
     log::info!(
         "Mediation complete for auction '{}': {} seatbid(s)",
@@ -497,6 +477,42 @@ pub async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParam
     response.headers_mut().insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("text/html; charset=utf-8"),
+    );
+    response
+}
+
+/// Returns all standard ad sizes as JSON array.
+/// Useful for test fixtures and keeping external configs in sync with SIZE_MAP.
+///
+/// Response format:
+/// ```json
+/// {
+///   "sizes": [
+///     {"width": 300, "height": 250, "cpm": 2.5},
+///     {"width": 728, "height": 90, "cpm": 3.0},
+///     ...
+///   ]
+/// }
+/// ```
+#[action]
+pub async fn handle_sizes() -> Response {
+    use crate::auction::get_cpm;
+
+    let sizes: Vec<serde_json::Value> = standard_sizes()
+        .map(|(w, h)| {
+            serde_json::json!({
+                "width": w,
+                "height": h,
+                "cpm": get_cpm(w, h)
+            })
+        })
+        .collect();
+
+    let body = serde_json::json!({ "sizes": sizes });
+    let mut response = build_response(StatusCode::OK, Body::from(body.to_string()));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
     );
     response
 }
@@ -954,5 +970,28 @@ mod tests {
         );
         let response = response_from(block_on(handle_aps_win(ctx)));
         assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn handle_sizes_returns_json() {
+        let ctx = ctx(Method::GET, "/_/sizes", Body::empty(), &[]);
+        let response = response_from(block_on(handle_sizes(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let ct = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(ct, "application/json");
+        let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
+        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let sizes = json["sizes"].as_array().unwrap();
+        assert_eq!(sizes.len(), standard_sizes().count());
+        // Check one size has all expected fields
+        let first = &sizes[0];
+        assert!(first["width"].is_i64());
+        assert!(first["height"].is_i64());
+        assert!(first["cpm"].is_f64());
     }
 }

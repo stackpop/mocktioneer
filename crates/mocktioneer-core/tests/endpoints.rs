@@ -10,6 +10,7 @@ fn make_request(method: Method, uri: &str, body: Body) -> edgezero_core::http::R
     request_builder()
         .method(method)
         .uri(uri)
+        .header(header::HOST, "mocktioneer.edgecompute.app")
         .body(body)
         .expect("request")
 }

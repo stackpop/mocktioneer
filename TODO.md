@@ -6,6 +6,9 @@ Working backlog and per-task plans live here. Before coding, capture an approved
 - [ ] _(add upcoming work items here)_
 
 ## Active Plan
+- [x] 2026-01-21: Low finding #1 — stabilize `/_/sizes` output (safe parsing, deterministic ordering) and align the test with dynamic size count.
+- [x] 2026-01-21: Low finding #2 — reduce `decode_aps_price` visibility to test-only or crate-only.
+- [x] 2026-01-21: Low finding #3 — reduce `size_key` allocation overhead in size lookups.
 - [x] Audit route extractors in `mocktioneer-core` to see where path/query parameters map to structs.
 - [x] Introduce validator-enabled structs (derive or impl `Validate`) and swap handlers to use `ValidatedPath`/`ValidatedQuery`.
 - [x] Run targeted tests (core crate) and document outcomes in the review log.
@@ -28,6 +31,12 @@ Working backlog and per-task plans live here. Before coding, capture an approved
 - [x] Adjust middleware wiring/tests to call the macro-generated handlers while keeping CORS/logger behaviour.
 - [x] Ensure Fastly/Cloudflare bins still compile after handler signature changes and run the core crate tests.
 
+### 2026-01-21 – Review latest changes
+- [x] Capture the current diff scope and impacted files for review.
+- [x] Review `auction.rs` sizing/pricing updates plus APS/OpenRTB behavior and tests.
+- [x] Review new sizes endpoint plus template/config updates.
+- [x] Summarize findings, risks, and testing gaps for follow-up.
+
 ## Review Log
 - **2025-09-22 16:59 UTC** – Adopted the shared `Headers` extractor + new core validation errors (no more local wrappers); tests and checks stay green.
 - **2025-09-20 02:18 UTC** – Swapped mocktioneer handlers to use `#[action]` extractors (plus custom query/path helpers) and revalidated core/bin builds (`cargo test -p mocktioneer-core`, `cargo check`).
@@ -43,3 +52,9 @@ Working backlog and per-task plans live here. Before coding, capture an approved
 - **2025-09-18 03:06 UTC** – Simplified click query extraction by parsing width/height as numbers (validated range) and dropping generic string coercion; full test suite still passes. `cargo test -p mocktioneer-core`.
 - **2025-09-18 02:55 UTC** – Trimmed query extraction helpers to only coerce click params into strings; booleans now use native serde handling. `cargo test -p mocktioneer-core`.
 - **2025-09-20 01:38 UTC** – Updated dependencies and rewrote the EdgeZero integration (middleware, async handlers, tests, Fastly/Cloudflare adapters) to match the latest core API; `cargo check` on the mocktioneer workspace succeeds.
+
+## Review
+- Date: 2026-01-21 03:35 UTC
+- Summary: Switched size lookups to packed integer keys to avoid string allocations; finished the remaining low findings.
+- Assumptions: Packed size keys (u32 width/height) cover all supported sizes.
+- Unresolved: None from the low-finding list.

@@ -2,15 +2,6 @@ use handlebars::Handlebars;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-pub fn escape_html(input: &str) -> String {
-    input
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&#39;")
-}
-
 pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
     let mut reg = Handlebars::new();
     // We want HTML escaping on by default (to protect attribute injection)
@@ -33,42 +24,18 @@ pub fn iframe_html(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>
 
 pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
     const SVG_TMPL: &str = include_str!("../static/templates/image.svg.hbs");
-    let pad = ((w.min(h) as f64) * 0.08).round() as i64;
-    let mut text_len = w - 2 * pad;
-    if text_len < 1 {
-        text_len = 1;
-    }
-    let font = (h as f64 * 0.28).round() as i64;
-    let mut cap_font = ((w.min(h) as f64) * 0.12).round() as i64;
-    if cap_font < 10 {
-        cap_font = 10;
-    }
-    let mut stroke = ((w.min(h) as f64) * 0.03).round() as i64;
-    if stroke < 2 {
-        stroke = 2;
-    }
-    let xbr = (w - pad - stroke).max(0);
-    let ybr = (h - pad - stroke).max(0);
-    let xtl = (pad + stroke).max(0);
-    let ytl = (pad + stroke).max(0);
-    // Compute numeric Y for caption: place it under the main title
-    let title_y = h / 2; // main title uses 50% with baseline=middle
-    let cap_y = title_y + ((font as f64 * 0.7).round() as i64);
+    // Font size: fit "WxH" text (~7 chars) within width, also limit by height
+    let font = (w as f64 / 5.0).min(h as f64 / 2.0).round().max(12.0) as i64;
+    // Caption positioned below main title
+    let cap_y = h / 2 + (font as f64 * 0.7).round() as i64;
     let bid_label = bid.map(|b| format!(" — ${:.2}", b)).unwrap_or_default();
     let data = serde_json::json!({
         "BIDLBL": bid_label,
-        "CAPFONT": cap_font,
+        "CAPFONT": ((w.min(h) as f64) * 0.06).clamp(10.0, 16.0).round() as i64,
         "CAPY": cap_y,
         "FONT": font,
         "H": h,
-        "PADDING": pad,
-        "STROKE": stroke,
-        "TEXTLEN": text_len,
         "W": w,
-        "XBR": xbr,
-        "XTL": xtl,
-        "YBR": ybr,
-        "YTL": ytl,
     });
     render_template_str(SVG_TMPL, &data)
 }
@@ -112,11 +79,6 @@ pub fn info_html(host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_escape_html_basic() {
-        assert_eq!(escape_html("<&>\"'"), "&lt;&amp;&gt;&quot;&#39;");
-    }
 
     #[test]
     fn test_banner_adm_iframe_contains_expected_src_and_escapes() {
