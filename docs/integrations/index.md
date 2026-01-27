@@ -2,6 +2,13 @@
 
 Mocktioneer integrates with popular ad tech platforms for testing header bidding and programmatic advertising flows.
 
+::: warning Forks Required
+The Mocktioneer adapters are not yet merged upstream. Use the Stackpop forks:
+
+- **Prebid.js**: [github.com/stackpop/Prebid.js](https://github.com/stackpop/Prebid.js)
+- **Prebid Server**: [github.com/stackpop/prebid-server](https://github.com/stackpop/prebid-server)
+  :::
+
 ## Supported Integrations
 
 | Platform                         | Type        | Description                  |
