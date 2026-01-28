@@ -40,15 +40,25 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-cloudflare-
 
-      - name: Retrieve Rust version
-        id: rust-version
-        run: echo "rust-version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
+      - name: Retrieve tool versions
+        id: tool-versions
+        run: |
+          echo "rust=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
+          echo "node=$(grep '^nodejs ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
         shell: bash
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ steps.tool-versions.outputs.node }}
+
+      - name: Install wrangler
+        run: npm install -g wrangler
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
-          toolchain: ${{ steps.rust-version.outputs.rust-version }}
+          toolchain: ${{ steps.tool-versions.outputs.rust }}
 
       - name: Add wasm32-unknown-unknown target
         run: rustup target add wasm32-unknown-unknown
