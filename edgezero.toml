@@ -175,7 +175,7 @@ features = ["cloudflare"]
 [adapters.cloudflare.commands]
 build = "cargo build --release --target wasm32-unknown-unknown -p mocktioneer-adapter-cloudflare"
 serve = "wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
-deploy = "wrangler publish --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
+deploy = "wrangler deploy --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
 
 [adapters.cloudflare.logging]
 level = "info"

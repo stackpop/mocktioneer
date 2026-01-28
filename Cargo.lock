@@ -580,7 +580,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=fix%2Fweb-time-wasm#06431d5efcdb9929304f82772979a2e1a841bebb"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -602,7 +602,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=fix%2Fweb-time-wasm#06431d5efcdb9929304f82772979a2e1a841bebb"
 dependencies = [
  "async-trait",
  "brotli",
@@ -619,7 +619,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=fix%2Fweb-time-wasm#06431d5efcdb9929304f82772979a2e1a841bebb"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -639,7 +639,7 @@ dependencies = [
 [[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=fix%2Fweb-time-wasm#06431d5efcdb9929304f82772979a2e1a841bebb"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -661,12 +661,13 @@ dependencies = [
  "tower-service",
  "tracing",
  "validator",
+ "web-time",
 ]
 
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=fix%2Fweb-time-wasm#06431d5efcdb9929304f82772979a2e1a841bebb"
 dependencies = [
  "log",
  "proc-macro2",
@@ -3167,9 +3168,9 @@ dependencies = [
 
 [[package]]
 name = "worker"
-version = "0.6.7"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9320293035d2074f1fb84baf7d79d7932c183dd04a7e0c143dc75db0d0037ac"
+checksum = "244647fd7673893058f91f22a0eabd0f45bb50298e995688cb0c4b9837081b19"
 dependencies = [
  "async-trait",
  "bytes",
@@ -3197,9 +3198,9 @@ dependencies = [
 
 [[package]]
 name = "worker-macros"
-version = "0.6.7"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eb37d4f9d99921836a1e4dc21e6041df9b0c2c5fe3c230edddd172a8ef9e251e"
+checksum = "ac7e73ffb164183b57bb67d3efb881681fcd93ef5515ba32a4d022c4a6acc2ce"
 dependencies = [
  "async-trait",
  "proc-macro2",
@@ -3213,9 +3214,9 @@ dependencies = [
 
 [[package]]
 name = "worker-sys"
-version = "0.6.7"
+version = "0.7.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "07b4e2ca5d405247a986d533bba78c396c941835747977631168b8b05304f1b6"
+checksum = "2a2b96254fcaa9229fd82d886f04be99c4ee8e59c8d80438724aa70039dca838"
 dependencies = [
  "cfg-if",
  "js-sys",

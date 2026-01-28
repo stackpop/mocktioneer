@@ -1,5 +1,16 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Set ADAPTER env var to control which adapter to test:
+// ADAPTER=axum npx playwright test
+// ADAPTER=cloudflare npx playwright test
+// Default: axum
+const adapter = process.env.ADAPTER || 'axum';
+
+const webServerCommands: Record<string, string> = {
+  axum: 'cargo run -p mocktioneer-adapter-axum',
+  cloudflare: 'edgezero-cli serve --adapter cloudflare',
+};
+
 export default defineConfig({
   testDir: '.',
   fullyParallel: true,
@@ -13,12 +24,12 @@ export default defineConfig({
   },
   projects: [
     {
-      name: 'chromium',
+      name: adapter,
       use: { ...devices['Desktop Chrome'] },
     },
   ],
   webServer: {
-    command: 'cargo run -p mocktioneer-adapter-axum',
+    command: webServerCommands[adapter],
     cwd: '../..',
     url: 'http://127.0.0.1:8787/',
     reuseExistingServer: !process.env.CI,

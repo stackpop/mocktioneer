@@ -8,6 +8,10 @@ publish = false
 name = "mocktioneer-adapter-cloudflare"
 path = "src/main.rs"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
 [features]
 default = ["cloudflare"]
 cloudflare = ["dep:edgezero-adapter-cloudflare"]
