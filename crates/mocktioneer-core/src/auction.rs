@@ -119,10 +119,9 @@ pub fn standard_or_default((w, h): (i64, i64)) -> (i64, i64) {
 pub fn build_openrtb_response(req: &OpenRTBRequest, base_host: &str) -> OpenRTBResponse {
     let mut bids: Vec<OpenrtbBid> = Vec::new();
     for imp in req.imp.iter() {
-        let impid = if imp.id.is_empty() { "1" } else { &imp.id };
         let (w, h) = standard_or_default(size_from_imp(imp));
         let bid_id = new_id();
-        let crid = format!("mocktioneer-{}", impid);
+        let crid = format!("mocktioneer-{}", imp.id);
         // Extract custom bid from imp.ext.mocktioneer.bid if present
         let custom_bid = imp
             .ext
@@ -137,7 +136,7 @@ pub fn build_openrtb_response(req: &OpenRTBRequest, base_host: &str) -> OpenRTBR
         let adm_html = iframe_html(base_host, &crid, w, h, bid_for_iframe);
         bids.push(OpenrtbBid {
             id: bid_id,
-            impid: impid.to_string(),
+            impid: imp.id.clone(),
             price,
             adm: Some(adm_html),
             crid: Some(crid),
@@ -177,10 +176,9 @@ pub fn build_openrtb_response_with_base_typed(
     // Build bids without adm
     let mut bids: Vec<OpenrtbBid> = Vec::new();
     for imp in req.imp.iter() {
-        let impid = if imp.id.is_empty() { "1" } else { &imp.id };
         let (w, h) = standard_or_default(size_from_imp(imp));
         let bid_id = new_id();
-        let crid = format!("mocktioneer-{}", impid);
+        let crid = format!("mocktioneer-{}", imp.id);
 
         // Extract custom bid from imp.ext.mocktioneer.bid if present
         let custom_bid = imp
@@ -195,7 +193,7 @@ pub fn build_openrtb_response_with_base_typed(
 
         bids.push(OpenrtbBid {
             id: bid_id,
-            impid: impid.to_string(),
+            impid: imp.id.clone(),
             price,
             adm: None, // Filled after metadata is built
             crid: Some(crid),

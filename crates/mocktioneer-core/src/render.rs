@@ -17,6 +17,32 @@ pub enum SignatureStatus {
     NotPresent { reason: String },
 }
 
+impl SignatureStatus {
+    /// Return an inline-styled HTML badge indicating the verification outcome.
+    pub fn badge_html(&self) -> &'static str {
+        match self {
+            SignatureStatus::Verified { .. } => concat!(
+                "<div style=\"position:absolute;bottom:0;right:0;font-size:9px;",
+                "padding:1px 6px;background:rgba(0,128,0,.85);color:#fff;",
+                "pointer-events:none;z-index:1;font-family:system-ui,sans-serif\">",
+                "\u{2714}\u{FE0E} Request signature verified</div>",
+            ),
+            SignatureStatus::Failed { .. } => concat!(
+                "<div style=\"position:absolute;bottom:0;right:0;font-size:9px;",
+                "padding:1px 6px;background:rgba(200,0,0,.85);color:#fff;",
+                "pointer-events:none;z-index:1;font-family:system-ui,sans-serif\">",
+                "\u{274C} Request signature not verified</div>",
+            ),
+            SignatureStatus::NotPresent { .. } => concat!(
+                "<div style=\"position:absolute;bottom:0;right:0;font-size:9px;",
+                "padding:1px 6px;background:rgba(128,128,128,.75);color:#fff;",
+                "pointer-events:none;z-index:1;font-family:system-ui,sans-serif\">",
+                "\u{2014} No signature present</div>",
+            ),
+        }
+    }
+}
+
 /// Metadata to embed in creative HTML comments
 #[derive(Debug, Clone, Serialize)]
 pub struct CreativeMetadata<'a> {
@@ -46,11 +72,13 @@ pub fn iframe_html(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>
     render_template_str(IFRAME_HTML_TMPL, &data)
 }
 
-/// Render iframe HTML with embedded metadata as an HTML comment.
+/// Render iframe HTML with embedded metadata as an HTML comment and a visible
+/// verification badge.
 ///
-/// The metadata is serialized as pretty-printed JSON and wrapped in an HTML comment
-/// before the iframe element. Any `--` sequences in the JSON are escaped to prevent
-/// breaking the HTML comment syntax.
+/// The metadata is serialized as pretty-printed JSON and wrapped in an HTML comment.
+/// Any `--` sequences in the JSON are escaped to prevent breaking the HTML comment
+/// syntax. The iframe is wrapped in a positioned container with a small overlay badge
+/// showing the signature verification status.
 pub fn iframe_html_with_metadata(
     base_host: &str,
     crid: &str,
@@ -68,9 +96,15 @@ pub fn iframe_html_with_metadata(
     // Escape -- sequences to prevent breaking HTML comment syntax
     let safe_json = meta_json.replace("--", "- -");
 
+    let badge = metadata.signature.badge_html();
+
     format!(
-        "<!-- MOCKTIONEER_METADATA\n{}\n-->\n{}",
-        safe_json, base_html
+        "<!-- MOCKTIONEER_METADATA\n{}\n-->\n\
+         <div style=\"position:relative;display:inline-block;width:{}px;height:{}px\">\
+         {}\
+         {}\
+         </div>",
+        safe_json, w, h, base_html, badge
     )
 }
 
@@ -178,17 +212,23 @@ mod tests {
 
         // Check the comment structure
         assert!(adm.starts_with("<!-- MOCKTIONEER_METADATA"));
-        assert!(adm.contains("-->\n<iframe"));
+        assert!(adm.contains("-->\n<div"));
 
-        // Check signature status is included
+        // Check signature status is included in metadata comment
         assert!(adm.contains("\"status\": \"Verified\""));
         assert!(adm.contains("\"kid\": \"key-001\""));
 
         // Check request data is included
         assert!(adm.contains("\"id\": \"test-req-123\""));
 
-        // Check the iframe is still there
+        // Check the iframe is wrapped in a positioned container
+        assert!(adm.contains("position:relative;display:inline-block;width:300px;height:250px"));
         assert!(adm.contains("//host.test/static/creatives/300x250.html"));
+        assert!(adm.contains("</div>"));
+
+        // Check the visible verification badge
+        assert!(adm.contains("\u{2714}\u{FE0E} Request signature verified"));
+        assert!(adm.contains("background:rgba(0,128,0,.85)"));
     }
 
     #[test]
@@ -228,6 +268,10 @@ mod tests {
             "Metadata should not contain -- sequence: {}",
             metadata_content
         );
+
+        // Check the visible failure badge
+        assert!(adm.contains("\u{274C} Request signature not verified"));
+        assert!(adm.contains("background:rgba(200,0,0,.85)"));
     }
 
     #[test]
@@ -252,6 +296,10 @@ mod tests {
 
         assert!(adm.contains("\"status\": \"NotPresent\""));
         assert!(adm.contains("No site.domain present"));
+
+        // Check the visible not-present badge
+        assert!(adm.contains("\u{2014} No signature present"));
+        assert!(adm.contains("background:rgba(128,128,128,.75)"));
     }
 
     #[test]
