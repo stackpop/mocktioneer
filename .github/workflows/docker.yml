@@ -1,11 +1,14 @@
 name: "Build & Publish Docker Image"
 
 on:
-  push:
-    branches: [main]
-    tags: ["v*"]
+  release:
+    types: [created]
   workflow_dispatch:
     inputs:
+      ref:
+        description: "Git ref to build (branch, tag, or SHA). Defaults to the default branch."
+        required: false
+        type: string
       tag:
         description: "Custom image tag (e.g. rc-1, staging)"
         required: false
@@ -25,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
