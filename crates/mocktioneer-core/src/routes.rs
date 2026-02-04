@@ -18,7 +18,7 @@ use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
 use crate::auction::{
-    build_aps_response, build_openrtb_response_with_base_typed, is_standard_size, standard_sizes,
+    build_aps_response, build_debug_openrtb_response, is_standard_size, standard_sizes,
 };
 use crate::openrtb::OpenRTBRequest;
 use crate::render::{creative_html, info_html, render_svg, render_template_str, SignatureStatus};
@@ -270,8 +270,8 @@ pub async fn handle_openrtb_auction(
 
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
-    // Build response with embedded metadata (signature status + request + response preview)
-    let resp = build_openrtb_response_with_base_typed(&req, &host, signature_status);
+    // Build response with embedded debug metadata (signature status + request + response preview)
+    let resp = build_debug_openrtb_response(&req, &host, signature_status);
     let body = Body::json(&resp).map_err(|e| {
         log::error!("Failed to serialize OpenRTB response: {}", e);
         EdgeError::internal(e)

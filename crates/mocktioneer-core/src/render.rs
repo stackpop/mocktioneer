@@ -18,27 +18,13 @@ pub enum SignatureStatus {
 }
 
 impl SignatureStatus {
-    /// Return an inline-styled HTML badge indicating the verification outcome.
-    pub fn badge_html(&self) -> &'static str {
+    /// Return the URL parameter value for this signature status.
+    /// Used to pass signature status to the creative template via query param.
+    pub fn url_param(&self) -> &'static str {
         match self {
-            SignatureStatus::Verified { .. } => concat!(
-                "<div style=\"position:absolute;bottom:0;right:0;font-size:9px;",
-                "padding:1px 6px;background:rgba(0,128,0,.85);color:#fff;",
-                "pointer-events:none;z-index:1;font-family:system-ui,sans-serif\">",
-                "\u{2714}\u{FE0E} Request signature verified</div>",
-            ),
-            SignatureStatus::Failed { .. } => concat!(
-                "<div style=\"position:absolute;bottom:0;right:0;font-size:9px;",
-                "padding:1px 6px;background:rgba(200,0,0,.85);color:#fff;",
-                "pointer-events:none;z-index:1;font-family:system-ui,sans-serif\">",
-                "\u{274C} Request signature not verified</div>",
-            ),
-            SignatureStatus::NotPresent { .. } => concat!(
-                "<div style=\"position:absolute;bottom:0;right:0;font-size:9px;",
-                "padding:1px 6px;background:rgba(128,128,128,.75);color:#fff;",
-                "pointer-events:none;z-index:1;font-family:system-ui,sans-serif\">",
-                "\u{2014} No signature present</div>",
-            ),
+            SignatureStatus::Verified { .. } => "verified",
+            SignatureStatus::Failed { .. } => "failed",
+            SignatureStatus::NotPresent { .. } => "not_present",
         }
     }
 }
@@ -60,25 +46,41 @@ pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
 }
 
 const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html.hbs");
+const IFRAME_WITH_METADATA_TMPL: &str =
+    include_str!("../static/templates/iframe-with-metadata.html.hbs");
+
 pub fn iframe_html(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>) -> String {
+    iframe_html_internal(base_host, crid, w, h, bid, None)
+}
+
+fn iframe_html_internal(
+    base_host: &str,
+    crid: &str,
+    w: i64,
+    h: i64,
+    bid: Option<f64>,
+    sig: Option<&str>,
+) -> String {
     let bid_str = bid.map(|b| format!("{:.2}", b)).unwrap_or_default();
-    let data = serde_json::json!({
+    let mut data = serde_json::json!({
         "BID": bid_str,
         "CRID": crid,
         "H": h,
         "HOST": base_host,
         "W": w,
     });
+    if let Some(sig_val) = sig {
+        data["SIG"] = serde_json::json!(sig_val);
+    }
     render_template_str(IFRAME_HTML_TMPL, &data)
 }
 
-/// Render iframe HTML with embedded metadata as an HTML comment and a visible
-/// verification badge.
+/// Render iframe HTML with embedded metadata as an HTML comment.
 ///
 /// The metadata is serialized as pretty-printed JSON and wrapped in an HTML comment.
 /// Any `--` sequences in the JSON are escaped to prevent breaking the HTML comment
-/// syntax. The iframe is wrapped in a positioned container with a small overlay badge
-/// showing the signature verification status.
+/// syntax. The iframe is wrapped in a positioned container. The signature verification
+/// badge is rendered inside the creative template (not in the wrapper).
 pub fn iframe_html_with_metadata(
     base_host: &str,
     crid: &str,
@@ -87,7 +89,11 @@ pub fn iframe_html_with_metadata(
     bid: Option<f64>,
     metadata: &CreativeMetadata,
 ) -> String {
-    let base_html = iframe_html(base_host, crid, w, h, bid);
+    // Get signature status URL param for the creative to render the badge
+    let sig_param = metadata.signature.url_param();
+
+    // Render iframe with sig param so the creative can show the badge
+    let iframe = iframe_html_internal(base_host, crid, w, h, bid, Some(sig_param));
 
     // Serialize metadata as pretty JSON
     let meta_json = serde_json::to_string_pretty(metadata)
@@ -96,16 +102,14 @@ pub fn iframe_html_with_metadata(
     // Escape -- sequences to prevent breaking HTML comment syntax
     let safe_json = meta_json.replace("--", "- -");
 
-    let badge = metadata.signature.badge_html();
-
-    format!(
-        "<!-- MOCKTIONEER_METADATA\n{}\n-->\n\
-         <div style=\"position:relative;display:inline-block;width:{}px;height:{}px\">\
-         {}\
-         {}\
-         </div>",
-        safe_json, w, h, base_html, badge
-    )
+    // Use template to wrap iframe with metadata comment
+    let data = serde_json::json!({
+        "H": h,
+        "IFRAME_HTML": iframe,
+        "METADATA_JSON": safe_json,
+        "W": w,
+    });
+    render_template_str(IFRAME_WITH_METADATA_TMPL, &data)
 }
 
 pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
@@ -226,9 +230,8 @@ mod tests {
         assert!(adm.contains("//host.test/static/creatives/300x250.html"));
         assert!(adm.contains("</div>"));
 
-        // Check the visible verification badge
-        assert!(adm.contains("\u{2714}\u{FE0E} Request signature verified"));
-        assert!(adm.contains("background:rgba(0,128,0,.85)"));
+        // Check the sig param is passed to iframe for badge rendering in creative
+        assert!(adm.contains("&sig=verified"));
     }
 
     #[test]
@@ -269,9 +272,8 @@ mod tests {
             metadata_content
         );
 
-        // Check the visible failure badge
-        assert!(adm.contains("\u{274C} Request signature not verified"));
-        assert!(adm.contains("background:rgba(200,0,0,.85)"));
+        // Check the sig param is passed to iframe for badge rendering in creative
+        assert!(adm.contains("&sig=failed"));
     }
 
     #[test]
@@ -297,9 +299,8 @@ mod tests {
         assert!(adm.contains("\"status\": \"NotPresent\""));
         assert!(adm.contains("No site.domain present"));
 
-        // Check the visible not-present badge
-        assert!(adm.contains("\u{2014} No signature present"));
-        assert!(adm.contains("background:rgba(128,128,128,.75)"));
+        // Check the sig param is passed to iframe for badge rendering in creative
+        assert!(adm.contains("&sig=not_present"));
     }
 
     #[test]

@@ -164,11 +164,15 @@ pub fn build_openrtb_response(req: &OpenRTBRequest, base_host: &str) -> OpenRTBR
     }
 }
 
-/// Build an OpenRTB bid response with embedded metadata for debugging.
+/// Build an OpenRTB bid response with embedded debug metadata.
 ///
 /// This function embeds signature verification status, the original request,
-/// and a preview of the response as HTML comments in each creative.
-pub fn build_openrtb_response_with_base_typed(
+/// and a preview of the response as HTML comments in each creative. The
+/// signature badge is rendered inside the creative via the `sig` query param.
+///
+/// Note: Metadata is always included. Configuration for optional debug info
+/// will be added via edgezero in a future update.
+pub fn build_debug_openrtb_response(
     req: &OpenRTBRequest,
     base_host: &str,
     signature_status: SignatureStatus,
