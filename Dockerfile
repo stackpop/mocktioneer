@@ -1,4 +1,5 @@
-FROM rust:1.90.0-slim-bookworm AS builder
+ARG RUST_VERSION=1.91.1
+FROM rust:${RUST_VERSION}-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
