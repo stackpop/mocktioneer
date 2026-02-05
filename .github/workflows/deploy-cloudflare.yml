@@ -67,7 +67,7 @@ jobs:
         run: cargo install worker-build --locked
 
       - name: Install edgezero-cli
-        run: cargo install --git ssh://git@github.com/stackpop/edgezero.git --branch fix/web-time-wasm edgezero-cli
+        run: cargo install --force --git ssh://git@github.com/stackpop/edgezero.git --branch fix/web-time-wasm edgezero-cli
 
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
