@@ -580,7 +580,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#ec449f8cf3addcccd8ae0c38231f76be321c886e"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -602,7 +602,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#ec449f8cf3addcccd8ae0c38231f76be321c886e"
 dependencies = [
  "async-trait",
  "brotli",
@@ -613,13 +613,13 @@ dependencies = [
  "futures-util",
  "log",
  "wasm-bindgen-test",
- "worker",
+ "worker 0.7.4",
 ]
 
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#ec449f8cf3addcccd8ae0c38231f76be321c886e"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -639,7 +639,7 @@ dependencies = [
 [[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#ec449f8cf3addcccd8ae0c38231f76be321c886e"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -666,7 +666,7 @@ dependencies = [
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+ssh://git@github.com/stackpop/edgezero.git?branch=main#41d650c0859aaeb9d6c267426963204dd30494b1"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#ec449f8cf3addcccd8ae0c38231f76be321c886e"
 dependencies = [
  "log",
  "proc-macro2",
@@ -1425,7 +1425,7 @@ dependencies = [
  "edgezero-adapter-cloudflare",
  "edgezero-core",
  "mocktioneer-core",
- "worker",
+ "worker 0.6.7",
 ]
 
 [[package]]
@@ -3191,8 +3191,38 @@ dependencies = [
  "wasm-bindgen-futures",
  "wasm-streams",
  "web-sys",
- "worker-macros",
- "worker-sys",
+ "worker-macros 0.6.7",
+ "worker-sys 0.6.7",
+]
+
+[[package]]
+name = "worker"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "244647fd7673893058f91f22a0eabd0f45bb50298e995688cb0c4b9837081b19"
+dependencies = [
+ "async-trait",
+ "bytes",
+ "chrono",
+ "futures-channel",
+ "futures-util",
+ "http",
+ "http-body",
+ "js-sys",
+ "matchit 0.7.3",
+ "pin-project",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "serde_urlencoded",
+ "tokio",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-streams",
+ "web-sys",
+ "worker-macros 0.7.4",
+ "worker-sys 0.7.4",
 ]
 
 [[package]]
@@ -3208,7 +3238,23 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "wasm-bindgen-macro-support",
- "worker-sys",
+ "worker-sys 0.6.7",
+]
+
+[[package]]
+name = "worker-macros"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac7e73ffb164183b57bb67d3efb881681fcd93ef5515ba32a4d022c4a6acc2ce"
+dependencies = [
+ "async-trait",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "wasm-bindgen-macro-support",
+ "worker-sys 0.7.4",
 ]
 
 [[package]]
@@ -3216,6 +3262,18 @@ name = "worker-sys"
 version = "0.6.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "07b4e2ca5d405247a986d533bba78c396c941835747977631168b8b05304f1b6"
+dependencies = [
+ "cfg-if",
+ "js-sys",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "worker-sys"
+version = "0.7.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a2b96254fcaa9229fd82d886f04be99c4ee8e59c8d80438724aa70039dca838"
 dependencies = [
  "cfg-if",
  "js-sys",
