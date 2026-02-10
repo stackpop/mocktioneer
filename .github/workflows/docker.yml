@@ -1,6 +1,21 @@
+# Builds and publishes the Mocktioneer Docker image to ghcr.io/stackpop/mocktioneer.
+#
+# Tagging strategy:
+#   - Pull requests:    7-char commit SHA  (e.g. a1b2c3d)
+#   - Push to main:     latest
+#   - GitHub release:   v1.2.3, 1.2.3, 1.2  (semver variants from the release tag)
+#   - Manual dispatch:  the git ref you provide
+#
+# PR images are only pushed when the PR originates from this repo (not forks).
+# Concurrent builds on the same ref cancel earlier runs.
+
 name: "Build & Publish Docker Image"
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   release:
     types: [created]
   workflow_dispatch:
@@ -15,7 +30,7 @@ permissions:
   packages: write
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.run_id }}
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -31,6 +46,10 @@ jobs:
         id: rust
         run: echo "version=$(grep '^rust' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
 
+      - name: Get short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -44,12 +63,16 @@ jobs:
         with:
           images: ghcr.io/stackpop/mocktioneer
           tags: |
-            type=raw,value=${{ github.event.release.tag_name }},enable=${{ github.event_name == 'release' }}
+            # PR builds: tag with 7-char commit SHA (no prefix)
+            type=raw,value=${{ steps.sha.outputs.short }},enable=${{ github.event_name == 'pull_request' }}
+            # Push to main: tag as latest
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+            # Release: tag with version from release tag
+            type=semver,pattern=v{{version}},enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'release' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'release' }}
+            # workflow_dispatch: tag with provided ref
             type=raw,value=${{ inputs.ref || github.ref_name }},enable=${{ github.event_name == 'workflow_dispatch' }}
-            type=sha,prefix=sha-
-            type=semver,pattern=v{{version}}
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -58,7 +81,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
