@@ -46,34 +46,6 @@ pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
 }
 
 const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html.hbs");
-const IFRAME_WITH_METADATA_TMPL: &str =
-    include_str!("../static/templates/iframe-with-metadata.html.hbs");
-
-pub fn iframe_html(base_host: &str, crid: &str, w: i64, h: i64, bid: Option<f64>) -> String {
-    iframe_html_internal(base_host, crid, w, h, bid, None)
-}
-
-fn iframe_html_internal(
-    base_host: &str,
-    crid: &str,
-    w: i64,
-    h: i64,
-    bid: Option<f64>,
-    sig: Option<&str>,
-) -> String {
-    let bid_str = bid.map(|b| format!("{:.2}", b)).unwrap_or_default();
-    let mut data = serde_json::json!({
-        "BID": bid_str,
-        "CRID": crid,
-        "H": h,
-        "HOST": base_host,
-        "W": w,
-    });
-    if let Some(sig_val) = sig {
-        data["SIG"] = serde_json::json!(sig_val);
-    }
-    render_template_str(IFRAME_HTML_TMPL, &data)
-}
 
 /// Render iframe HTML with embedded metadata as an HTML comment.
 ///
@@ -81,7 +53,7 @@ fn iframe_html_internal(
 /// Any `--` sequences in the JSON are escaped to prevent breaking the HTML comment
 /// syntax. The iframe is wrapped in a positioned container. The signature verification
 /// badge is rendered inside the creative template (not in the wrapper).
-pub fn iframe_html_with_metadata(
+pub fn iframe_html(
     base_host: &str,
     crid: &str,
     w: i64,
@@ -92,9 +64,6 @@ pub fn iframe_html_with_metadata(
     // Get signature status URL param for the creative to render the badge
     let sig_param = metadata.signature.url_param();
 
-    // Render iframe with sig param so the creative can show the badge
-    let iframe = iframe_html_internal(base_host, crid, w, h, bid, Some(sig_param));
-
     // Serialize metadata as pretty JSON
     let meta_json = serde_json::to_string_pretty(metadata)
         .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize metadata: {}\"}}", e));
@@ -102,14 +71,18 @@ pub fn iframe_html_with_metadata(
     // Escape -- sequences to prevent breaking HTML comment syntax
     let safe_json = meta_json.replace("--", "- -");
 
-    // Use template to wrap iframe with metadata comment
+    let bid_str = bid.map(|b| format!("{:.2}", b)).unwrap_or_default();
+
     let data = serde_json::json!({
+        "BID": bid_str,
+        "CRID": crid,
         "H": h,
-        "IFRAME_HTML": iframe,
+        "HOST": base_host,
         "METADATA_JSON": safe_json,
+        "SIG": sig_param,
         "W": w,
     });
-    render_template_str(IFRAME_WITH_METADATA_TMPL, &data)
+    render_template_str(IFRAME_HTML_TMPL, &data)
 }
 
 pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
@@ -169,10 +142,32 @@ pub fn info_html(host: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::openrtb::OpenRTBRequest;
+
+    fn test_metadata(signature: SignatureStatus) -> (OpenRTBRequest, CreativeMetadata<'static>) {
+        // Use a leaked request to get a 'static lifetime for tests
+        let req: &'static OpenRTBRequest = Box::leak(Box::new(
+            serde_json::from_value(serde_json::json!({
+                "id": "test-req",
+                "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+            }))
+            .unwrap(),
+        ));
+
+        let metadata = CreativeMetadata {
+            signature,
+            request: req,
+            response: None,
+        };
+        (req.clone(), metadata)
+    }
 
     #[test]
     fn test_banner_adm_iframe_contains_expected_src_and_escapes() {
-        let adm = iframe_html("host.test", "abc&def\"", 300, 250, None);
+        let (_, metadata) = test_metadata(SignatureStatus::NotPresent {
+            reason: "test".to_string(),
+        });
+        let adm = iframe_html("host.test", "abc&def\"", 300, 250, None, &metadata);
         assert!(adm.contains("//host.test/static/creatives/300x250.html?crid=abc&amp;def&quot;"));
         assert!(adm.contains("width=\"300\""));
         assert!(adm.contains("height=\"250\""));
@@ -188,15 +183,16 @@ mod tests {
 
     #[test]
     fn test_banner_adm_iframe_includes_bid_param_when_present() {
-        let adm = iframe_html("host.test", "crid123", 320, 50, Some(3.75));
+        let (_, metadata) = test_metadata(SignatureStatus::NotPresent {
+            reason: "test".to_string(),
+        });
+        let adm = iframe_html("host.test", "crid123", 320, 50, Some(3.75), &metadata);
         assert!(adm.contains("//host.test/static/creatives/320x50.html"));
         assert!(adm.contains("bid=3.75"));
     }
 
     #[test]
-    fn test_iframe_html_with_metadata_includes_comment() {
-        use crate::openrtb::OpenRTBRequest;
-
+    fn test_iframe_html_includes_metadata_comment() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "test-req-123",
             "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
@@ -211,8 +207,7 @@ mod tests {
             response: None,
         };
 
-        let adm =
-            iframe_html_with_metadata("host.test", "crid123", 300, 250, Some(1.23), &metadata);
+        let adm = iframe_html("host.test", "crid123", 300, 250, Some(1.23), &metadata);
 
         // Check the comment structure
         assert!(adm.starts_with("<!-- MOCKTIONEER_METADATA"));
@@ -235,9 +230,7 @@ mod tests {
     }
 
     #[test]
-    fn test_iframe_html_with_metadata_escapes_dashes() {
-        use crate::openrtb::OpenRTBRequest;
-
+    fn test_iframe_html_escapes_dashes() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "test--with--dashes",
             "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
@@ -252,7 +245,7 @@ mod tests {
             response: None,
         };
 
-        let adm = iframe_html_with_metadata("host.test", "crid123", 300, 250, None, &metadata);
+        let adm = iframe_html("host.test", "crid123", 300, 250, None, &metadata);
 
         // The -- sequences should be escaped to "- -" to not break HTML comments
         // "test--with--dashes" becomes "test- -with- -dashes"
@@ -277,9 +270,7 @@ mod tests {
     }
 
     #[test]
-    fn test_iframe_html_with_metadata_signature_not_present() {
-        use crate::openrtb::OpenRTBRequest;
-
+    fn test_iframe_html_signature_not_present() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "no-sig-req",
             "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
@@ -294,7 +285,7 @@ mod tests {
             response: None,
         };
 
-        let adm = iframe_html_with_metadata("host.test", "crid123", 300, 250, None, &metadata);
+        let adm = iframe_html("host.test", "crid123", 300, 250, None, &metadata);
 
         assert!(adm.contains("\"status\": \"NotPresent\""));
         assert!(adm.contains("No site.domain present"));
@@ -304,9 +295,7 @@ mod tests {
     }
 
     #[test]
-    fn test_iframe_html_with_metadata_includes_response() {
-        use crate::openrtb::OpenRTBRequest;
-
+    fn test_iframe_html_includes_response() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "req-with-response",
             "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
@@ -337,7 +326,7 @@ mod tests {
             response: Some(response),
         };
 
-        let adm = iframe_html_with_metadata("host.test", "crid123", 300, 250, None, &metadata);
+        let adm = iframe_html("host.test", "crid123", 300, 250, None, &metadata);
 
         // Check response is included
         assert!(adm.contains("\"response\":"));
