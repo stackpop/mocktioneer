@@ -52,4 +52,4 @@ cargo run -p mocktioneer-adapter-axum   # Local server on :8787
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](LICENSE) for details.
