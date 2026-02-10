@@ -44,4 +44,4 @@ tracing = "0.1"
 url = "2"
 uuid = { version = "1", features = ["v7"] }
 validator = { version = "0.20", features = ["derive"] }
-worker = { version = "0.6", features = ["http"] }
+worker = { version = "0.7", features = ["http"] }
