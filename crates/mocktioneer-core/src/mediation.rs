@@ -3,7 +3,8 @@
 //! Provides a simple mediation endpoint that accepts bids from multiple bidders
 //! and selects winners based on price (highest price wins).
 
-use crate::openrtb::{Bid as OpenRTBBid, Imp, MediaType, OpenRTBResponse, SeatBid};
+use crate::openrtb::{Bid as OpenRTBBid, Imp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid};
+use crate::render::{CreativeMetadata, SignatureStatus};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -181,15 +182,32 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
     }
 
     // Step 3: Build OpenRTB response grouped by seat (bidder)
-    build_openrtb_response(request.id, winning_bids, base_host)
+    build_openrtb_response(request.id, request.imp, winning_bids, base_host)
 }
 
 /// Build OpenRTB response from winning bids
 fn build_openrtb_response(
     id: String,
+    imps: Vec<Imp>,
     winning_bids: HashMap<String, (String, MediationBid)>,
     base_host: &str,
 ) -> OpenRTBResponse {
+    // Build a minimal OpenRTBRequest for metadata
+    let ortb_request = OpenRTBRequest {
+        id: id.clone(),
+        imp: imps,
+        ..Default::default()
+    };
+
+    // Create metadata with NotPresent signature status for mediation
+    let metadata = CreativeMetadata {
+        signature: SignatureStatus::NotPresent {
+            reason: "Mediation response".to_string(),
+        },
+        request: &ortb_request,
+        response: None,
+    };
+
     // Group winning bids by seat/bidder
     let mut seats: HashMap<String, Vec<OpenRTBBid>> = HashMap::new();
 
@@ -201,7 +219,7 @@ fn build_openrtb_response(
             // Generate iframe creative using same logic as OpenRTB endpoint
             let crid = bid.crid.as_deref().unwrap_or(&imp_id);
             let bid_price = Some(bid.price);
-            crate::render::iframe_html(base_host, crid, bid.w, bid.h, bid_price)
+            crate::render::iframe_html(base_host, crid, bid.w, bid.h, bid_price, &metadata)
         };
 
         let ortb_bid = OpenRTBBid {

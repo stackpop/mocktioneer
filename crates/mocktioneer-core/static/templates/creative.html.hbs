@@ -30,6 +30,18 @@
         object-fit: contain;
         display: block;
       }
+      .sig-badge {
+        position: absolute;
+        bottom: 0;
+        right: 0;
+        font-size: 9px;
+        padding: 1px 6px;
+        color: #fff;
+        pointer-events: none;
+        z-index: 1;
+        font-family: system-ui, sans-serif;
+        display: none;
+      }
     </style>
   </head>
   <body>
@@ -47,6 +59,7 @@
         alt="mocktioneer {{W}}x{{H}}"
       />
     </a>
+    <div id="sig-badge" class="sig-badge" aria-hidden="true"></div>
     {{#if PIXEL_HTML}}
     <img
       src="//{{HOST}}/pixel?pid={{PID_HTML}}"
@@ -63,12 +76,32 @@
       (function () {
         var p = new URLSearchParams(location.search),
           c = p.get("crid") || "",
-          b = p.get("bid") || "";
+          b = p.get("bid") || "",
+          sig = p.get("sig") || "";
         // Wire click-through with creative metadata so the landing can echo it
         document.getElementById("clk").href =
           "//{{HOST}}/click?crid=" + encodeURIComponent(c) + "&w={{W}}&h={{H}}";
 
-        {{#if PIXEL_JS}}
+        // Render signature verification badge if sig param is present
+        if (sig) {
+          var badge = document.getElementById("sig-badge");
+          var badges = {
+            verified: { bg: "rgba(0,128,0,.85)", text: "\u2714\uFE0E Request signature verified" },
+            failed: { bg: "rgba(200,0,0,.85)", text: "\u274C Request signature not verified" },
+            not_present: { bg: "rgba(128,128,128,.75)", text: "\u2014 No signature present" }
+          };
+          var info = badges[sig];
+          if (info && badge) {
+            badge.style.background = info.bg;
+            badge.textContent = info.text;
+            badge.style.display = "block";
+          }
+        }
+      })();
+    </script>
+    {{#if PIXEL_JS}}
+    <script>
+      (function () {
         // Fire an additional JS pixel with a distinct PID for analytics parity
         var jsPid = "{{PID_JS}}";
         var trackingImg = new Image();
@@ -80,8 +113,8 @@
         trackingImg.style.cssText =
           "position:absolute;left:-9999px;top:-9999px;border:0;width:1px;height:1px";
         document.body.appendChild(trackingImg);
-        {{/if}}
       })();
     </script>
+    {{/if}}
   </body>
   </html>
