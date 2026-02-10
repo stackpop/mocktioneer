@@ -1,7 +1,7 @@
 # Builds and publishes the Mocktioneer Docker image to ghcr.io/stackpop/mocktioneer.
 #
 # Tagging strategy:
-#   - Pull requests:    sha-<7-char-commit-sha>  (e.g. sha-a1b2c3d)
+#   - Pull requests:    7-char commit SHA  (e.g. a1b2c3d)
 #   - Push to main:     latest
 #   - GitHub release:   v1.2.3, 1.2.3, 1.2  (semver variants from the release tag)
 #   - Manual dispatch:  the git ref you provide
@@ -46,6 +46,10 @@ jobs:
         id: rust
         run: echo "version=$(grep '^rust' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
 
+      - name: Get short SHA
+        id: sha
+        run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -59,8 +63,8 @@ jobs:
         with:
           images: ghcr.io/stackpop/mocktioneer
           tags: |
-            # PR builds: tag with 7-char commit SHA
-            type=sha,format=short,enable=${{ github.event_name == 'pull_request' }}
+            # PR builds: tag with 7-char commit SHA (no prefix)
+            type=raw,value=${{ steps.sha.outputs.short }},enable=${{ github.event_name == 'pull_request' }}
             # Push to main: tag as latest
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
             # Release: tag with version from release tag
