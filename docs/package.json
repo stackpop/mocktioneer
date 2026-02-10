@@ -2,7 +2,7 @@
   "name": "mocktioneer-docs",
   "version": "1.0.0",
   "description": "Documentation site for Mocktioneer",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vitepress dev",
