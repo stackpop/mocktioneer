@@ -63,8 +63,7 @@ target/wasm32-wasip1/release/mocktioneer-adapter-fastly.wasm
 ### First-Time Setup
 
 ```bash
-cd crates/mocktioneer-adapter-fastly
-fastly compute publish
+edgezero-cli deploy --adapter fastly
 ```
 
 The CLI will prompt you to:

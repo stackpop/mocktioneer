@@ -48,7 +48,8 @@ See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for al
 ```bash
 cargo test                              # Run tests
 cargo run -p mocktioneer-adapter-axum   # Local server (Axum) on :8787
-cd crates/mocktioneer-adapter-cloudflare && edgezero-cli serve --adapter cloudflare # Local server (Cloudflare) on :8787
+edgezero-cli serve --adapter cloudflare # Local server (Cloudflare) on :8787
+edgezero-cli serve --adapter fastly     # Local server (Cloudflare) on :7676
 ```
 
 ## License
