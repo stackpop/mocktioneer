@@ -252,4 +252,4 @@ Mocktioneer supports optional request signature verification. When `site.domain`
 - `ext.trusted_server.signature` - Base64-encoded signature
 - `ext.trusted_server.kid` - Key ID for signature verification
 
-The JWKS is fetched from `http://{site.domain}/.well-known/ts.jwks.json`. Verification failures are logged but don't reject the request.
+The JWKS is fetched from `http://{site.domain}/.well-known/trusted-server.json`. Verification failures are logged but don't reject the request.

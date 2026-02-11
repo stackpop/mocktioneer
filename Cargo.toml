@@ -7,6 +7,9 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+license = "Apache-2.0"
+
 [profile.release]
 debug = 1
 codegen-units = 1
@@ -18,11 +21,11 @@ async-trait = "0.1"
 axum = "0.8"
 base64 = "0.22"
 ed25519-dalek = "2.1"
-edgezero-adapter-axum = { git = "ssh://git@github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-axum", default-features = false }
-edgezero-adapter-cloudflare = { git = "ssh://git@github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-cloudflare", default-features = false }
-edgezero-adapter-fastly = { git = "ssh://git@github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-fastly", default-features = false }
-edgezero-cli = { git = "ssh://git@github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-cli" }
-edgezero-core = { git = "ssh://git@github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-core" }
+edgezero-adapter-axum = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-axum", default-features = false }
+edgezero-adapter-cloudflare = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-cloudflare", default-features = false }
+edgezero-adapter-fastly = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-fastly", default-features = false }
+edgezero-cli = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-cli" }
+edgezero-core = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-core" }
 fastly = "0.11.9"
 futures = { version = "0.3", features = ["std", "executor"] }
 futures-util = "0.3.31"

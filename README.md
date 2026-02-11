@@ -53,4 +53,4 @@ cd crates/mocktioneer-adapter-cloudflare && edgezero-cli serve --adapter cloudfl
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+Apache License 2.0. See [LICENSE](LICENSE) for details.

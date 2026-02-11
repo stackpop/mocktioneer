@@ -21,7 +21,7 @@ use crate::auction::{
     build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
 use crate::openrtb::OpenRTBRequest;
-use crate::render::{creative_html, info_html, render_svg, render_template_str};
+use crate::render::{creative_html, info_html, render_svg, render_template_str, SignatureStatus};
 
 #[derive(Deserialize, Validate)]
 struct StaticImgQuery {
@@ -239,7 +239,9 @@ pub async fn handle_openrtb_auction(
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
 ) -> Result<Response, EdgeError> {
-    if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref()) {
+    // Capture signature verification status for metadata
+    let signature_status = if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref())
+    {
         match crate::verification::verify_request_id_signature(
             &ctx,
             &req.id,
@@ -250,18 +252,26 @@ pub async fn handle_openrtb_auction(
         {
             Ok(kid) => {
                 log::info!("✅ Request signature verified with key: {}", kid);
+                SignatureStatus::Verified { kid }
             }
             Err(e) => {
-                log::error!("❌ Signature verification skipped or failed: {}", e);
+                log::error!("❌ Signature verification failed: {}", e);
+                SignatureStatus::Failed {
+                    reason: e.to_string(),
+                }
             }
         }
     } else {
         log::info!("⚠️ Signature verification skipped (no domain)");
-    }
+        SignatureStatus::NotPresent {
+            reason: "No site.domain present in request".to_string(),
+        }
+    };
 
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
-    let resp = build_openrtb_response(&req, &host);
+    // Build response with embedded metadata (signature status + request + response preview)
+    let resp = build_openrtb_response(&req, &host, signature_status);
     let body = Body::json(&resp).map_err(|e| {
         log::error!("Failed to serialize OpenRTB response: {}", e);
         EdgeError::internal(e)

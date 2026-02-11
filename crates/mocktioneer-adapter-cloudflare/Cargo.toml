@@ -3,6 +3,7 @@ name = "mocktioneer-adapter-cloudflare"
 version = "0.1.0"
 edition = "2021"
 publish = false
+license.workspace = true
 
 [[bin]]
 name = "mocktioneer-adapter-cloudflare"

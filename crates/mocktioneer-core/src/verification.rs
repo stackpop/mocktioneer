@@ -13,6 +13,11 @@ use std::time::{Duration, Instant};
 const JWKS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
 #[derive(Debug, Clone, Deserialize)]
+struct TrustedServerResponse {
+    jwks: JwksResponse,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 struct JwksResponse {
     keys: Vec<JwkKey>,
 }
@@ -46,7 +51,7 @@ pub enum VerificationError {
 }
 
 async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
-    let jwks_url = format!("http://{}/.well-known/ts.jwks.json", domain);
+    let jwks_url = format!("https://{}/.well-known/trusted-server.json", domain);
 
     log::debug!("Fetching JWKS from {}", jwks_url);
 
@@ -88,8 +93,9 @@ async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, 
             collected
         }
     };
-    serde_json::from_slice(&body_bytes)
-        .map_err(|e| VerificationError::HttpError(format!("JWKS parse failed: {}", e)))
+    let response: TrustedServerResponse = serde_json::from_slice(&body_bytes)
+        .map_err(|e| VerificationError::HttpError(format!("JWKS parse failed: {}", e)))?;
+    Ok(response.jwks)
 }
 
 async fn get_cached_jwks(
