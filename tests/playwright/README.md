@@ -11,7 +11,7 @@ npx playwright install
 
 **Note:** The Cloudflare adapter requires `edgezero-cli` (not `edgezero`):
 ```bash
-cargo install --git ssh://git@github.com/stackpop/edgezero.git edgezero-cli
+cargo install --git https://git@github.com/stackpop/edgezero.git edgezero-cli
 ```
 
 ## Running Tests

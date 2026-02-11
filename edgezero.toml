@@ -174,7 +174,7 @@ features = ["cloudflare"]
 
 [adapters.cloudflare.commands]
 build = "wrangler build --cwd crates/mocktioneer-adapter-cloudflare"
-deploy = "wrangler publish --cwd crates/mocktioneer-adapter-cloudflare"
+deploy = "wrangler deploy --cwd crates/mocktioneer-adapter-cloudflare"
 serve = "wrangler dev --cwd crates/mocktioneer-adapter-cloudflare"
 
 [adapters.cloudflare.logging]
