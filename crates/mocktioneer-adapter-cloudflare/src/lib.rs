@@ -1,9 +1,9 @@
 #![cfg_attr(target_arch = "wasm32", no_main)]
 
 #[cfg(target_arch = "wasm32")]
-use worker::*;
-#[cfg(target_arch = "wasm32")]
 use mocktioneer_core::MocktioneerApp;
+#[cfg(target_arch = "wasm32")]
+use worker::*;
 
 #[cfg(target_arch = "wasm32")]
 #[event(fetch)]
