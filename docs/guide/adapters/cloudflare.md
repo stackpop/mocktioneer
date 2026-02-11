@@ -86,7 +86,7 @@ target/wasm32-unknown-unknown/release/mocktioneer_adapter_cloudflare.wasm
 
 2. Deploy:
    ```bash
-   wrangler publish --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
+   wrangler deploy --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
    ```
 
 ### Subsequent Deployments
@@ -96,7 +96,7 @@ target/wasm32-unknown-unknown/release/mocktioneer_adapter_cloudflare.wasm
 edgezero-cli deploy --adapter cloudflare
 
 # Or directly
-wrangler publish --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
+wrangler deploy --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
 ```
 
 ## Configuration
@@ -229,7 +229,7 @@ wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml --loca
 wrangler whoami
 
 # Validate configuration
-wrangler publish --dry-run --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
+wrangler deploy --dry-run --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
 ```
 
 ## Performance Considerations

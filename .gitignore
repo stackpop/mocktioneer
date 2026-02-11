@@ -27,3 +27,7 @@
 node_modules/
 playwright-report/
 test-results/
+
+# Cloudflare Workers
+.wrangler/
+**/build/

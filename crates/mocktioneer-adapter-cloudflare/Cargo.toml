@@ -9,15 +9,20 @@ license.workspace = true
 name = "mocktioneer-adapter-cloudflare"
 path = "src/main.rs"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+path = "src/lib.rs"
+
 [features]
 default = ["cloudflare"]
-cloudflare = ["dep:edgezero-adapter-cloudflare"]
+cloudflare = ["edgezero-adapter-cloudflare/cloudflare"]
 
 [dependencies]
-edgezero-adapter-cloudflare = { workspace = true, optional = true }
+edgezero-adapter-cloudflare = { workspace = true }
+edgezero-core = { workspace = true }
 mocktioneer-core = { workspace = true }
-worker = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 edgezero-adapter-cloudflare = { workspace = true, features = ["cloudflare"] }
 edgezero-core = { workspace = true }
+worker = { workspace = true }

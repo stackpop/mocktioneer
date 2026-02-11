@@ -34,12 +34,12 @@ Full documentation is available at **[stackpop.github.io/mocktioneer](https://st
 
 ## Endpoints
 
-| Path | Description |
-|------|-------------|
-| `POST /openrtb2/auction` | OpenRTB 2.x bid request |
-| `POST /e/dtb/bid` | APS TAM bid request |
-| `GET /static/creatives/{size}.html` | Creative wrapper |
-| `GET /_/sizes` | Supported sizes with pricing |
+| Path                                | Description                  |
+| ----------------------------------- | ---------------------------- |
+| `POST /openrtb2/auction`            | OpenRTB 2.x bid request      |
+| `POST /e/dtb/bid`                   | APS TAM bid request          |
+| `GET /static/creatives/{size}.html` | Creative wrapper             |
+| `GET /_/sizes`                      | Supported sizes with pricing |
 
 See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for all endpoints.
 
@@ -47,7 +47,9 @@ See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for al
 
 ```bash
 cargo test                              # Run tests
-cargo run -p mocktioneer-adapter-axum   # Local server on :8787
+cargo run -p mocktioneer-adapter-axum   # Local server (Axum) on :8787
+edgezero-cli serve --adapter cloudflare # Local server (Cloudflare) on :8787
+edgezero-cli serve --adapter fastly     # Local server (Fastly) on :7676
 ```
 
 ## License
