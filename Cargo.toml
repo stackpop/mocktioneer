@@ -1,9 +1,9 @@
 [workspace]
 members = [
   "crates/mocktioneer-core",
-  "crates/mocktioneer-adapter-fastly",
-  "crates/mocktioneer-adapter-cloudflare",
   "crates/mocktioneer-adapter-axum",
+  "crates/mocktioneer-adapter-cloudflare",
+  "crates/mocktioneer-adapter-fastly",
 ]
 resolver = "2"
 

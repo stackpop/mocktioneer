@@ -156,8 +156,8 @@ profile = "dev"
 
 [adapters.axum.commands]
 build = "cargo build -p mocktioneer-adapter-axum"
-serve = "cargo run -p mocktioneer-adapter-axum"
 deploy = "# configure deployment for Axum"
+serve = "cargo run -p mocktioneer-adapter-axum"
 
 [adapters.axum.logging]
 level = "info"
@@ -173,9 +173,9 @@ profile = "release"
 features = ["cloudflare"]
 
 [adapters.cloudflare.commands]
-build = "cargo build --release --target wasm32-unknown-unknown -p mocktioneer-adapter-cloudflare"
-serve = "wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
-deploy = "wrangler deploy --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
+build = "wrangler build --cwd crates/mocktioneer-adapter-cloudflare"
+deploy = "wrangler publish --cwd crates/mocktioneer-adapter-cloudflare"
+serve = "wrangler dev --cwd crates/mocktioneer-adapter-cloudflare"
 
 [adapters.cloudflare.logging]
 level = "info"
@@ -191,9 +191,9 @@ profile = "release"
 features = ["fastly"]
 
 [adapters.fastly.commands]
-build = "cargo build --release --target wasm32-wasip1 -p mocktioneer-adapter-fastly"
-serve = "fastly compute serve -C crates/mocktioneer-adapter-fastly"
+build = "fastly compute build -C crates/mocktioneer-adapter-fastly"
 deploy = "fastly compute deploy -C crates/mocktioneer-adapter-fastly"
+serve = "fastly compute serve -C crates/mocktioneer-adapter-fastly"
 
 [adapters.fastly.logging]
 endpoint = "mocktioneerlog"

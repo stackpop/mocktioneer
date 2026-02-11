@@ -10,10 +10,10 @@ name = "mocktioneer-adapter-axum"
 path = "src/main.rs"
 
 [dependencies]
-edgezero-adapter-axum = { workspace = true, features = ["axum"] }
-edgezero-core = { workspace = true }
 anyhow = { workspace = true }
 axum = { workspace = true }
+edgezero-adapter-axum = { workspace = true, features = ["axum"] }
+edgezero-core = { workspace = true }
 log = { workspace = true }
 mocktioneer-core = { workspace = true }
 simple_logger = { workspace = true }

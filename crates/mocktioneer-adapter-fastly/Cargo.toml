@@ -11,10 +11,10 @@ path = "src/main.rs"
 
 [features]
 default = []
-fastly = ["dep:edgezero-adapter-fastly"]
+fastly = ["edgezero-adapter-fastly/fastly"]
 
 [dependencies]
-edgezero-adapter-fastly = { workspace = true, optional = true }
+edgezero-adapter-fastly = { workspace = true }
 log = { workspace = true }
 mocktioneer-core = { workspace = true }
 
