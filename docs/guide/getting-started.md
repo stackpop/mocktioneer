@@ -29,7 +29,7 @@ The EdgeZero CLI provides a unified interface for all adapters, but it is mainta
 If you have access to the EdgeZero repo:
 
 ```bash
-cargo install --git ssh://git@github.com/stackpop/edgezero.git edgezero-cli --features cli
+cargo install --git https://github.com/stackpop/edgezero.git edgezero-cli --features cli
 ```
 
 Or run it from a local EdgeZero checkout:

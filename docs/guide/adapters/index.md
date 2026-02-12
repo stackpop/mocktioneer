@@ -73,7 +73,7 @@ The EdgeZero CLI provides a unified interface for all adapters. It's maintained 
 
 ```bash
 # Install (requires access to EdgeZero repo)
-cargo install --git ssh://git@github.com/stackpop/edgezero.git edgezero-cli --features cli
+cargo install --git https://github.com/stackpop/edgezero.git edgezero-cli --features cli
 
 # Serve any adapter
 edgezero-cli serve --adapter axum
