@@ -11,140 +11,140 @@ id = "root"
 path = "/"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_root"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "root_options"
 path = "/"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "openrtb_auction"
 path = "/openrtb2/auction"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_openrtb_auction"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "openrtb_options"
 path = "/openrtb2/auction"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "static_img"
 path = "/static/img/{size}"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_static_img"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "static_img_options"
 path = "/static/img/{size}"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "static_creatives"
 path = "/static/creatives/{size}"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_static_creatives"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "static_creatives_options"
 path = "/static/creatives/{size}"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "click"
 path = "/click"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_click"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "click_options"
 path = "/click"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "pixel"
 path = "/pixel"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_pixel"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "pixel_options"
 path = "/pixel"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "aps_bid"
 path = "/e/dtb/bid"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_aps_bid"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "aps_bid_options"
 path = "/e/dtb/bid"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "aps_win"
 path = "/aps/win"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_aps_win"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "aps_win_options"
 path = "/aps/win"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "adserver_mediate"
 path = "/adserver/mediate"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_adserver_mediate"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "adserver_mediate_options"
 path = "/adserver/mediate"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "sizes"
 path = "/_/sizes"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_sizes"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "sizes_options"
 path = "/_/sizes"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [adapters.axum.adapter]
 crate = "crates/mocktioneer-adapter-axum"
@@ -199,3 +199,20 @@ deploy = "fastly compute deploy -C crates/mocktioneer-adapter-fastly"
 endpoint = "mocktioneerlog"
 level = "info"
 echo_stdout = false
+
+[adapters.spin.adapter]
+crate = "crates/mocktioneer-adapter-spin"
+manifest = "crates/mocktioneer-adapter-spin/spin.toml"
+
+[adapters.spin.build]
+target = "wasm32-wasip1"
+profile = "release"
+features = ["spin"]
+
+[adapters.spin.commands]
+build = "cargo build --release --target wasm32-wasip1 -p mocktioneer-adapter-spin"
+serve = "spin up --from crates/mocktioneer-adapter-spin"
+deploy = "spin deploy --from crates/mocktioneer-adapter-spin"
+
+[adapters.spin.logging]
+level = "info"
