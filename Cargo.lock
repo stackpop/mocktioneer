@@ -580,7 +580,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#045b43db568b23aa22b464177cf7658f186061ff"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#bcf5c3646ba95dde975bfb557a2ee4335138f374"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -602,7 +602,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#045b43db568b23aa22b464177cf7658f186061ff"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#bcf5c3646ba95dde975bfb557a2ee4335138f374"
 dependencies = [
  "async-trait",
  "brotli",
@@ -619,7 +619,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#045b43db568b23aa22b464177cf7658f186061ff"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#bcf5c3646ba95dde975bfb557a2ee4335138f374"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -639,7 +639,7 @@ dependencies = [
 [[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#045b43db568b23aa22b464177cf7658f186061ff"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#bcf5c3646ba95dde975bfb557a2ee4335138f374"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -657,7 +657,7 @@ dependencies = [
  "serde_json",
  "serde_urlencoded",
  "thiserror 2.0.18",
- "toml 0.9.12+spec-1.1.0",
+ "toml",
  "tower-service",
  "tracing",
  "validator",
@@ -667,14 +667,14 @@ dependencies = [
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#045b43db568b23aa22b464177cf7658f186061ff"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#bcf5c3646ba95dde975bfb557a2ee4335138f374"
 dependencies = [
  "log",
  "proc-macro2",
  "quote",
  "serde",
  "syn 2.0.114",
- "toml 0.9.12+spec-1.1.0",
+ "toml",
  "validator",
 ]
 
@@ -1504,7 +1504,7 @@ dependencies = [
  "serde_json",
  "serde_repr",
  "thiserror 1.0.69",
- "toml 1.0.2+spec-1.1.0",
+ "toml",
  "url",
  "uuid",
  "validator",
@@ -2525,21 +2525,6 @@ dependencies = [
 
 [[package]]
 name = "toml"
-version = "0.9.12+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cf92845e79fc2e2def6a5d828f0801e29a2f8acc037becc5ab08595c7d5e9863"
-dependencies = [
- "indexmap",
- "serde_core",
- "serde_spanned",
- "toml_datetime 0.7.5+spec-1.1.0",
- "toml_parser",
- "toml_writer",
- "winnow",
-]
-
-[[package]]
-name = "toml"
 version = "1.0.2+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d1dfefef6a142e93f346b64c160934eb13b5594b84ab378133ac6815cb2bd57f"
@@ -2547,19 +2532,10 @@ dependencies = [
  "indexmap",
  "serde_core",
  "serde_spanned",
- "toml_datetime 1.0.0+spec-1.1.0",
+ "toml_datetime",
  "toml_parser",
  "toml_writer",
  "winnow",
-]
-
-[[package]]
-name = "toml_datetime"
-version = "0.7.5+spec-1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92e1cfed4a3038bc5a127e35a2d360f145e1f4b971b551a2ba5fd7aedf7e1347"
-dependencies = [
- "serde_core",
 ]
 
 [[package]]
