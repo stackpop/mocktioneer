@@ -1,0 +1,89 @@
+name: Bug Report
+description: Report a bug in Mocktioneer
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below so we can reproduce and fix it.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear description of the bug.
+      placeholder: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps to trigger the bug.
+      placeholder: |
+        1. Send a request to ...
+        2. With payload ...
+        3. See error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: adapter
+    attributes:
+      label: Adapter / Target
+      description: Which adapter or target is affected?
+      multiple: true
+      options:
+        - Fastly (wasm32-wasip1)
+        - Cloudflare (wasm32-unknown-unknown)
+        - Axum (native)
+        - Core (platform-independent)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: endpoint
+    attributes:
+      label: Endpoint
+      description: Which endpoint is affected (if applicable)?
+      multiple: true
+      options:
+        - "POST /openrtb2/auction"
+        - "POST /e/dtb/bid"
+        - "POST /adserver/mediate"
+        - "GET /static/creatives/{size}"
+        - "GET /static/img/{size}"
+        - "GET /_/sizes"
+        - "GET /click"
+        - "GET /pixel"
+        - "GET /aps/win"
+        - Other
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Git SHA or Docker image tag.
+      placeholder: "commit abc1234 or ghcr.io/stackpop/mocktioneer:latest"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: Paste any error messages or logs.
+      render: shell
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Anything else that might help (OS, Rust version, related issues).
