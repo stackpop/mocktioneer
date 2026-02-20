@@ -161,8 +161,9 @@ Every PR must pass:
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 3. `cargo test --workspace --all-targets`
-4. Playwright e2e tests (`tests/playwright/`)
-5. ESLint + Prettier on `docs/`
+4. `cargo check --workspace --all-targets --features "fastly cloudflare"`
+5. Playwright e2e tests (`tests/playwright/`)
+6. ESLint + Prettier on `docs/`
 
 Docker image is built and pushed to `ghcr.io/stackpop/mocktioneer` on push to
 main and on releases.
@@ -317,3 +318,4 @@ Custom commands live in `.claude/commands/`:
 - Don't commit without running `cargo test` first.
 - Don't skip `cargo fmt` and `cargo clippy` — CI will reject the PR.
 - Don't introduce non-deterministic behavior (randomness, time-dependent logic).
+- Don't include `Co-Authored-By` trailers, "Generated with" footers, or any AI bylines in commits or PR bodies.
