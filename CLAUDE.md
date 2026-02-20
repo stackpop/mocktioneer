@@ -208,6 +208,7 @@ Specialized agents live in `.claude/agents/`. Use them to distribute work:
 | `build-validator` | Validates builds across all targets and feature combinations         |
 | `code-architect`  | Architectural review — evaluates designs against project principles  |
 | `pr-creator`      | Analyzes changes, runs CI gates, creates/updates GitHub PRs          |
+| `issue-creator`   | Creates typed GitHub issues using project templates and GraphQL API  |
 | `repo-explorer`   | Read-only codebase exploration — maps components, paths, and risks   |
 
 Invoke with "use subagents" in your prompt or reference a specific agent by name.
