@@ -7,6 +7,10 @@
 **/bin/
 **/pkg/
 
+# Spin runtime logs
+.spin/logs/
+**/.spin/logs/
+
 # env
 .env
 
