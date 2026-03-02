@@ -76,7 +76,6 @@
       (function () {
         var p = new URLSearchParams(location.search),
           c = p.get("crid") || "",
-          b = p.get("bid") || "",
           sig = p.get("sig") || "";
         // Wire click-through with creative metadata so the landing can echo it
         document.getElementById("clk").href =
