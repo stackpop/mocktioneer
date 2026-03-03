@@ -79,7 +79,6 @@ Content-Type: application/json
 | `imp[].banner.w`               | integer | No       | Width in pixels                       |
 | `imp[].banner.h`               | integer | No       | Height in pixels                      |
 | `imp[].banner.format`          | array   | No       | Array of size objects                 |
-| `imp[].ext.mocktioneer.bid`    | float   | No       | Override bid price                    |
 | `ext.trusted_server.version`   | string  | No       | Signing protocol version (`1.1`)      |
 | `ext.trusted_server.signature` | string  | No       | Signature for canonical payload        |
 | `ext.trusted_server.kid`       | string  | No       | Key ID used for signature              |
@@ -109,8 +108,8 @@ Size is determined in this order:
         {
           "id": "019abc123",
           "impid": "imp-1",
-          "price": 2.5,
-          "adm": "<iframe src=\"//localhost:8787/static/creatives/300x250.html?crid=mocktioneer-imp-1&bid=2.50\" width=\"300\" height=\"250\" frameborder=\"0\" scrolling=\"no\"></iframe>",
+          "price": 0.01,
+          "adm": "<iframe src=\"//localhost:8787/static/creatives/300x250.html?crid=mocktioneer-imp-1\" width=\"300\" height=\"250\" frameborder=\"0\" scrolling=\"no\"></iframe>",
           "adomain": ["example.com"],
           "crid": "mocktioneer-imp-1",
           "w": 300,
@@ -143,34 +142,11 @@ Size is determined in this order:
 | `seatbid[].bid[].mtype`   | integer | Media type (1 = banner)     |
 | `cur`                     | string  | Currency (USD)              |
 
-## Price Override
+## Pricing
 
-Override the bid price using the `ext.mocktioneer.bid` field:
+Mocktioneer returns a fixed bid price of `$0.01` CPM for auction responses.
 
-```json
-{
-  "id": "test",
-  "imp": [
-    {
-      "id": "1",
-      "banner": { "w": 300, "h": 250 },
-      "ext": {
-        "mocktioneer": {
-          "bid": 5.0
-        }
-      }
-    }
-  ]
-}
-```
-
-The creative will display this bid amount.
-
-## Default Pricing
-
-Without a price override, Mocktioneer uses fixed CPM prices based on ad size. Prices range from $1.70 (300x50) to $4.20 (970x250). Non-standard sizes use an area-based fallback formula.
-
-See the [complete pricing table](/api/#supported-sizes) for all supported sizes and their CPM values.
+If `imp[].ext.mocktioneer.bid` is present, it is ignored.
 
 ## Examples
 
