@@ -5,12 +5,13 @@ use edgezero_core::context::RequestContext;
 use edgezero_core::http::{Method, StatusCode, Uri};
 use edgezero_core::proxy::ProxyRequest;
 use futures_util::StreamExt;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 const JWKS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const SIGNING_VERSION: &str = "1.1";
 
 #[derive(Debug, Clone, Deserialize)]
 struct TrustedServerResponse {
@@ -31,6 +32,16 @@ struct JwkKey {
 struct JwksCache {
     jwks: JwksResponse,
     fetched_at: Instant,
+}
+
+#[derive(Serialize)]
+struct SigningPayload<'a> {
+    version: &'a str,
+    kid: &'a str,
+    host: &'a str,
+    scheme: &'a str,
+    id: &'a str,
+    ts: u64,
 }
 
 static JWKS_CACHE: LazyLock<Mutex<HashMap<String, JwksCache>>> =
@@ -110,20 +121,17 @@ async fn get_cached_jwks(
             .map_err(|_| VerificationError::HttpError("Cache lock poisoned".to_string()))?;
 
         if let Some(cached) = cache.get(&cache_key) {
-            if cached.fetched_at.elapsed() < JWKS_CACHE_TTL {
-                log::debug!(
-                    "JWKS cache hit for {} (age: {:?})",
-                    cache_key,
-                    cached.fetched_at.elapsed()
-                );
+            let cache_age = cached.fetched_at.elapsed();
+            if cache_age < JWKS_CACHE_TTL {
+                log::debug!("JWKS cache hit for {} (age: {:?})", cache_key, cache_age);
                 return Ok(cached.jwks.clone());
-            } else {
-                log::debug!(
-                    "JWKS cache expired for {} (age: {:?})",
-                    cache_key,
-                    cached.fetched_at.elapsed()
-                );
             }
+
+            log::debug!(
+                "JWKS cache expired for {} (age: {:?})",
+                cache_key,
+                cache_age
+            );
         } else {
             log::debug!("JWKS cache empty for {} (first fetch)", cache_key);
         }
@@ -200,6 +208,57 @@ fn verify_ed25519_signature(
     Ok(())
 }
 
+fn build_signing_payload(
+    request_id: &str,
+    key_id: &str,
+    request_host: &str,
+    request_scheme: &str,
+    timestamp: u64,
+    version: &str,
+) -> Result<String, VerificationError> {
+    if version != SIGNING_VERSION {
+        return Err(VerificationError::InvalidSignature(format!(
+            "Unsupported ext.trusted_server.version '{}'; expected '{}'",
+            version, SIGNING_VERSION
+        )));
+    }
+
+    let payload = SigningPayload {
+        version,
+        kid: key_id,
+        host: request_host,
+        scheme: request_scheme,
+        id: request_id,
+        ts: timestamp,
+    };
+
+    serde_json::to_string(&payload).map_err(|e| {
+        VerificationError::InvalidSignature(format!("Failed to serialize signing payload: {}", e))
+    })
+}
+
+fn required_ext_str<'a>(
+    ext_obj: &'a serde_json::Value,
+    field: &str,
+    missing_error: VerificationError,
+) -> Result<&'a str, VerificationError> {
+    ext_obj
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or(missing_error)
+}
+
+fn required_ext_u64(
+    ext_obj: &serde_json::Value,
+    field: &str,
+    missing_error: VerificationError,
+) -> Result<u64, VerificationError> {
+    ext_obj
+        .get(field)
+        .and_then(serde_json::Value::as_u64)
+        .ok_or(missing_error)
+}
+
 pub async fn verify_request_id_signature(
     ctx: &RequestContext,
     request_id: &str,
@@ -210,27 +269,65 @@ pub async fn verify_request_id_signature(
         VerificationError::InvalidSignature("Missing ext.trusted_server".to_string())
     })?;
 
-    let signature = ext_obj
-        .get("signature")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| {
-            VerificationError::InvalidSignature("Missing ext.trusted_server.signature".to_string())
-        })?;
+    let signature = required_ext_str(
+        ext_obj,
+        "signature",
+        VerificationError::InvalidSignature("Missing ext.trusted_server.signature".to_string()),
+    )?;
 
-    let key_id = ext_obj.get("kid").and_then(|v| v.as_str()).ok_or_else(|| {
-        VerificationError::KeyNotFound("Missing ext.trusted_server.kid".to_string())
-    })?;
+    let key_id = required_ext_str(
+        ext_obj,
+        "kid",
+        VerificationError::KeyNotFound("Missing ext.trusted_server.kid".to_string()),
+    )?;
 
-    log::info!(
-        "Signature verification requested: id={}, kid={}, domain={:?}",
+    let version = required_ext_str(
+        ext_obj,
+        "version",
+        VerificationError::InvalidSignature("Missing ext.trusted_server.version".to_string()),
+    )?;
+
+    let request_host = required_ext_str(
+        ext_obj,
+        "request_host",
+        VerificationError::InvalidSignature("Missing ext.trusted_server.request_host".to_string()),
+    )?;
+
+    let request_scheme = required_ext_str(
+        ext_obj,
+        "request_scheme",
+        VerificationError::InvalidSignature(
+            "Missing ext.trusted_server.request_scheme".to_string(),
+        ),
+    )?;
+
+    let timestamp = required_ext_u64(
+        ext_obj,
+        "ts",
+        VerificationError::InvalidSignature("Missing ext.trusted_server.ts".to_string()),
+    )?;
+
+    let payload = build_signing_payload(
         request_id,
         key_id,
-        domain
+        request_host,
+        request_scheme,
+        timestamp,
+        version,
+    )?;
+
+    log::info!(
+        "Signature verification requested: id={}, kid={}, domain={:?}, version={}, ts={}",
+        request_id,
+        key_id,
+        domain,
+        version,
+        timestamp
     );
 
     let jwks = get_cached_jwks(ctx, domain).await?;
     let public_key = find_public_key(&jwks, key_id)?;
-    verify_ed25519_signature(public_key, signature, request_id)?;
+    verify_ed25519_signature(public_key, signature, &payload)?;
 
     Ok(key_id.to_string())
 }
@@ -332,6 +429,68 @@ mod tests {
             None,
             "example.com",
         ));
+        assert!(matches!(
+            result.unwrap_err(),
+            VerificationError::InvalidSignature(_)
+        ));
+    }
+
+    #[test]
+    fn verify_missing_version_field() {
+        let request_id = "test-id";
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": "test-sig",
+                "kid": "test-key",
+                "request_host": "example.com",
+                "request_scheme": "https",
+                "ts": 1706900000
+            }
+        });
+
+        let ctx = create_test_context();
+
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            request_id,
+            Some(&ext),
+            "example.com",
+        ));
+        assert!(matches!(
+            result.unwrap_err(),
+            VerificationError::InvalidSignature(_)
+        ));
+    }
+
+    #[test]
+    fn build_signing_payload_uses_v11_shape() {
+        let payload = build_signing_payload(
+            "req-123",
+            "kid-abc",
+            "publisher.example",
+            "https",
+            1706900000,
+            "1.1",
+        )
+        .expect("payload");
+
+        assert_eq!(
+            payload,
+            "{\"version\":\"1.1\",\"kid\":\"kid-abc\",\"host\":\"publisher.example\",\"scheme\":\"https\",\"id\":\"req-123\",\"ts\":1706900000}"
+        );
+    }
+
+    #[test]
+    fn build_signing_payload_rejects_unknown_version() {
+        let result = build_signing_payload(
+            "req-123",
+            "kid-abc",
+            "publisher.example",
+            "https",
+            1706900000,
+            "1.0",
+        );
+
         assert!(matches!(
             result.unwrap_err(),
             VerificationError::InvalidSignature(_)
