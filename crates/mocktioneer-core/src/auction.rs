@@ -4,7 +4,6 @@ use crate::openrtb::{
 };
 use crate::render::{iframe_html, CreativeMetadata, SignatureStatus};
 use phf::phf_map;
-use serde_json::json;
 use uuid::Uuid;
 
 // ============================================================================
@@ -13,6 +12,9 @@ use uuid::Uuid;
 
 /// Default CPM for non-standard sizes (base price before area adjustment).
 pub const DEFAULT_CPM: f64 = 1.50;
+
+/// Fixed CPM used for all Mocktioneer-generated bids.
+pub const FIXED_BID_CPM: f64 = 0.01;
 
 /// Maximum area-based bonus added to DEFAULT_CPM for non-standard sizes.
 /// Final CPM = DEFAULT_CPM + min(area/100000, MAX_AREA_BONUS)
@@ -114,8 +116,7 @@ pub fn standard_or_default((w, h): (i64, i64)) -> (i64, i64) {
 /// Build an OpenRTB bid response for the given request.
 ///
 /// - Enforces standard ad sizes (non-standard sizes default to 300x250)
-/// - Uses size-based CPM pricing ($1.70 - $4.20 depending on size)
-/// - Price can be overridden via `imp.ext.mocktioneer.bid`
+/// - Uses a fixed CPM price ($0.01)
 /// - Embeds signature verification status, the original request, and a preview
 ///   of the response as HTML comments in each creative
 /// - The signature badge is rendered inside the creative via the `sig` query param
@@ -131,16 +132,7 @@ pub fn build_openrtb_response(
         let bid_id = new_id();
         let crid = format!("mocktioneer-{}", imp.id);
 
-        // Extract custom bid from imp.ext.mocktioneer.bid if present
-        let custom_bid = imp
-            .ext
-            .as_ref()
-            .and_then(|e| e.mocktioneer.as_ref())
-            .and_then(|m| m.bid);
-
-        // Use custom bid if provided, otherwise use size-based CPM
-        let price = custom_bid.unwrap_or_else(|| get_cpm(w, h));
-        let bid_ext = custom_bid.map(|b| json!({"mocktioneer": {"bid": b}}));
+        let price = FIXED_BID_CPM;
 
         bids.push(OpenrtbBid {
             id: bid_id,
@@ -152,7 +144,7 @@ pub fn build_openrtb_response(
             h: Some(h),
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_string()]),
-            ext: bid_ext,
+            ext: None,
             ..Default::default()
         });
     }
@@ -189,22 +181,10 @@ pub fn build_openrtb_response(
     let final_bids: Vec<OpenrtbBid> = bids
         .into_iter()
         .map(|mut bid| {
-            let bid_for_iframe = if bid.ext.is_some() {
-                Some(bid.price)
-            } else {
-                None
-            };
             let crid = bid.crid.as_deref().unwrap_or("unknown");
             let w = bid.w.unwrap_or(300);
             let h = bid.h.unwrap_or(250);
-            bid.adm = Some(iframe_html(
-                base_host,
-                crid,
-                w,
-                h,
-                bid_for_iframe,
-                &metadata,
-            ));
+            bid.adm = Some(iframe_html(base_host, crid, w, h, None, &metadata));
             bid
         })
         .collect();
@@ -252,9 +232,7 @@ pub fn decode_aps_price(encoded: &str) -> Option<f64> {
 /// Build APS TAM response from an APS bid request matching real Amazon API format.
 ///
 /// This function generates mock bids for all slots with standard sizes:
-/// - Variable bid prices based on ad size (via `get_cpm()`)
-///   - Ranges from $1.70 - $4.20 CPM for standard sizes
-///   - Example: 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80
+/// - Fixed bid price of $0.01 CPM
 /// - 100% fill rate for standard sizes
 /// - Returns contextual format matching real Amazon APS API
 /// - No creative HTML (APS doesn't return adm field)
@@ -279,7 +257,7 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidRespons
             })
             .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
 
-        let Some((w, h, price)) = best_size else {
+        let Some((w, h, _)) = best_size else {
             // No standard sizes found, skip this slot
             log::debug!(
                 "APS: Skipping slot '{}' - no standard sizes in {:?}",
@@ -289,7 +267,8 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidRespons
             continue;
         };
 
-        // Generate bid components (price already calculated in best_size selection)
+        // Generate bid components using fixed CPM pricing
+        let price = FIXED_BID_CPM;
         let impression_id = new_id();
         let crid = format!("{}-{}", new_id(), "mocktioneer");
         let size_str = format!("{}x{}", w, h);
@@ -511,18 +490,11 @@ mod tests {
         };
         let resp = build_openrtb_response(&req, "host.test", test_signature());
         let bid = &resp.seatbid[0].bid[0];
-        assert_eq!(bid.price, 2.5);
-        let ext_bid = bid
-            .ext
-            .as_ref()
-            .and_then(|e| e.get("mocktioneer"))
-            .and_then(|m| m.get("bid"))
-            .and_then(|v| v.as_f64())
-            .unwrap();
-        assert_eq!(ext_bid, 2.5);
-        // Iframe should include bid=2.50 parameter
+        assert_eq!(bid.price, FIXED_BID_CPM);
+        assert!(bid.ext.is_none());
+        // Iframe should not include request-provided bid override
         let adm = bid.adm.as_ref().unwrap();
-        assert!(adm.contains("bid=2.50"));
+        assert!(!adm.contains("bid=2.50"));
     }
 
     // ========================================================================
@@ -601,7 +573,7 @@ mod tests {
             pub_id: "test".to_string(),
             slots: vec![ApsSlot {
                 slot_id: "slot1".to_string(),
-                sizes: vec![[300, 250]], // CPM is $2.50
+                sizes: vec![[300, 250]], // CPM is fixed at $0.01
                 slot_name: None,
             }],
             page_url: None,
@@ -613,7 +585,7 @@ mod tests {
 
         // Use decode_aps_price to verify the encoded price
         let price = decode_aps_price(slot.amznbid.as_ref().unwrap()).unwrap();
-        assert_eq!(price, 2.5);
+        assert_eq!(price, FIXED_BID_CPM);
     }
 
     #[test]
