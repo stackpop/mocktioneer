@@ -57,8 +57,12 @@ Content-Type: application/json
   ],
   "ext": {
     "trusted_server": {
+      "version": "1.1",
       "signature": "base64-encoded-signature",
-      "kid": "key-id"
+      "kid": "key-id",
+      "request_host": "publisher.example",
+      "request_scheme": "https",
+      "ts": 1706900000000
     }
   }
 }
@@ -76,8 +80,12 @@ Content-Type: application/json
 | `imp[].banner.h`               | integer | No       | Height in pixels                      |
 | `imp[].banner.format`          | array   | No       | Array of size objects                 |
 | `imp[].ext.mocktioneer.bid`    | float   | No       | Override bid price                    |
-| `ext.trusted_server.signature` | string  | No       | Signature for request ID verification |
-| `ext.trusted_server.kid`       | string  | No       | Key ID for signature verification     |
+| `ext.trusted_server.version`   | string  | No       | Signing protocol version (`1.1`)      |
+| `ext.trusted_server.signature` | string  | No       | Signature for canonical payload        |
+| `ext.trusted_server.kid`       | string  | No       | Key ID used for signature              |
+| `ext.trusted_server.request_host` | string | No    | Host included in signed payload        |
+| `ext.trusted_server.request_scheme` | string | No  | Scheme included in signed payload      |
+| `ext.trusted_server.ts`        | integer | No       | Unix timestamp (milliseconds)          |
 | `site`                         | object  | No       | Site information                      |
 | `site.domain`                  | string  | No       | Domain for signature verification     |
 
@@ -249,7 +257,17 @@ curl -X POST http://127.0.0.1:8787/openrtb2/auction \
 
 Mocktioneer supports optional request signature verification. When `site.domain` is present, it attempts to verify the request signature using:
 
-- `ext.trusted_server.signature` - Base64-encoded signature
+- `ext.trusted_server.version` - Signing protocol version (`1.1`)
+- `ext.trusted_server.signature` - Base64 URL-safe Ed25519 signature
 - `ext.trusted_server.kid` - Key ID for signature verification
+- `ext.trusted_server.request_host` - Host bound into the signed payload
+- `ext.trusted_server.request_scheme` - Scheme bound into the signed payload
+- `ext.trusted_server.ts` - Unix timestamp in milliseconds
 
-The JWKS is fetched from `http://{site.domain}/.well-known/trusted-server.json`. Verification failures are logged but don't reject the request.
+The signed payload is canonical JSON:
+
+```json
+{"version":"1.1","kid":"...","host":"...","scheme":"https","id":"...","ts":1706900000000}
+```
+
+The JWKS is fetched from `https://{site.domain}/.well-known/trusted-server.json`. Verification failures are logged but don't reject the request.
