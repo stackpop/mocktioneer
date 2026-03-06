@@ -47,7 +47,7 @@ Content-Type: application/json
           { "w": 300, "h": 250 },
           { "w": 320, "h": 50 }
         ]
-      },
+      }
     }
   ],
   "ext": {
@@ -65,23 +65,23 @@ Content-Type: application/json
 
 ### Request Fields
 
-| Field                          | Type    | Required | Description                           |
-| ------------------------------ | ------- | -------- | ------------------------------------- |
-| `id`                           | string  | Yes      | Request ID                            |
-| `imp`                          | array   | Yes      | Array of impressions (min 1)          |
-| `imp[].id`                     | string  | Yes      | Impression ID                         |
-| `imp[].banner`                 | object  | Yes\*    | Banner object (\*or other media type) |
-| `imp[].banner.w`               | integer | No       | Width in pixels                       |
-| `imp[].banner.h`               | integer | No       | Height in pixels                      |
-| `imp[].banner.format`          | array   | No       | Array of size objects                 |
-| `ext.trusted_server.version`   | string  | No       | Signing protocol version (`1.1`)      |
-| `ext.trusted_server.signature` | string  | No       | Signature for canonical payload        |
-| `ext.trusted_server.kid`       | string  | No       | Key ID used for signature              |
-| `ext.trusted_server.request_host` | string | No    | Host included in signed payload        |
-| `ext.trusted_server.request_scheme` | string | No  | Scheme included in signed payload      |
-| `ext.trusted_server.ts`        | integer | No       | Unix timestamp (milliseconds)          |
-| `site`                         | object  | No       | Site information                      |
-| `site.domain`                  | string  | No       | Domain for signature verification     |
+| Field                               | Type    | Required | Description                           |
+| ----------------------------------- | ------- | -------- | ------------------------------------- |
+| `id`                                | string  | Yes      | Request ID                            |
+| `imp`                               | array   | Yes      | Array of impressions (min 1)          |
+| `imp[].id`                          | string  | Yes      | Impression ID                         |
+| `imp[].banner`                      | object  | Yes\*    | Banner object (\*or other media type) |
+| `imp[].banner.w`                    | integer | No       | Width in pixels                       |
+| `imp[].banner.h`                    | integer | No       | Height in pixels                      |
+| `imp[].banner.format`               | array   | No       | Array of size objects                 |
+| `ext.trusted_server.version`        | string  | No       | Signing protocol version (`1.1`)      |
+| `ext.trusted_server.signature`      | string  | No       | Signature for canonical payload       |
+| `ext.trusted_server.kid`            | string  | No       | Key ID used for signature             |
+| `ext.trusted_server.request_host`   | string  | No       | Host included in signed payload       |
+| `ext.trusted_server.request_scheme` | string  | No       | Scheme included in signed payload     |
+| `ext.trusted_server.ts`             | integer | No       | Unix timestamp (milliseconds)         |
+| `site`                              | object  | No       | Site information                      |
+| `site.domain`                       | string  | No       | Domain for signature verification     |
 
 ### Size Resolution
 
@@ -223,7 +223,14 @@ Mocktioneer supports optional request signature verification. When `site.domain`
 The signed payload is canonical JSON:
 
 ```json
-{"version":"1.1","kid":"...","host":"...","scheme":"https","id":"...","ts":1706900000000}
+{
+  "version": "1.1",
+  "kid": "...",
+  "host": "...",
+  "scheme": "https",
+  "id": "...",
+  "ts": 1706900000000
+}
 ```
 
 The JWKS is fetched from `https://{site.domain}/.well-known/trusted-server.json`. Verification failures are logged but don't reject the request.
