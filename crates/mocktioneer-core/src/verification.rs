@@ -13,6 +13,9 @@ use std::time::{Duration, Instant};
 const JWKS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const SIGNING_VERSION: &str = "1.1";
 
+/// Maximum allowed clock skew for timestamp freshness check (5 minutes in milliseconds).
+const TS_FRESHNESS_WINDOW_MS: u64 = 5 * 60 * 1000;
+
 #[derive(Debug, Clone, Deserialize)]
 struct TrustedServerResponse {
     jwks: JwksResponse,
@@ -34,6 +37,9 @@ struct JwksCache {
     fetched_at: Instant,
 }
 
+// IMPORTANT: Field order defines the canonical signing payload.
+// `serde_json::to_string` serializes struct fields in declaration order.
+// Reordering fields will silently break signature verification.
 #[derive(Serialize)]
 struct SigningPayload<'a> {
     version: &'a str,
@@ -70,7 +76,6 @@ async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, 
         .parse::<Uri>()
         .map_err(|e| VerificationError::HttpError(format!("Invalid JWKS URL: {}", e)))?;
 
-    log::info!("URI: {}", uri);
     let proxy_request = ProxyRequest::new(Method::GET, uri);
     let proxy_handle = ctx
         .proxy_handle()
@@ -259,11 +264,34 @@ fn required_ext_u64(
         .ok_or(missing_error)
 }
 
+fn current_time_ms() -> Result<u64, VerificationError> {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .map_err(|_| VerificationError::InvalidSignature("System clock error".to_string()))
+}
+
+fn check_timestamp_freshness(timestamp_ms: u64) -> Result<(), VerificationError> {
+    let now_ms = current_time_ms()?;
+    let diff = now_ms.abs_diff(timestamp_ms);
+
+    if diff > TS_FRESHNESS_WINDOW_MS {
+        return Err(VerificationError::InvalidSignature(format!(
+            "ext.trusted_server.ts is stale: {}ms drift exceeds {}ms window",
+            diff, TS_FRESHNESS_WINDOW_MS
+        )));
+    }
+
+    Ok(())
+}
+
 pub async fn verify_request_id_signature(
     ctx: &RequestContext,
     request_id: &str,
     ext: Option<&serde_json::Value>,
     domain: &str,
+    trusted_host: &str,
+    trusted_scheme: &str,
 ) -> Result<String, VerificationError> {
     let ext_obj = ext.and_then(|e| e.get("trusted_server")).ok_or_else(|| {
         VerificationError::InvalidSignature("Missing ext.trusted_server".to_string())
@@ -306,6 +334,24 @@ pub async fn verify_request_id_signature(
         "ts",
         VerificationError::InvalidSignature("Missing ext.trusted_server.ts".to_string()),
     )?;
+
+    // Cross-check ext fields against server-observed values
+    if request_host != trusted_host {
+        return Err(VerificationError::InvalidSignature(format!(
+            "ext.trusted_server.request_host '{}' does not match server-observed host '{}'",
+            request_host, trusted_host
+        )));
+    }
+
+    if request_scheme != trusted_scheme {
+        return Err(VerificationError::InvalidSignature(format!(
+            "ext.trusted_server.request_scheme '{}' does not match server-observed scheme '{}'",
+            request_scheme, trusted_scheme
+        )));
+    }
+
+    // Enforce timestamp freshness to prevent replay attacks
+    check_timestamp_freshness(timestamp)?;
 
     let payload = build_signing_payload(
         request_id,
@@ -366,6 +412,8 @@ mod tests {
             request_id,
             Some(&ext),
             "example.com",
+            "example.com",
+            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -389,6 +437,8 @@ mod tests {
             request_id,
             Some(&ext),
             "example.com",
+            "example.com",
+            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -410,6 +460,8 @@ mod tests {
             request_id,
             Some(&ext),
             "example.com",
+            "example.com",
+            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -428,6 +480,8 @@ mod tests {
             request_id,
             None,
             "example.com",
+            "example.com",
+            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -438,13 +492,14 @@ mod tests {
     #[test]
     fn verify_missing_version_field() {
         let request_id = "test-id";
+        let now_ms = current_time_ms().unwrap();
         let ext = serde_json::json!({
             "trusted_server": {
                 "signature": "test-sig",
                 "kid": "test-key",
                 "request_host": "example.com",
                 "request_scheme": "https",
-                "ts": 1706900000
+                "ts": now_ms
             }
         });
 
@@ -455,6 +510,8 @@ mod tests {
             request_id,
             Some(&ext),
             "example.com",
+            "example.com",
+            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -469,14 +526,14 @@ mod tests {
             "kid-abc",
             "publisher.example",
             "https",
-            1706900000,
+            1706900000000,
             "1.1",
         )
         .expect("payload");
 
         assert_eq!(
             payload,
-            "{\"version\":\"1.1\",\"kid\":\"kid-abc\",\"host\":\"publisher.example\",\"scheme\":\"https\",\"id\":\"req-123\",\"ts\":1706900000}"
+            "{\"version\":\"1.1\",\"kid\":\"kid-abc\",\"host\":\"publisher.example\",\"scheme\":\"https\",\"id\":\"req-123\",\"ts\":1706900000000}"
         );
     }
 
@@ -487,7 +544,7 @@ mod tests {
             "kid-abc",
             "publisher.example",
             "https",
-            1706900000,
+            1706900000000,
             "1.0",
         );
 
@@ -537,6 +594,166 @@ mod tests {
         assert!(matches!(
             result.unwrap_err(),
             VerificationError::InvalidSignature(_)
+        ));
+    }
+
+    #[test]
+    fn verify_host_mismatch_rejected() {
+        let now_ms = current_time_ms().unwrap();
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": "test-sig",
+                "kid": "test-key",
+                "version": "1.1",
+                "request_host": "attacker.example",
+                "request_scheme": "https",
+                "ts": now_ms
+            }
+        });
+
+        let ctx = create_test_context();
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            "test-id",
+            Some(&ext),
+            "example.com",
+            "example.com",
+            "https",
+        ));
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("does not match server-observed host"));
+    }
+
+    #[test]
+    fn verify_scheme_mismatch_rejected() {
+        let now_ms = current_time_ms().unwrap();
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": "test-sig",
+                "kid": "test-key",
+                "version": "1.1",
+                "request_host": "example.com",
+                "request_scheme": "http",
+                "ts": now_ms
+            }
+        });
+
+        let ctx = create_test_context();
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            "test-id",
+            Some(&ext),
+            "example.com",
+            "example.com",
+            "https",
+        ));
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("does not match server-observed scheme"));
+    }
+
+    #[test]
+    fn verify_stale_timestamp_rejected() {
+        // Timestamp 10 minutes in the past (exceeds 5-minute window)
+        let stale_ts = current_time_ms().unwrap() - 10 * 60 * 1000;
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": "test-sig",
+                "kid": "test-key",
+                "version": "1.1",
+                "request_host": "example.com",
+                "request_scheme": "https",
+                "ts": stale_ts
+            }
+        });
+
+        let ctx = create_test_context();
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            "test-id",
+            Some(&ext),
+            "example.com",
+            "example.com",
+            "https",
+        ));
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("stale"));
+    }
+
+    #[test]
+    fn verify_future_timestamp_rejected() {
+        // Timestamp 10 minutes in the future (exceeds 5-minute window)
+        let future_ts = current_time_ms().unwrap() + 10 * 60 * 1000;
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": "test-sig",
+                "kid": "test-key",
+                "version": "1.1",
+                "request_host": "example.com",
+                "request_scheme": "https",
+                "ts": future_ts
+            }
+        });
+
+        let ctx = create_test_context();
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            "test-id",
+            Some(&ext),
+            "example.com",
+            "example.com",
+            "https",
+        ));
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("stale"));
+    }
+
+    #[test]
+    fn check_timestamp_freshness_within_window() {
+        let now_ms = current_time_ms().unwrap();
+        // Current time should pass
+        assert!(check_timestamp_freshness(now_ms).is_ok());
+        // 1 minute ago should pass
+        assert!(check_timestamp_freshness(now_ms - 60_000).is_ok());
+        // 1 minute in the future should pass
+        assert!(check_timestamp_freshness(now_ms + 60_000).is_ok());
+    }
+
+    #[test]
+    fn verify_ed25519_roundtrip_with_known_keypair() {
+        use ed25519_dalek::SigningKey;
+
+        // Deterministic seed for reproducible test
+        let seed: [u8; 32] = [42u8; 32];
+        let signing_key = SigningKey::from_bytes(&seed);
+        let verifying_key = signing_key.verifying_key();
+
+        // Encode keys as base64url (no padding)
+        let public_key_b64 = URL_SAFE_NO_PAD.encode(verifying_key.as_bytes());
+
+        // Build a canonical signing payload
+        let payload = build_signing_payload(
+            "req-roundtrip",
+            "kid-test",
+            "publisher.example",
+            "https",
+            1706900000000,
+            "1.1",
+        )
+        .expect("payload");
+
+        // Sign the payload
+        use ed25519_dalek::Signer;
+        let signature = signing_key.sign(payload.as_bytes());
+        let signature_b64 = URL_SAFE_NO_PAD.encode(signature.to_bytes());
+
+        // Verify should succeed
+        assert!(verify_ed25519_signature(&public_key_b64, &signature_b64, &payload).is_ok());
+
+        // Verify with tampered payload should fail
+        let tampered = payload.replace("req-roundtrip", "req-tampered");
+        assert!(matches!(
+            verify_ed25519_signature(&public_key_b64, &signature_b64, &tampered).unwrap_err(),
+            VerificationError::SignatureVerificationFailed
         ));
     }
 }

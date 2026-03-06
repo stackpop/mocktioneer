@@ -241,7 +241,7 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidRespons
     let mut slots: Vec<ApsSlotResponse> = Vec::new();
 
     for slot in req.slots.iter() {
-        // Find the standard size with the highest CPM from all sizes in the slot
+        // Find the standard size with the largest area from all sizes in the slot
         let best_size = slot
             .sizes
             .iter()
@@ -249,13 +249,13 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidRespons
                 let w_i64 = w as i64;
                 let h_i64 = h as i64;
                 if is_standard_size(w_i64, h_i64) {
-                    let price = get_cpm(w_i64, h_i64);
-                    Some((w, h, price))
+                    let area = w_i64 * h_i64;
+                    Some((w, h, area))
                 } else {
                     None
                 }
             })
-            .max_by(|a, b| a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal));
+            .max_by_key(|&(_, _, area)| area);
 
         let Some((w, h, _)) = best_size else {
             // No standard sizes found, skip this slot
@@ -471,7 +471,7 @@ mod tests {
     }
 
     #[test]
-    fn test_price_from_ext_and_iframe_bid_param() {
+    fn test_ext_bid_override_is_ignored() {
         let req = OpenRTBRequest {
             id: "r4".to_string(),
             imp: vec![OpenrtbImp {
@@ -548,12 +548,12 @@ mod tests {
     }
 
     #[test]
-    fn test_build_aps_response_selects_highest_cpm() {
+    fn test_build_aps_response_selects_largest_area() {
         let req = ApsBidRequest {
             pub_id: "test".to_string(),
             slots: vec![ApsSlot {
                 slot_id: "slot1".to_string(),
-                sizes: vec![[300, 250], [970, 250]], // 970x250 has higher CPM ($4.20 vs $2.50)
+                sizes: vec![[300, 250], [970, 250]], // 970x250 has larger area (242500 vs 75000)
                 slot_name: None,
             }],
             page_url: None,
@@ -564,7 +564,7 @@ mod tests {
 
         assert_eq!(resp.contextual.slots.len(), 1);
         let slot = &resp.contextual.slots[0];
-        assert_eq!(slot.size, "970x250"); // Should pick higher CPM size
+        assert_eq!(slot.size, "970x250"); // Should pick largest area
     }
 
     #[test]

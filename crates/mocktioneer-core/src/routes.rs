@@ -239,6 +239,14 @@ pub async fn handle_openrtb_auction(
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
 ) -> Result<Response, EdgeError> {
+    // Determine server-observed scheme from X-Forwarded-Proto header, default to "https"
+    let scheme = ctx
+        .request()
+        .headers()
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("https");
+
     // Capture signature verification status for metadata
     let signature_status = if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref())
     {
@@ -247,6 +255,8 @@ pub async fn handle_openrtb_auction(
             &req.id,
             req.ext.as_ref(),
             domain,
+            &host,
+            scheme,
         )
         .await
         {
@@ -498,22 +508,19 @@ pub async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParam
 /// ```json
 /// {
 ///   "sizes": [
-///     {"width": 300, "height": 250, "cpm": 2.5},
-///     {"width": 728, "height": 90, "cpm": 3.0},
+///     {"width": 300, "height": 250},
+///     {"width": 728, "height": 90},
 ///     ...
 ///   ]
 /// }
 /// ```
 #[action]
 pub async fn handle_sizes() -> Response {
-    use crate::auction::get_cpm;
-
     let sizes: Vec<serde_json::Value> = standard_sizes()
         .map(|(w, h)| {
             serde_json::json!({
                 "width": w,
-                "height": h,
-                "cpm": get_cpm(w, h)
+                "height": h
             })
         })
         .collect();
@@ -1002,6 +1009,7 @@ mod tests {
         let first = &sizes[0];
         assert!(first["width"].is_i64());
         assert!(first["height"].is_i64());
-        assert!(first["cpm"].is_f64());
+        // CPM is no longer included — bid price is fixed at FIXED_BID_CPM
+        assert!(first.get("cpm").is_none());
     }
 }

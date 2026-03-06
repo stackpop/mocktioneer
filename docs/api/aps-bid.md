@@ -60,8 +60,8 @@ The response matches the real Amazon APS API format with a `contextual` wrapper:
         "targeting": ["amzniid", "amznp", "amznsz", "amznbid", "amznactt"],
         "meta": ["slotID", "mediaType", "size"],
         "amzniid": "019b7f82e8de7e139d6d6a593171e7a0",
-        "amznbid": "NC4yMA==",
-        "amznp": "NC4yMA==",
+        "amznbid": "MC4wMQ==",
+        "amznp": "MC4wMQ==",
         "amznsz": "970x250",
         "amznactt": "OPEN"
       }
@@ -99,7 +99,7 @@ The response matches the real Amazon APS API format with a `contextual` wrapper:
 
 ## Size Selection
 
-When multiple sizes are provided, Mocktioneer selects the size with the highest CPM. See the [complete pricing table](/api/#supported-sizes) for all supported sizes and their CPM values.
+When multiple sizes are provided, Mocktioneer selects the standard size with the largest area. See the [supported sizes](/api/#supported-sizes) for all standard sizes.
 
 Non-standard sizes are skipped (no bid returned for that slot).
 
@@ -115,8 +115,8 @@ The price encoding differs between real APS and Mocktioneer:
 Decode Mocktioneer prices:
 
 ```bash
-echo "Mi41MA==" | base64 -d
-# Output: 2.50
+echo "MC4wMQ==" | base64 -d
+# Output: 0.01
 ```
 
 ## Examples
