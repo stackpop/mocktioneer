@@ -221,12 +221,12 @@ fn test_aps_bid_non_standard_first_then_standard() {
 }
 
 #[test]
-fn test_aps_bid_selects_highest_cpm_from_multiple_standard_sizes() {
+fn test_aps_bid_selects_largest_area_from_multiple_standard_sizes() {
     let req = ApsBidRequest {
         pub_id: "5555".to_string(),
         slots: vec![ApsSlot {
             slot_id: "multi-standard".to_string(),
-            sizes: vec![[320, 50], [300, 250], [970, 250]], // 320x50=$1.80, 300x250=$2.50, 970x250=$4.20
+            sizes: vec![[320, 50], [300, 250], [970, 250]], // 16000, 75000, 242500 area
             slot_name: Some("multi-standard".to_string()),
         }],
         page_url: None,
@@ -236,7 +236,7 @@ fn test_aps_bid_selects_highest_cpm_from_multiple_standard_sizes() {
 
     let resp = build_aps_response(&req, "mocktioneer.test");
 
-    // Should select 970x250 with highest CPM ($4.20)
+    // Should select 970x250 with largest area (242500)
     assert_eq!(resp.contextual.slots.len(), 1);
     assert_eq!(resp.contextual.slots[0].size, "970x250");
 }

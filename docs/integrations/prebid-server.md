@@ -62,32 +62,6 @@ adapters:
 }
 ```
 
-### With Price Override
-
-```json
-{
-  "id": "test-request",
-  "imp": [
-    {
-      "id": "imp-1",
-      "banner": {
-        "w": 300,
-        "h": 250
-      },
-      "ext": {
-        "prebid": {
-          "bidder": {
-            "mocktioneer": {
-              "bid": 5.0
-            }
-          }
-        }
-      }
-    }
-  ]
-}
-```
-
 ### Custom Endpoint Per Request
 
 Override the endpoint for specific requests:
@@ -102,9 +76,7 @@ Override the endpoint for specific requests:
         },
         "prebid": {
           "bidder": {
-            "mocktioneer": {
-              "bid": 2.5
-            }
+            "mocktioneer": {}
           }
         }
       }
@@ -115,10 +87,11 @@ Override the endpoint for specific requests:
 
 ## Parameters
 
-| Parameter  | Location                              | Type   | Description               |
-| ---------- | ------------------------------------- | ------ | ------------------------- |
-| `endpoint` | `imp[].ext.bidder`                    | string | Override auction endpoint |
-| `bid`      | `imp[].ext.prebid.bidder.mocktioneer` | float  | Override bid price        |
+| Parameter  | Location           | Type   | Description               |
+| ---------- | ------------------ | ------ | ------------------------- |
+| `endpoint` | `imp[].ext.bidder` | string | Override auction endpoint |
+
+Mocktioneer always returns a fixed bid price of `$0.01` CPM.
 
 ## Response Handling
 
@@ -133,7 +106,7 @@ Prebid Server processes Mocktioneer responses like any other bidder:
         {
           "id": "019abc-mocktioneer",
           "impid": "imp-1",
-          "price": 2.5,
+          "price": 0.01,
           "adm": "<iframe>...</iframe>",
           "crid": "019abc-mocktioneer",
           "w": 300,
@@ -160,7 +133,7 @@ curl -X POST http://localhost:8000/openrtb2/auction \
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": {"bid": 3.00}
+            "mocktioneer": {}
           }
         }
       }
@@ -181,7 +154,7 @@ curl -X POST http://localhost:8787/openrtb2/auction \
     "imp": [{
       "id": "1",
       "banner": {"w": 300, "h": 250},
-      "ext": {"mocktioneer": {"bid": 2.50}}
+      "ext": {"mocktioneer": {}}
     }]
   }' | jq .
 ```
@@ -198,7 +171,7 @@ curl -X POST http://localhost:8787/openrtb2/auction \
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": { "bid": 2.0 }
+            "mocktioneer": {}
           }
         }
       }
@@ -209,7 +182,7 @@ curl -X POST http://localhost:8787/openrtb2/auction \
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": { "bid": 2.5 }
+            "mocktioneer": {}
           }
         }
       }
@@ -220,7 +193,7 @@ curl -X POST http://localhost:8787/openrtb2/auction \
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": { "bid": 4.0 }
+            "mocktioneer": {}
           }
         }
       }
@@ -288,7 +261,7 @@ Include Mocktioneer alongside real bidders:
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": { "bid": 2.0 },
+            "mocktioneer": {},
             "appnexus": { "placementId": "12345" }
           }
         }
@@ -300,17 +273,17 @@ Include Mocktioneer alongside real bidders:
 
 ### Price Floor Testing
 
-Test floor enforcement:
+Test floor enforcement (Mocktioneer bids at `$0.01` which will be below most floors):
 
 ```json
 {
   "imp": [
     {
-      "bidfloor": 3.0,
+      "bidfloor": 1.0,
       "ext": {
         "prebid": {
           "bidder": {
-            "mocktioneer": { "bid": 2.5 } // Below floor
+            "mocktioneer": {}
           }
         }
       }
