@@ -107,21 +107,30 @@ For each changed file, evaluate:
 
 ### 5. Classify findings
 
-Assign each finding a severity:
+Tag each finding with a code review emoji per the
+[Code Review Emoji Guide](https://github.com/erikthedeveloper/code-review-emoji-guide):
 
-| Severity     | Criteria                                                           |
-| ------------ | ------------------------------------------------------------------ |
-| P0 — Blocker | Must fix before merge: bugs, data loss, security, CI failures      |
-| P1 — High    | Should fix: race conditions, API design issues, missing validation |
-| P2 — Medium  | Recommended: inconsistencies, test gaps, dead code                 |
-| P3 — Low     | Nice to have: style, minor improvements, documentation             |
+| Emoji | Tag          | Meaning                                                       | Blocking? |
+| ----- | ------------ | ------------------------------------------------------------- | --------- |
+| 👍    | `:+1:`       | Praise — "I like this and want the author to know it!"        | No        |
+| 🔧    | `:wrench:`   | Needs change — "I think this needs to be changed."            | **Yes**   |
+| ❓    | `:question:` | Question — "I have a question" (requires a response)          | No        |
+| 🤔    | `:thinking:` | Thought — "Let me think out loud" (alternative approach)      | No        |
+| 🌱    | `:seedling:` | Seed — "Planting a seed for future consideration"             | No        |
+| 📝    | `:memo:`     | Note — Explanation or interesting fact, no action required    | No        |
+| ⛏     | `:pick:`     | Nitpick — Stylistic suggestion, doesn't require changes       | No        |
+| ♻️    | `:recycle:`  | Refactor — Actionable refactoring suggestion with context     | No        |
+| 🏕    | `:camping:`  | Campground — "Leave it cleaner than you found it" opportunity | No        |
+| 📌    | `:pushpin:`  | Out of scope — Concern that needs separate follow-up          | No        |
+
+Only 🔧 findings block the PR. All other tags are non-blocking.
 
 ### 6. Present findings for user approval
 
 **Do not submit the review automatically.** Present all findings to the user
 organized by severity, with:
 
-- Severity and title
+- Emoji tag and title
 - File path and line number
 - Description and suggested fix
 - Whether it would be an inline comment or body-level finding
@@ -142,9 +151,8 @@ After user approval, submit the selected findings as a formal review.
 
 #### Determine the review verdict
 
-- If any P0 findings are included: `CHANGES_REQUESTED`
-- If any P1 findings are included: `CHANGES_REQUESTED`
-- If only P2 or below: `COMMENT`
+- If any 🔧 findings are included: `CHANGES_REQUESTED`
+- If only non-blocking findings (👍 ❓ 🤔 🌱 📝 ⛏ ♻️ 🏕 📌): `COMMENT`
 - If no findings: `APPROVE`
 
 #### Build inline comments
@@ -158,7 +166,7 @@ comment. Use the file's **current line number** (not diff position) with the
   "path": "crates/mocktioneer-core/src/routes.rs",
   "line": 42,
   "side": "RIGHT",
-  "body": "**P1 — Race condition**: Description of the issue...\n\n**Fix**:\n```rust\n// suggested code\n```"
+  "body": "🔧 **Race condition**: Description of the issue...\n\n**Fix**:\n```rust\n// suggested code\n```"
 }
 ````
 
@@ -176,19 +184,31 @@ concerns, architectural issues, dependency problems) in the review body:
 
 ### Findings
 
-#### P0 — Blockers
+#### 🔧 Needs Change
 
 - **Title**: description (file:line)
 
-#### P1 — High
+#### ❓ Questions
 
 - **Title**: description (file:line)
 
-#### P2 — Medium
+#### 🤔 Thoughts
 
 - **Title**: description
 
-#### P3 — Low
+#### ♻️ Refactoring / 🏕 Campground
+
+- **Title**: description
+
+#### ⛏ Nitpicks
+
+- **Title**: description
+
+#### 🌱 Seeds / 📌 Out of Scope
+
+- **Title**: description
+
+#### 👍 Praise
 
 - **Title**: description
 
@@ -198,6 +218,8 @@ concerns, architectural issues, dependency problems) in the review body:
 - clippy: PASS/FAIL
 - tests: PASS/FAIL
 ```
+
+Omit any section that has no findings. Only include sections with content.
 
 #### Submit the review
 
@@ -236,7 +258,7 @@ Where `comments.json` contains the array of inline comment objects.
 Output:
 
 - The review URL
-- Total findings by severity (e.g., "2 P0, 3 P1, 5 P2, 2 P3")
+- Total findings by tag (e.g., "2 🔧, 1 ❓, 3 ⛏, 2 👍")
 - Whether the review requested changes or approved
 - Any CI failures encountered
 
