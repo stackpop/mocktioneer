@@ -110,18 +110,18 @@ For each changed file, evaluate:
 Tag each finding with a code review emoji per the
 [Code Review Emoji Guide](https://github.com/erikthedeveloper/code-review-emoji-guide):
 
-| Emoji | Tag          | Meaning                                                         | Blocking? |
-| ----- | ------------ | --------------------------------------------------------------- | --------- |
-| 👍    | `:+1:`       | Praise — "I like this and want the author to know it!"          | No        |
-| 🔧    | `:wrench:`   | Needs change — "I think this needs to be changed."              | **Yes**   |
-| ❓    | `:question:` | Question — "I have a question" (requires a response)            | No        |
-| 🤔    | `:thinking:` | Thought — "Let me think out loud" (alternative approach)        | No        |
-| 🌱    | `:seedling:` | Seed — "Planting a seed for future consideration"               | No        |
-| 📝    | `:memo:`     | Note — Explanation or interesting fact, no action required       | No        |
-| ⛏     | `:pick:`     | Nitpick — Stylistic suggestion, doesn't require changes         | No        |
-| ♻️    | `:recycle:`  | Refactor — Actionable refactoring suggestion with context       | No        |
-| 🏕    | `:camping:`  | Campground — "Leave it cleaner than you found it" opportunity   | No        |
-| 📌    | `:pushpin:`  | Out of scope — Concern that needs separate follow-up            | No        |
+| Emoji | Tag          | Meaning                                                       | Blocking? |
+| ----- | ------------ | ------------------------------------------------------------- | --------- |
+| 👍    | `:+1:`       | Praise — "I like this and want the author to know it!"        | No        |
+| 🔧    | `:wrench:`   | Needs change — "I think this needs to be changed."            | **Yes**   |
+| ❓    | `:question:` | Question — "I have a question" (requires a response)          | No        |
+| 🤔    | `:thinking:` | Thought — "Let me think out loud" (alternative approach)      | No        |
+| 🌱    | `:seedling:` | Seed — "Planting a seed for future consideration"             | No        |
+| 📝    | `:memo:`     | Note — Explanation or interesting fact, no action required    | No        |
+| ⛏     | `:pick:`     | Nitpick — Stylistic suggestion, doesn't require changes       | No        |
+| ♻️    | `:recycle:`  | Refactor — Actionable refactoring suggestion with context     | No        |
+| 🏕    | `:camping:`  | Campground — "Leave it cleaner than you found it" opportunity | No        |
+| 📌    | `:pushpin:`  | Out of scope — Concern that needs separate follow-up          | No        |
 
 Only 🔧 findings block the PR. All other tags are non-blocking.
 
