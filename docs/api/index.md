@@ -38,10 +38,10 @@ Mocktioneer exposes several HTTP endpoints for bid requests, creative serving, a
 
 ### Utility Endpoints
 
-| Method | Path       | Description          |
-| ------ | ---------- | -------------------- |
-| GET    | `/`        | Service info page    |
-| GET    | `/_/sizes` | Supported ad sizes   |
+| Method | Path       | Description        |
+| ------ | ---------- | ------------------ |
+| GET    | `/`        | Service info page  |
+| GET    | `/_/sizes` | Supported ad sizes |
 
 ## Common Headers
 

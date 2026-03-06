@@ -10,7 +10,6 @@ import { test, expect } from '@playwright/test';
 interface AdSize {
   width: number;
   height: number;
-  cpm: number;
 }
 
 // Fetched from /_/sizes endpoint before tests run
@@ -34,7 +33,7 @@ test.describe('Creative visibility tests', () => {
     for (const size of data.sizes) {
       expect(typeof size.width).toBe('number');
       expect(typeof size.height).toBe('number');
-      expect(typeof size.cpm).toBe('number');
+      expect(size).not.toHaveProperty('cpm');
     }
   });
 
