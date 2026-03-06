@@ -73,24 +73,8 @@ params: {
 | Parameter  | Type   | Required | Description                 |
 | ---------- | ------ | -------- | --------------------------- |
 | `endpoint` | string | No       | Custom auction endpoint URL |
-| `bid`      | float  | No       | Override bid price (CPM)    |
 
-### Price Override
-
-Force a specific bid price for testing:
-
-```javascript
-bids: [
-  {
-    bidder: 'mocktioneer',
-    params: {
-      bid: 5.0, // Force $5.00 CPM
-    },
-  },
-]
-```
-
-The price override is passed via `imp[].ext.mocktioneer.bid` in the OpenRTB request.
+Mocktioneer always returns a fixed bid price of `$0.01` CPM.
 
 ## Example Page
 
@@ -180,7 +164,7 @@ var adUnits = [
     bids: [
       {
         bidder: 'mocktioneer',
-        params: { bid: 3.0 },
+        params: {},
       },
     ],
   },
@@ -197,7 +181,7 @@ var adUnits = [
     bids: [
       {
         bidder: 'mocktioneer',
-        params: { bid: 2.0 },
+        params: {},
       },
     ],
   },
@@ -214,7 +198,7 @@ var adUnits = [
     bids: [
       {
         bidder: 'mocktioneer',
-        params: { bid: 1.5 },
+        params: {},
       },
     ],
   },
@@ -227,16 +211,6 @@ var adUnits = [
 
 Mocktioneer returns a bid for valid banner impressions (non-standard sizes are coerced to 300x250). If you need a no-bid path, filter it on the client side or use the mediation endpoint with a `price_floor` above the bids you send.
 
-### High CPM Testing
-
-Test price floor logic:
-
-```javascript
-params: {
-  bid: 100.0 // $100 CPM
-}
-```
-
 ### Multiple Bidders
 
 Compare Mocktioneer with other bidders:
@@ -245,7 +219,7 @@ Compare Mocktioneer with other bidders:
 bids: [
   {
     bidder: 'mocktioneer',
-    params: { bid: 2.0 },
+    params: {},
   },
   {
     bidder: 'appnexus',

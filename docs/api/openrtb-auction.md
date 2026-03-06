@@ -48,11 +48,6 @@ Content-Type: application/json
           { "w": 320, "h": 50 }
         ]
       },
-      "ext": {
-        "mocktioneer": {
-          "bid": 2.5
-        }
-      }
     }
   ],
   "ext": {
@@ -176,21 +171,6 @@ curl -X POST http://127.0.0.1:8787/openrtb2/auction \
       {"id": "2", "banner": {"w": 728, "h": 90}},
       {"id": "3", "banner": {"w": 320, "h": 50}}
     ]
-  }' | jq .
-```
-
-### With Price Override
-
-```bash
-curl -X POST http://127.0.0.1:8787/openrtb2/auction \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "id": "custom-price",
-    "imp": [{
-      "id": "1",
-      "banner": {"w": 300, "h": 250},
-      "ext": {"mocktioneer": {"bid": 10.00}}
-    }]
   }' | jq .
 ```
 
