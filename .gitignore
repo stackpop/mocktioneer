@@ -14,7 +14,10 @@
 .DS_Store
 
 # IDE - VSCode
-.claude/
+.claude/*
+!.claude/settings.json
+!.claude/commands/
+!.claude/agents/
 .specstory
 .vscode/*
 !.vscode/settings.json
