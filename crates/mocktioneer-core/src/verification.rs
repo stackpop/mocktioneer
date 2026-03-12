@@ -271,6 +271,16 @@ fn current_time_ms() -> Result<u64, VerificationError> {
         .map_err(|_| VerificationError::InvalidSignature("System clock error".to_string()))
 }
 
+/// Strip default ports (:443 for https, :80 for http) and lowercase the host
+/// so that `example.com:443` matches `example.com` from the signer.
+fn canonicalize_host(host: &str) -> String {
+    let h = host.trim();
+    h.strip_suffix(":443")
+        .or_else(|| h.strip_suffix(":80"))
+        .unwrap_or(h)
+        .to_lowercase()
+}
+
 fn check_timestamp_freshness(timestamp_ms: u64) -> Result<(), VerificationError> {
     let now_ms = current_time_ms()?;
     let diff = now_ms.abs_diff(timestamp_ms);
@@ -335,15 +345,19 @@ pub async fn verify_request_id_signature(
         VerificationError::InvalidSignature("Missing ext.trusted_server.ts".to_string()),
     )?;
 
-    // Cross-check ext fields against server-observed values
-    if request_host != trusted_host {
+    // Cross-check ext fields against server-observed values (normalized)
+    let canon_ext_host = canonicalize_host(request_host);
+    let canon_trusted_host = canonicalize_host(trusted_host);
+    if canon_ext_host != canon_trusted_host {
         return Err(VerificationError::InvalidSignature(format!(
             "ext.trusted_server.request_host '{}' does not match server-observed host '{}'",
             request_host, trusted_host
         )));
     }
 
-    if request_scheme != trusted_scheme {
+    let canon_ext_scheme = request_scheme.trim().to_lowercase();
+    let canon_trusted_scheme = trusted_scheme.trim().to_lowercase();
+    if canon_ext_scheme != canon_trusted_scheme {
         return Err(VerificationError::InvalidSignature(format!(
             "ext.trusted_server.request_scheme '{}' does not match server-observed scheme '{}'",
             request_scheme, trusted_scheme
@@ -675,8 +689,9 @@ mod tests {
             "example.com",
             "https",
         ));
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("stale"));
+        let err = result.unwrap_err();
+        assert!(matches!(err, VerificationError::InvalidSignature(_)));
+        assert!(err.to_string().contains("stale"));
     }
 
     #[test]
@@ -703,8 +718,9 @@ mod tests {
             "example.com",
             "https",
         ));
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("stale"));
+        let err = result.unwrap_err();
+        assert!(matches!(err, VerificationError::InvalidSignature(_)));
+        assert!(err.to_string().contains("stale"));
     }
 
     #[test]

@@ -7,20 +7,14 @@ use phf::phf_map;
 use uuid::Uuid;
 
 // ============================================================================
-// Standard Ad Sizes - single source of truth for supported sizes and pricing
+// Standard Ad Sizes - single source of truth for supported sizes
 // ============================================================================
-
-/// Default CPM for non-standard sizes (base price before area adjustment).
-pub const DEFAULT_CPM: f64 = 1.50;
 
 /// Fixed CPM used for all Mocktioneer-generated bids.
 pub const FIXED_BID_CPM: f64 = 0.01;
 
-/// Maximum area-based bonus added to DEFAULT_CPM for non-standard sizes.
-/// Final CPM = DEFAULT_CPM + min(area/100000, MAX_AREA_BONUS)
-pub const MAX_AREA_BONUS: f64 = 3.00;
-
-/// Compile-time perfect hash map for standard sizes: "WxH" -> cpm.
+/// Compile-time perfect hash map for standard sizes: "WxH" -> (legacy CPM, unused).
+/// Only membership (`contains_key`) and key iteration are used at runtime.
 /// Zero runtime initialization cost.
 static SIZE_MAP: phf::Map<&'static str, f64> = phf_map! {
     // Desktop & General Display Sizes
@@ -49,18 +43,6 @@ fn size_key(w: i64, h: i64) -> String {
 /// Check if dimensions match a standard ad size.
 pub fn is_standard_size(w: i64, h: i64) -> bool {
     SIZE_MAP.contains_key(size_key(w, h).as_str())
-}
-
-/// Get CPM for a size. Returns configured CPM for standard sizes, area-based fallback otherwise.
-pub fn get_cpm(w: i64, h: i64) -> f64 {
-    SIZE_MAP
-        .get(size_key(w, h).as_str())
-        .copied()
-        .unwrap_or_else(|| {
-            // Fallback: area-based pricing for non-standard sizes
-            let area = (w * h) as f64;
-            ((DEFAULT_CPM + (area / 100000.0).min(MAX_AREA_BONUS)) * 100.0).round() / 100.0
-        })
 }
 
 /// Returns an iterator over all standard ad sizes as (width, height) tuples.
@@ -131,6 +113,22 @@ pub fn build_openrtb_response(
         let (w, h) = standard_or_default(size_from_imp(imp));
         let bid_id = new_id();
         let crid = format!("mocktioneer-{}", imp.id);
+
+        // Warn when callers supply a bid override that is no longer honored
+        if imp
+            .ext
+            .as_ref()
+            .and_then(|e| e.mocktioneer.as_ref())
+            .and_then(|m| m.bid)
+            .is_some()
+        {
+            log::warn!(
+                "imp[{}].ext.mocktioneer.bid is deprecated and ignored; \
+                 all bids use fixed price ${}",
+                imp.id,
+                FIXED_BID_CPM
+            );
+        }
 
         let price = FIXED_BID_CPM;
 
