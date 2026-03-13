@@ -245,23 +245,23 @@ fn build_signing_payload(
 fn required_ext_str<'a>(
     ext_obj: &'a serde_json::Value,
     field: &str,
-    missing_error: VerificationError,
+    missing_error: impl FnOnce() -> VerificationError,
 ) -> Result<&'a str, VerificationError> {
     ext_obj
         .get(field)
         .and_then(serde_json::Value::as_str)
-        .ok_or(missing_error)
+        .ok_or_else(missing_error)
 }
 
 fn required_ext_u64(
     ext_obj: &serde_json::Value,
     field: &str,
-    missing_error: VerificationError,
+    missing_error: impl FnOnce() -> VerificationError,
 ) -> Result<u64, VerificationError> {
     ext_obj
         .get(field)
         .and_then(serde_json::Value::as_u64)
-        .ok_or(missing_error)
+        .ok_or_else(missing_error)
 }
 
 fn current_time_ms() -> Result<u64, VerificationError> {
@@ -307,43 +307,29 @@ pub async fn verify_request_id_signature(
         VerificationError::InvalidSignature("Missing ext.trusted_server".to_string())
     })?;
 
-    let signature = required_ext_str(
-        ext_obj,
-        "signature",
-        VerificationError::InvalidSignature("Missing ext.trusted_server.signature".to_string()),
-    )?;
+    let signature = required_ext_str(ext_obj, "signature", || {
+        VerificationError::InvalidSignature("Missing ext.trusted_server.signature".to_string())
+    })?;
 
-    let key_id = required_ext_str(
-        ext_obj,
-        "kid",
-        VerificationError::KeyNotFound("Missing ext.trusted_server.kid".to_string()),
-    )?;
+    let key_id = required_ext_str(ext_obj, "kid", || {
+        VerificationError::KeyNotFound("Missing ext.trusted_server.kid".to_string())
+    })?;
 
-    let version = required_ext_str(
-        ext_obj,
-        "version",
-        VerificationError::InvalidSignature("Missing ext.trusted_server.version".to_string()),
-    )?;
+    let version = required_ext_str(ext_obj, "version", || {
+        VerificationError::InvalidSignature("Missing ext.trusted_server.version".to_string())
+    })?;
 
-    let request_host = required_ext_str(
-        ext_obj,
-        "request_host",
-        VerificationError::InvalidSignature("Missing ext.trusted_server.request_host".to_string()),
-    )?;
+    let request_host = required_ext_str(ext_obj, "request_host", || {
+        VerificationError::InvalidSignature("Missing ext.trusted_server.request_host".to_string())
+    })?;
 
-    let request_scheme = required_ext_str(
-        ext_obj,
-        "request_scheme",
-        VerificationError::InvalidSignature(
-            "Missing ext.trusted_server.request_scheme".to_string(),
-        ),
-    )?;
+    let request_scheme = required_ext_str(ext_obj, "request_scheme", || {
+        VerificationError::InvalidSignature("Missing ext.trusted_server.request_scheme".to_string())
+    })?;
 
-    let timestamp = required_ext_u64(
-        ext_obj,
-        "ts",
-        VerificationError::InvalidSignature("Missing ext.trusted_server.ts".to_string()),
-    )?;
+    let timestamp = required_ext_u64(ext_obj, "ts", || {
+        VerificationError::InvalidSignature("Missing ext.trusted_server.ts".to_string())
+    })?;
 
     // Cross-check ext fields against server-observed values (normalized)
     let canon_ext_host = canonicalize_host(request_host);
@@ -771,5 +757,14 @@ mod tests {
             verify_ed25519_signature(&public_key_b64, &signature_b64, &tampered).unwrap_err(),
             VerificationError::SignatureVerificationFailed
         ));
+    }
+
+    #[test]
+    fn canonicalize_host_cases() {
+        assert_eq!(canonicalize_host("EXAMPLE.COM"), "example.com");
+        assert_eq!(canonicalize_host("example.com:443"), "example.com");
+        assert_eq!(canonicalize_host("example.com:80"), "example.com");
+        assert_eq!(canonicalize_host("example.com:8080"), "example.com:8080");
+        assert_eq!(canonicalize_host("  example.com  "), "example.com");
     }
 }
