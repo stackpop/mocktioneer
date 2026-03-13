@@ -13,25 +13,26 @@ use uuid::Uuid;
 /// Fixed CPM used for all Mocktioneer-generated bids.
 pub const FIXED_BID_CPM: f64 = 0.01;
 
-/// Compile-time perfect hash map for standard sizes: "WxH" -> (legacy CPM, unused).
-/// Only membership (`contains_key`) and key iteration are used at runtime.
+/// Compile-time perfect hash map for standard sizes.
+/// Values unused — map exists for key membership only.
+/// Only `contains_key` and key iteration are used at runtime.
 /// Zero runtime initialization cost.
 static SIZE_MAP: phf::Map<&'static str, f64> = phf_map! {
     // Desktop & General Display Sizes
-    "300x250" => 2.50,  // Medium Rectangle
-    "336x280" => 2.60,  // Large Rectangle
-    "728x90" => 3.00,   // Leaderboard
-    "970x90" => 3.80,   // Large Leaderboard
-    "160x600" => 3.20,  // Wide Skyscraper
-    "300x600" => 3.50,  // Half Page
-    "970x250" => 4.20,  // Billboard
-    "468x60" => 2.00,   // Banner
+    "300x250" => 0.0,  // Medium Rectangle
+    "336x280" => 0.0,  // Large Rectangle
+    "728x90" => 0.0,   // Leaderboard
+    "970x90" => 0.0,   // Large Leaderboard
+    "160x600" => 0.0,  // Wide Skyscraper
+    "300x600" => 0.0,  // Half Page
+    "970x250" => 0.0,  // Billboard
+    "468x60" => 0.0,   // Banner
     // Mobile-Specific Sizes
-    "320x50" => 1.80,   // Mobile Leaderboard
-    "300x50" => 1.70,   // Mobile Banner (alternative)
-    "320x100" => 2.20,  // Large Mobile Banner
-    "320x480" => 2.80,  // Mobile Interstitial Portrait
-    "480x320" => 2.80,  // Mobile Interstitial Landscape
+    "320x50" => 0.0,   // Mobile Leaderboard
+    "300x50" => 0.0,   // Mobile Banner (alternative)
+    "320x100" => 0.0,  // Large Mobile Banner
+    "320x480" => 0.0,  // Mobile Interstitial Portrait
+    "480x320" => 0.0,  // Mobile Interstitial Landscape
 };
 
 /// Format dimensions as lookup key.
