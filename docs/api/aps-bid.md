@@ -115,8 +115,8 @@ The price encoding differs between real APS and Mocktioneer:
 Decode Mocktioneer prices:
 
 ```bash
-echo "MC4wMQ==" | base64 -d
-# Output: 0.01
+echo "MC4yMA==" | base64 -d
+# Output: 0.20
 ```
 
 ## Examples

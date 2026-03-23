@@ -91,7 +91,7 @@ Override the endpoint for specific requests:
 | ---------- | ------------------ | ------ | ------------------------- |
 | `endpoint` | `imp[].ext.bidder` | string | Override auction endpoint |
 
-Mocktioneer always returns a fixed bid price of `$0.01` CPM.
+Mocktioneer always returns a fixed bid price of `$0.20` CPM.
 
 ## Response Handling
 
@@ -106,7 +106,7 @@ Prebid Server processes Mocktioneer responses like any other bidder:
         {
           "id": "019abc-mocktioneer",
           "impid": "imp-1",
-          "price": 0.01,
+          "price": 0.20,
           "adm": "<iframe>...</iframe>",
           "crid": "019abc-mocktioneer",
           "w": 300,
@@ -273,7 +273,7 @@ Include Mocktioneer alongside real bidders:
 
 ### Price Floor Testing
 
-Test floor enforcement (Mocktioneer bids at `$0.01` which will be below most floors):
+Test floor enforcement (Mocktioneer bids at `$0.20` which will be below most floors):
 
 ```json
 {
