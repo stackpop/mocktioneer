@@ -76,25 +76,29 @@
       (function () {
         var p = new URLSearchParams(location.search),
           c = p.get("crid") || "",
-          sig = p.get("sig") || "";
+          sigParam = p.get("sig") || "";
+        var validSig = {
+          verified: true,
+          failed: true,
+          not_present: true
+        };
+        var sig = validSig[sigParam] ? sigParam : "not_present";
         // Wire click-through with creative metadata so the landing can echo it
         document.getElementById("clk").href =
           "//{{HOST}}/click?crid=" + encodeURIComponent(c) + "&w={{W}}&h={{H}}";
 
-        // Render signature verification badge if sig param is present
-        if (sig) {
-          var badge = document.getElementById("sig-badge");
-          var badges = {
-            verified: { bg: "rgba(0,128,0,.85)", text: "\u2714\uFE0E Request signature verified" },
-            failed: { bg: "rgba(200,0,0,.85)", text: "\u274C Request signature not verified" },
-            not_present: { bg: "rgba(128,128,128,.75)", text: "\u2014 No signature present" }
-          };
-          var info = badges[sig];
-          if (info && badge) {
-            badge.style.background = info.bg;
-            badge.textContent = info.text;
-            badge.style.display = "block";
-          }
+        // Always render debug badge with signature status and creative details
+        var badge = document.getElementById("sig-badge");
+        var badges = {
+          verified: { bg: "rgba(0,128,0,.85)", text: "\u2714\uFE0E Request signature verified" },
+          failed: { bg: "rgba(200,0,0,.85)", text: "\u274C Request signature not verified" },
+          not_present: { bg: "rgba(128,128,128,.75)", text: "\u2014 No signature present" }
+        };
+        var info = badges[sig] || badges.not_present;
+        if (badge) {
+          badge.style.background = info.bg;
+          badge.textContent = info.text;
+          badge.style.display = "block";
         }
       })();
     </script>

@@ -48,7 +48,7 @@ Mocktioneer acts as a drop-in replacement for real bidders during development an
 
 - Same request always produces same response
 - No flaky tests due to bidder variability
-- Controlled bid prices for testing scenarios
+- Fixed $0.20 bids for predictable floor testing
 
 ### No External Dependencies
 
@@ -136,12 +136,19 @@ Test creative rendering pipeline:
 
 Test price handling and floor logic:
 
-```javascript
-// Override bid price
-params: {
-  bid: 5.0 // Force $5 CPM
+```json
+{
+  "imp": [
+    {
+      "id": "1",
+      "bidfloor": 1.0,
+      "banner": { "w": 300, "h": 250 }
+    }
+  ]
 }
 ```
+
+Mocktioneer always bids at `$0.20` CPM, so floors above that value should reject bids.
 
 ### Error Handling
 
