@@ -300,8 +300,7 @@ pub async fn verify_request_id_signature(
     request_id: &str,
     ext: Option<&serde_json::Value>,
     domain: &str,
-    trusted_host: &str,
-    trusted_scheme: &str,
+    site_domain: &str,
 ) -> Result<String, VerificationError> {
     let ext_obj = ext.and_then(|e| e.get("trusted_server")).ok_or_else(|| {
         VerificationError::InvalidSignature("Missing ext.trusted_server".to_string())
@@ -331,24 +330,22 @@ pub async fn verify_request_id_signature(
         VerificationError::InvalidSignature("Missing ext.trusted_server.ts".to_string())
     })?;
 
-    // Cross-check ext fields against server-observed values (normalized)
+    // Cross-check: the signer's claimed host must match the publisher's
+    // site.domain from the OpenRTB request. The bidder's own host (ForwardedHost)
+    // is intentionally NOT compared — in header bidding the publisher's domain
+    // and the bidder's domain are always different.
     let canon_ext_host = canonicalize_host(request_host);
-    let canon_trusted_host = canonicalize_host(trusted_host);
-    if canon_ext_host != canon_trusted_host {
+    let canon_site_domain = canonicalize_host(site_domain);
+    if canon_ext_host != canon_site_domain {
         return Err(VerificationError::InvalidSignature(format!(
-            "ext.trusted_server.request_host '{}' does not match server-observed host '{}'",
-            request_host, trusted_host
+            "ext.trusted_server.request_host '{}' does not match site.domain '{}'",
+            request_host, site_domain
         )));
     }
 
-    let canon_ext_scheme = request_scheme.trim().to_lowercase();
-    let canon_trusted_scheme = trusted_scheme.trim().to_lowercase();
-    if canon_ext_scheme != canon_trusted_scheme {
-        return Err(VerificationError::InvalidSignature(format!(
-            "ext.trusted_server.request_scheme '{}' does not match server-observed scheme '{}'",
-            request_scheme, trusted_scheme
-        )));
-    }
+    // Note: request_scheme is part of the signed payload and verified
+    // cryptographically. No separate cross-check is needed since site.domain
+    // does not carry scheme information.
 
     // Enforce timestamp freshness to prevent replay attacks
     check_timestamp_freshness(timestamp)?;
@@ -413,7 +410,6 @@ mod tests {
             Some(&ext),
             "example.com",
             "example.com",
-            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -438,7 +434,6 @@ mod tests {
             Some(&ext),
             "example.com",
             "example.com",
-            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -461,7 +456,6 @@ mod tests {
             Some(&ext),
             "example.com",
             "example.com",
-            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -481,7 +475,6 @@ mod tests {
             None,
             "example.com",
             "example.com",
-            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -511,7 +504,6 @@ mod tests {
             Some(&ext),
             "example.com",
             "example.com",
-            "https",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -618,37 +610,9 @@ mod tests {
             Some(&ext),
             "example.com",
             "example.com",
-            "https",
         ));
         let err = result.unwrap_err().to_string();
-        assert!(err.contains("does not match server-observed host"));
-    }
-
-    #[test]
-    fn verify_scheme_mismatch_rejected() {
-        let now_ms = current_time_ms().unwrap();
-        let ext = serde_json::json!({
-            "trusted_server": {
-                "signature": "test-sig",
-                "kid": "test-key",
-                "version": "1.1",
-                "request_host": "example.com",
-                "request_scheme": "http",
-                "ts": now_ms
-            }
-        });
-
-        let ctx = create_test_context();
-        let result = block_on(verify_request_id_signature(
-            &ctx,
-            "test-id",
-            Some(&ext),
-            "example.com",
-            "example.com",
-            "https",
-        ));
-        let err = result.unwrap_err().to_string();
-        assert!(err.contains("does not match server-observed scheme"));
+        assert!(err.contains("does not match site.domain"));
     }
 
     #[test]
@@ -673,7 +637,6 @@ mod tests {
             Some(&ext),
             "example.com",
             "example.com",
-            "https",
         ));
         let err = result.unwrap_err();
         assert!(matches!(err, VerificationError::InvalidSignature(_)));
@@ -702,7 +665,6 @@ mod tests {
             Some(&ext),
             "example.com",
             "example.com",
-            "https",
         ));
         let err = result.unwrap_err();
         assert!(matches!(err, VerificationError::InvalidSignature(_)));

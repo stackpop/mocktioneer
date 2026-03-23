@@ -239,23 +239,6 @@ pub async fn handle_openrtb_auction(
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
 ) -> Result<Response, EdgeError> {
-    // Normalize scheme: first token, trimmed, lowercased (handles multi-valued
-    // headers like "https, http" from chained proxies and case variations).
-    let scheme = ctx
-        .request()
-        .headers()
-        .get("x-forwarded-proto")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .map(|s| s.trim().to_lowercase())
-        .unwrap_or_else(|| {
-            ctx.request()
-                .uri()
-                .scheme_str()
-                .unwrap_or("https")
-                .to_lowercase()
-        });
-
     // Capture signature verification status for metadata
     let signature_status = if let Some(domain) = req.site.as_ref().and_then(|s| s.domain.as_deref())
     {
@@ -264,8 +247,7 @@ pub async fn handle_openrtb_auction(
             &req.id,
             req.ext.as_ref(),
             domain,
-            &host,
-            &scheme,
+            domain,
         )
         .await
         {
