@@ -48,7 +48,7 @@ Mocktioneer provides:
 | --------------- | --------------------------------------------- |
 | Multi-platform  | Runs on Fastly, Cloudflare, and native Axum   |
 | Manifest-driven | Single `edgezero.toml` configures everything  |
-| Fixed pricing   | Always returns `$0.01` CPM for generated bids |
+| Fixed pricing   | Always returns `$0.20` CPM for generated bids |
 | Standard sizes  | Supports common IAB ad sizes                  |
 | Cookie tracking | Optional pixel tracking with `mtkid` cookie   |
 | CORS enabled    | Works with browser-based clients              |

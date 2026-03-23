@@ -103,7 +103,7 @@ Size is determined in this order:
         {
           "id": "019abc123",
           "impid": "imp-1",
-          "price": 0.01,
+          "price": 0.20,
           "adm": "<iframe src=\"//localhost:8787/static/creatives/300x250.html?crid=mocktioneer-imp-1\" width=\"300\" height=\"250\" frameborder=\"0\" scrolling=\"no\"></iframe>",
           "adomain": ["example.com"],
           "crid": "mocktioneer-imp-1",
@@ -139,7 +139,7 @@ Size is determined in this order:
 
 ## Pricing
 
-Mocktioneer returns a fixed bid price of `$0.01` CPM for auction responses.
+Mocktioneer returns a fixed bid price of `$0.20` CPM for auction responses.
 
 If `imp[].ext.mocktioneer.bid` is present, it is ignored.
 

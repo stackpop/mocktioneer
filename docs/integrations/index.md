@@ -48,7 +48,7 @@ Mocktioneer acts as a drop-in replacement for real bidders during development an
 
 - Same request always produces same response
 - No flaky tests due to bidder variability
-- Fixed $0.01 bids for predictable floor testing
+- Fixed $0.20 bids for predictable floor testing
 
 ### No External Dependencies
 
@@ -148,7 +148,7 @@ Test price handling and floor logic:
 }
 ```
 
-Mocktioneer always bids at `$0.01` CPM, so floors above that value should reject bids.
+Mocktioneer always bids at `$0.20` CPM, so floors above that value should reject bids.
 
 ### Error Handling
 
