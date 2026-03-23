@@ -493,7 +493,7 @@ pub async fn handle_click(ValidatedQuery(params): ValidatedQuery<ClickQueryParam
 }
 
 /// Returns all standard ad sizes as JSON array.
-/// Useful for test fixtures and keeping external configs in sync with SIZE_MAP.
+/// Useful for test fixtures and keeping external configs in sync with STANDARD_SIZES.
 ///
 /// Response format:
 /// ```json

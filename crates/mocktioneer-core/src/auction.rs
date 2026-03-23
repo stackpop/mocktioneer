@@ -3,7 +3,6 @@ use crate::openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
 use crate::render::{iframe_html, CreativeMetadata, SignatureStatus};
-use phf::phf_map;
 use uuid::Uuid;
 
 // ============================================================================
@@ -11,60 +10,36 @@ use uuid::Uuid;
 // ============================================================================
 
 /// Fixed CPM used for all Mocktioneer-generated bids.
-pub const FIXED_BID_CPM: f64 = 0.01;
+pub const FIXED_BID_CPM: f64 = 0.20;
 
-/// Compile-time perfect hash map for standard sizes.
-/// Values unused — map exists for key membership only.
-/// Only `contains_key` and key iteration are used at runtime.
-/// Zero runtime initialization cost.
-static SIZE_MAP: phf::Map<&'static str, f64> = phf_map! {
+/// Standard IAB ad sizes supported by Mocktioneer.
+/// Sorted by (width, height) for deterministic iteration order.
+const STANDARD_SIZES: [(i64, i64); 13] = [
     // Desktop & General Display Sizes
-    "300x250" => 0.0,  // Medium Rectangle
-    "336x280" => 0.0,  // Large Rectangle
-    "728x90" => 0.0,   // Leaderboard
-    "970x90" => 0.0,   // Large Leaderboard
-    "160x600" => 0.0,  // Wide Skyscraper
-    "300x600" => 0.0,  // Half Page
-    "970x250" => 0.0,  // Billboard
-    "468x60" => 0.0,   // Banner
-    // Mobile-Specific Sizes
-    "320x50" => 0.0,   // Mobile Leaderboard
-    "300x50" => 0.0,   // Mobile Banner (alternative)
-    "320x100" => 0.0,  // Large Mobile Banner
-    "320x480" => 0.0,  // Mobile Interstitial Portrait
-    "480x320" => 0.0,  // Mobile Interstitial Landscape
-};
-
-/// Format dimensions as lookup key.
-#[inline]
-fn size_key(w: i64, h: i64) -> String {
-    format!("{}x{}", w, h)
-}
+    (160, 600), // Wide Skyscraper
+    (300, 50),  // Mobile Banner (alternative)
+    (300, 250), // Medium Rectangle
+    (300, 600), // Half Page
+    (320, 50),  // Mobile Leaderboard
+    (320, 100), // Large Mobile Banner
+    (320, 480), // Mobile Interstitial Portrait
+    (336, 280), // Large Rectangle
+    (468, 60),  // Banner
+    (480, 320), // Mobile Interstitial Landscape
+    (728, 90),  // Leaderboard
+    (970, 90),  // Large Leaderboard
+    (970, 250), // Billboard
+];
 
 /// Check if dimensions match a standard ad size.
 pub fn is_standard_size(w: i64, h: i64) -> bool {
-    SIZE_MAP.contains_key(size_key(w, h).as_str())
+    STANDARD_SIZES.iter().any(|&(sw, sh)| sw == w && sh == h)
 }
 
 /// Returns an iterator over all standard ad sizes as (width, height) tuples.
 /// Useful for generating test fixtures or validating external configurations.
 pub fn standard_sizes() -> impl Iterator<Item = (i64, i64)> {
-    let mut sizes: Vec<(i64, i64)> = SIZE_MAP
-        .keys()
-        .filter_map(|key| {
-            let (w_str, h_str) = key.split_once('x')?;
-            let w = w_str.parse::<i64>().ok()?;
-            let h = h_str.parse::<i64>().ok()?;
-            Some((w, h))
-        })
-        .collect();
-    sizes.sort_unstable();
-    debug_assert_eq!(
-        sizes.len(),
-        SIZE_MAP.len(),
-        "SIZE_MAP contains invalid size keys"
-    );
-    sizes.into_iter()
+    STANDARD_SIZES.iter().copied()
 }
 
 fn new_id() -> String {
@@ -99,7 +74,7 @@ pub fn standard_or_default((w, h): (i64, i64)) -> (i64, i64) {
 /// Build an OpenRTB bid response for the given request.
 ///
 /// - Enforces standard ad sizes (non-standard sizes default to 300x250)
-/// - Uses a fixed CPM price ($0.01)
+/// - Uses a fixed CPM price ($0.20)
 /// - Embeds signature verification status, the original request, and a preview
 ///   of the response as HTML comments in each creative
 /// - The signature badge is rendered inside the creative via the `sig` query param
@@ -231,7 +206,7 @@ pub fn decode_aps_price(encoded: &str) -> Option<f64> {
 /// Build APS TAM response from an APS bid request matching real Amazon API format.
 ///
 /// This function generates mock bids for all slots with standard sizes:
-/// - Fixed bid price of $0.01 CPM
+/// - Fixed bid price of $0.20 CPM
 /// - 100% fill rate for standard sizes
 /// - Returns contextual format matching real Amazon APS API
 /// - No creative HTML (APS doesn't return adm field)
@@ -572,7 +547,7 @@ mod tests {
             pub_id: "test".to_string(),
             slots: vec![ApsSlot {
                 slot_id: "slot1".to_string(),
-                sizes: vec![[300, 250]], // CPM is fixed at $0.01
+                sizes: vec![[300, 250]], // CPM is fixed at $0.20
                 slot_name: None,
             }],
             page_url: None,
