@@ -416,6 +416,31 @@ pub struct Geo {
     pub ext: Option<serde_json::Value>,
 }
 
+/// OpenRTB 2.6 Extended Identifier (EID) — a user identity from an external source.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct Eid {
+    /// Identity source domain (e.g., "liveramp.com", "uidapi.com").
+    pub source: String,
+    /// One or more UIDs from this source.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub uids: Vec<EidUid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
+}
+
+/// A single UID within an EID entry.
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
+pub struct EidUid {
+    /// The identifier value.
+    pub id: String,
+    /// Agent type — see OpenRTB 2.6 `atype` enum.
+    /// 3 = partner-defined (typical for EC-derived IDs).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub atype: Option<u8>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
+}
+
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -432,6 +457,9 @@ pub struct User {
     pub geo: Option<Geo>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub consent: Option<String>,
+    /// OpenRTB 2.6 Extended Identifiers — synced partner IDs from the identity graph.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub eids: Vec<Eid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<serde_json::Value>,
 }
