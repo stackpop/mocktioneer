@@ -2,7 +2,7 @@ use crate::aps::{ApsBidRequest, ApsBidResponse, ApsContextual, ApsSlotResponse};
 use crate::openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
-use crate::render::{iframe_html, CreativeMetadata, SignatureStatus};
+use crate::render::{extract_ec_info, iframe_html, CreativeMetadata, SignatureStatus};
 use phf::phf_map;
 use serde_json::json;
 use uuid::Uuid;
@@ -181,6 +181,7 @@ pub fn build_openrtb_response(
     // Build metadata with sanitized response
     let metadata = CreativeMetadata {
         signature: signature_status,
+        edge_cookie: extract_ec_info(req),
         request: req,
         response: sanitized_response,
     };
