@@ -146,6 +146,50 @@ methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
 adapters = ["axum", "cloudflare", "fastly"]
 
+# Edge Cookie (EC) sync endpoints
+
+[[triggers.http]]
+id = "sync_start"
+path = "/sync/start"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_sync_start"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "sync_start_options"
+path = "/sync/start"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "sync_done"
+path = "/sync/done"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_sync_done"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "sync_done_options"
+path = "/sync/done"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "resolve"
+path = "/resolve"
+methods = ["GET"]
+handler = "mocktioneer_core::routes::handle_resolve"
+adapters = ["axum", "cloudflare", "fastly"]
+
+[[triggers.http]]
+id = "resolve_options"
+path = "/resolve"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly"]
+
 [adapters.axum.adapter]
 crate = "crates/mocktioneer-adapter-axum"
 manifest = "crates/mocktioneer-adapter-axum/axum.toml"
