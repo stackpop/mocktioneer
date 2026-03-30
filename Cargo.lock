@@ -580,7 +580,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=feature%2Fconfigureable-axum-host#b9c114442ff34cde0ee0c5918abd16b2da97cbaa"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -602,7 +602,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=feature%2Fconfigureable-axum-host#b9c114442ff34cde0ee0c5918abd16b2da97cbaa"
 dependencies = [
  "async-trait",
  "brotli",
@@ -619,7 +619,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=feature%2Fconfigureable-axum-host#b9c114442ff34cde0ee0c5918abd16b2da97cbaa"
 dependencies = [
  "async-stream",
  "async-trait",
@@ -639,7 +639,7 @@ dependencies = [
 [[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=feature%2Fconfigureable-axum-host#b9c114442ff34cde0ee0c5918abd16b2da97cbaa"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -667,7 +667,7 @@ dependencies = [
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=feature%2Fconfigureable-axum-host#b9c114442ff34cde0ee0c5918abd16b2da97cbaa"
 dependencies = [
  "log",
  "proc-macro2",
