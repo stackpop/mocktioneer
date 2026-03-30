@@ -21,7 +21,7 @@ async-trait = "0.1"
 axum = "0.8"
 base64 = "0.22"
 ed25519-dalek = "2.1"
-edgezero-adapter-axum = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-axum", default-features = false }
+edgezero-adapter-axum = { git = "https://github.com/stackpop/edgezero.git", branch = "feature/configureable-axum-host", package = "edgezero-adapter-axum", default-features = false }
 edgezero-adapter-cloudflare = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-cloudflare", default-features = false }
 edgezero-adapter-fastly = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-adapter-fastly", default-features = false }
 edgezero-cli = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-cli" }
