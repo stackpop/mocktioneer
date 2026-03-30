@@ -75,6 +75,10 @@ pub fn extract_ec_hash(ec_value: &str) -> Option<&str> {
 const MOCKTIONEER_SOURCE_DOMAIN: &str = "mocktioneer.dev";
 
 /// Build `EdgeCookieInfo` from an OpenRTB request's user object.
+///
+/// Checks both `user.eids` (OpenRTB 2.6 top-level) and `user.ext.eids`
+/// (Prebid Server / OpenRTB 2.5 convention). The top-level field takes
+/// priority; `ext.eids` is used as a fallback when the top-level is empty.
 pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
     let user = req.user.as_ref();
 
@@ -84,8 +88,21 @@ pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
         .and_then(extract_ec_hash)
         .map(String::from);
 
-    // Look for mocktioneer's UID in user.eids
-    let eids = user.map(|u| u.eids.clone()).unwrap_or_default();
+    // Try top-level user.eids (OpenRTB 2.6), fall back to user.ext.eids (Prebid/2.5)
+    let eids = user
+        .map(|u| {
+            if !u.eids.is_empty() {
+                u.eids.clone()
+            } else {
+                u.ext
+                    .as_ref()
+                    .and_then(|ext| ext.get("eids"))
+                    .and_then(|v| serde_json::from_value::<Vec<Eid>>(v.clone()).ok())
+                    .unwrap_or_default()
+            }
+        })
+        .unwrap_or_default();
+
     let mocktioneer_eid_uid = eids.iter().find_map(|eid| {
         if eid.source == MOCKTIONEER_SOURCE_DOMAIN {
             eid.uids.first().map(|u| u.id.clone())
@@ -569,5 +586,93 @@ mod tests {
         );
         assert!(adm.contains("\"mocktioneer_matched\": true"));
         assert!(adm.contains("\"eids_count\": 1"));
+    }
+
+    #[test]
+    fn test_extract_ec_info_from_ext_eids_prebid_style() {
+        // Prebid Server puts eids under user.ext.eids (OpenRTB 2.5 convention)
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "prebid-eids-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "user": {
+                "id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123",
+                "ext": {
+                    "eids": [
+                        {
+                            "source": "mocktioneer.dev",
+                            "uids": [{"id": "mtk-476b99ce5ff5", "atype": 3}]
+                        },
+                        {
+                            "source": "liveramp.com",
+                            "uids": [{"id": "LR_xyz", "atype": 3}]
+                        }
+                    ]
+                }
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.eids_count, 2, "should find eids from user.ext.eids");
+        assert!(
+            info.mocktioneer_matched,
+            "should match mocktioneer.dev in ext.eids"
+        );
+        assert_eq!(
+            info.buyer_uid.as_deref(),
+            Some("mtk-476b99ce5ff5"),
+            "should extract buyer_uid from ext.eids"
+        );
+        assert_eq!(
+            info.ec_hash.as_deref(),
+            Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+        );
+    }
+
+    #[test]
+    fn test_extract_ec_info_top_level_eids_takes_priority_over_ext() {
+        // When both user.eids and user.ext.eids are present, top-level wins
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "both-eids-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "user": {
+                "eids": [
+                    {"source": "top-level.com", "uids": [{"id": "top-uid", "atype": 3}]}
+                ],
+                "ext": {
+                    "eids": [
+                        {"source": "mocktioneer.dev", "uids": [{"id": "ext-uid", "atype": 3}]}
+                    ]
+                }
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.eids_count, 1, "should use top-level eids");
+        assert_eq!(info.eids[0].source, "top-level.com");
+        assert!(
+            !info.mocktioneer_matched,
+            "ext.eids should be ignored when top-level is present"
+        );
+    }
+
+    #[test]
+    fn test_extract_ec_info_ext_eids_malformed_ignored() {
+        // Malformed ext.eids should not crash — just produce empty eids
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "bad-ext-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "user": {
+                "ext": {
+                    "eids": "not-an-array"
+                }
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.eids_count, 0);
+        assert!(!info.mocktioneer_matched);
     }
 }
