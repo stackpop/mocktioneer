@@ -103,7 +103,7 @@ Size is determined in this order:
         {
           "id": "019abc123",
           "impid": "imp-1",
-          "price": 0.20,
+          "price": 0.2,
           "adm": "<iframe src=\"//localhost:8787/static/creatives/300x250.html?crid=mocktioneer-imp-1\" width=\"300\" height=\"250\" frameborder=\"0\" scrolling=\"no\"></iframe>",
           "adomain": ["example.com"],
           "crid": "mocktioneer-imp-1",
