@@ -106,7 +106,7 @@ Prebid Server processes Mocktioneer responses like any other bidder:
         {
           "id": "019abc-mocktioneer",
           "impid": "imp-1",
-          "price": 0.20,
+          "price": 0.2,
           "adm": "<iframe>...</iframe>",
           "crid": "019abc-mocktioneer",
           "w": 300,
