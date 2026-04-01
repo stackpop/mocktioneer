@@ -28,7 +28,7 @@ edgezero-cli = { git = "https://github.com/stackpop/edgezero.git", branch = "mai
 edgezero-core = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-core" }
 fastly = "0.11.9"
 futures = { version = "0.3", features = ["std", "executor"] }
-futures-util = "0.3.31"
+futures-util = "0.3.32"
 handlebars = "6"
 log = { version = "0.4", features = ["serde"] }
 mocktioneer-core = { path = "crates/mocktioneer-core" }
