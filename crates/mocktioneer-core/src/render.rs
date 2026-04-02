@@ -37,12 +37,9 @@ impl SignatureStatus {
 /// captures that identity pipeline state for embedding in creative metadata.
 #[derive(Debug, Clone, Serialize)]
 pub struct EdgeCookieInfo {
-    /// The full EC value from `user.id` (format: `{64-hex}.{6-alnum}`).
+    /// The full EC identifier from `user.id` (format: `{64-hex}.{6-alnum}`).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ec_value: Option<String>,
-    /// The stable 64-char hex prefix of the EC value (the KV store key).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ec_hash: Option<String>,
+    pub ec_id: Option<String>,
     /// The buyer UID from `user.buyeruid` or matched from `user.eids`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buyer_uid: Option<String>,
@@ -82,11 +79,7 @@ const MOCKTIONEER_SOURCE_DOMAIN: &str = "mocktioneer.dev";
 pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
     let user = req.user.as_ref();
 
-    let ec_value = user.and_then(|u| u.id.clone());
-    let ec_hash = ec_value
-        .as_deref()
-        .and_then(extract_ec_hash)
-        .map(String::from);
+    let ec_id = user.and_then(|u| u.id.clone());
 
     // Try top-level user.eids (OpenRTB 2.6), fall back to user.ext.eids (Prebid/2.5)
     let eids = user
@@ -119,8 +112,7 @@ pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
     let mocktioneer_matched = mocktioneer_eid_uid.is_some();
 
     EdgeCookieInfo {
-        ec_value,
-        ec_hash,
+        ec_id,
         buyer_uid,
         consent: user.and_then(|u| u.consent.clone()),
         eids_count: eids.len(),
@@ -489,12 +481,8 @@ mod tests {
 
         let info = extract_ec_info(&req);
         assert_eq!(
-            info.ec_value.as_deref(),
+            info.ec_id.as_deref(),
             Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123")
-        );
-        assert_eq!(
-            info.ec_hash.as_deref(),
-            Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
         );
         assert_eq!(info.buyer_uid.as_deref(), Some("mtk-abc123"));
         assert_eq!(info.consent.as_deref(), Some("CPtest123"));
@@ -514,8 +502,7 @@ mod tests {
         .unwrap();
 
         let info = extract_ec_info(&req);
-        assert!(info.ec_value.is_none());
-        assert!(info.ec_hash.is_none());
+        assert!(info.ec_id.is_none());
         assert!(info.buyer_uid.is_none());
         assert!(info.consent.is_none());
         assert_eq!(info.eids_count, 0);
@@ -615,8 +602,8 @@ mod tests {
             "should extract buyer_uid from ext.eids"
         );
         assert_eq!(
-            info.ec_hash.as_deref(),
-            Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+            info.ec_id.as_deref(),
+            Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123")
         );
     }
 

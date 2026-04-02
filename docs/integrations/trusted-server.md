@@ -161,8 +161,8 @@ Pull sync allows trusted-server to resolve a buyer UID on demand by calling Mock
 
 **Flow:**
 
-1. Trusted-server receives a bid request with an EC hash
-2. Trusted-server calls `GET /resolve?ec_hash={hash}&ip={client_ip}` on Mocktioneer
+1. Trusted-server receives a bid request with an EC identifier
+2. Trusted-server calls `GET /resolve?ec_id={ec_id}&ip={client_ip}` on Mocktioneer
 3. Mocktioneer returns a deterministic UID (`mtk-{12 hex chars}`)
 4. Trusted-server includes this UID in the OpenRTB bid request's `user.eids`
 
@@ -213,8 +213,7 @@ When EC data is present in a bid request, Mocktioneer includes it in the creativ
 ```json
 {
   "edge_cookie": {
-    "ec_value": "a1b2c3...64hex.AbC123",
-    "ec_hash": "a1b2c3...64hex",
+    "ec_id": "a1b2c3...64hex.AbC123",
     "buyer_uid": "mtk-a1b2c3d4e5f6",
     "consent": "CPx...",
     "eids_count": 1,
@@ -250,8 +249,8 @@ curl -v -L "http://127.0.0.1:8787/sync/start?ts_domain=ts.publisher.com"
 ### 3. Test pull sync
 
 ```bash
-# Resolve a UID from an EC hash
-curl "http://127.0.0.1:8787/resolve?ec_hash=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2&ip=192.168.1.1" | jq .
+# Resolve a UID from an EC identifier
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123&ip=192.168.1.1" | jq .
 ```
 
 ### 4. Test bidstream decoration

@@ -1,28 +1,28 @@
 # Pull Sync (Resolve)
 
-The `/resolve` endpoint provides server-to-server identity resolution for the [Edge Cookie (EC)](../integrations/trusted-server) protocol. Trusted-server calls this endpoint to look up a buyer UID for a given EC hash and client IP address.
+The `/resolve` endpoint provides server-to-server identity resolution for the [Edge Cookie (EC)](../integrations/trusted-server) protocol. Trusted-server calls this endpoint to look up a buyer UID for a given EC identifier and client IP address.
 
 ## Endpoint
 
 ```
-GET /resolve?ec_hash={hash}&ip={ip}
+GET /resolve?ec_id={64-hex}.{6-alnum}&ip={ip}
 ```
 
-Returns a deterministic buyer UID derived from the EC hash and IP combination.
+Returns a deterministic buyer UID derived from the EC identifier and IP combination.
 
 ## Parameters
 
-| Parameter | Location | Type   | Required | Description                                   |
-| --------- | -------- | ------ | -------- | --------------------------------------------- |
-| `ec_hash` | Query    | string | Yes      | EC hash — exactly 64 lowercase hex characters |
-| `ip`      | Query    | string | Yes      | Client IP address (1-45 characters)           |
+| Parameter | Location | Type   | Required | Description                                       |
+| --------- | -------- | ------ | -------- | ------------------------------------------------- |
+| `ec_id`   | Query    | string | Yes      | Full EC identifier in `{64-hex}.{6-alnum}` format |
+| `ip`      | Query    | string | Yes      | Client IP address (1-45 characters)               |
 
 ## Authentication
 
 When `MOCKTIONEER_PULL_TOKEN` is set, the endpoint requires a Bearer token in the `Authorization` header. The token is compared using constant-time comparison (SHA-256 digest) to prevent timing attacks.
 
 ```bash
-curl "http://127.0.0.1:8787/resolve?ec_hash=abc123...&ip=1.2.3.4" \
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123&ip=1.2.3.4" \
   -H "Authorization: Bearer mtk-pull-token-change-me"
 ```
 
@@ -45,17 +45,17 @@ On Cloudflare Workers, `std::env::var` returns `Err`, so authentication is effec
 | `uid` | string | Deterministic UID: `mtk-` prefix + 12 hex chars |
 
 ::: tip Deterministic UIDs
-The UID is computed as `SHA-256(ec_hash || ip)` truncated to 12 hex characters, prefixed with `mtk-`. The same `(ec_hash, ip)` pair always produces the same UID.
+The 64-hex hash prefix is extracted from the `ec_id`, then hashed with the IP: `SHA-256(ec_hash || ip)` truncated to 12 hex characters, prefixed with `mtk-`. The same `(ec_id, ip)` pair always produces the same UID.
 :::
 
 ## Examples
 
 ```bash
 # Basic resolve request
-curl "http://127.0.0.1:8787/resolve?ec_hash=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2&ip=192.168.1.1" | jq .
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123&ip=192.168.1.1" | jq .
 
 # With authentication
-curl "http://127.0.0.1:8787/resolve?ec_hash=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2&ip=192.168.1.1" \
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123&ip=192.168.1.1" \
   -H "Authorization: Bearer mtk-pull-token-change-me" | jq .
 ```
 
@@ -68,22 +68,22 @@ curl "http://127.0.0.1:8787/resolve?ec_hash=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6
 ### Different IPs produce different UIDs
 
 ```bash
-# Same ec_hash, different IPs
-curl "http://127.0.0.1:8787/resolve?ec_hash=aaaa...64chars...&ip=1.2.3.4" | jq .uid
+# Same ec_id, different IPs
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4...64hex...AbC123&ip=1.2.3.4" | jq .uid
 # "mtk-abc123def456"
 
-curl "http://127.0.0.1:8787/resolve?ec_hash=aaaa...64chars...&ip=5.6.7.8" | jq .uid
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4...64hex...AbC123&ip=5.6.7.8" | jq .uid
 # "mtk-789012345678"  (different)
 ```
 
 ## Error Responses
 
-### Missing or invalid ec_hash (400)
+### Missing or invalid ec_id (400)
 
-The `ec_hash` must be exactly 64 hexadecimal characters:
+The `ec_id` must be in `{64-hex}.{6-alnum}` format:
 
 ```bash
-curl "http://127.0.0.1:8787/resolve?ec_hash=tooshort&ip=1.2.3.4"
+curl "http://127.0.0.1:8787/resolve?ec_id=tooshort&ip=1.2.3.4"
 # Returns 400 Bad Request
 ```
 
@@ -91,22 +91,22 @@ curl "http://127.0.0.1:8787/resolve?ec_hash=tooshort&ip=1.2.3.4"
 {
   "error": {
     "code": "VALIDATION_ERROR",
-    "message": "ec_hash: must be exactly 64 hex characters"
+    "message": "ec_id: must be in {64-hex}.{6-alnum} format"
   }
 }
 ```
 
-### Non-hex characters in ec_hash (400)
+### Non-hex characters in ec_id (400)
 
 ```bash
-curl "http://127.0.0.1:8787/resolve?ec_hash=zzzz...64chars...&ip=1.2.3.4"
+curl "http://127.0.0.1:8787/resolve?ec_id=zzzz...64chars....AbC123&ip=1.2.3.4"
 # Returns 400 Bad Request
 ```
 
 ### Missing ip (400)
 
 ```bash
-curl "http://127.0.0.1:8787/resolve?ec_hash=a1b2...64chars..."
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2...64hex.AbC123"
 # Returns 400 Bad Request
 ```
 
@@ -115,7 +115,7 @@ curl "http://127.0.0.1:8787/resolve?ec_hash=a1b2...64chars..."
 When `MOCKTIONEER_PULL_TOKEN` is set and the token is missing or incorrect:
 
 ```bash
-curl "http://127.0.0.1:8787/resolve?ec_hash=a1b2...&ip=1.2.3.4" \
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2...64hex.AbC123&ip=1.2.3.4" \
   -H "Authorization: Bearer wrong-token"
 # Returns 401 Unauthorized
 ```
