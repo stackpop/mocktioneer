@@ -205,12 +205,12 @@ crate = "crates/mocktioneer-adapter-spin"
 manifest = "crates/mocktioneer-adapter-spin/spin.toml"
 
 [adapters.spin.build]
-target = "wasm32-wasip1"
+target = "wasm32-wasip2"
 profile = "release"
 features = ["spin"]
 
 [adapters.spin.commands]
-build = "cargo build --release --target wasm32-wasip1 -p mocktioneer-adapter-spin"
+build = "cargo build --release --target wasm32-wasip2 -p mocktioneer-adapter-spin"
 serve = "spin up --from crates/mocktioneer-adapter-spin"
 deploy = "spin deploy --from crates/mocktioneer-adapter-spin"
 

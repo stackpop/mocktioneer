@@ -580,7 +580,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#4664bee77090908dde546239a37266261dd50119"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -591,6 +591,7 @@ dependencies = [
  "futures-util",
  "http",
  "log",
+ "redb",
  "reqwest",
  "simple_logger",
  "thiserror 2.0.18",
@@ -602,8 +603,9 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#4664bee77090908dde546239a37266261dd50119"
 dependencies = [
+ "anyhow",
  "async-trait",
  "brotli",
  "bytes",
@@ -619,8 +621,9 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#4664bee77090908dde546239a37266261dd50119"
 dependencies = [
+ "anyhow",
  "async-stream",
  "async-trait",
  "brotli",
@@ -637,9 +640,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "edgezero-adapter-spin"
+version = "0.1.0"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#4664bee77090908dde546239a37266261dd50119"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "brotli",
+ "bytes",
+ "edgezero-core",
+ "flate2",
+ "futures",
+ "futures-util",
+ "log",
+ "spin-sdk",
+]
+
+[[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#4664bee77090908dde546239a37266261dd50119"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -667,7 +687,7 @@ dependencies = [
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#7595003f8334f9e8a09f7cadfbc1907bef865bab"
+source = "git+https://github.com/stackpop/edgezero.git?branch=main#4664bee77090908dde546239a37266261dd50119"
 dependencies = [
  "log",
  "proc-macro2",
@@ -937,7 +957,7 @@ dependencies = [
  "cfg-if",
  "js-sys",
  "libc",
- "wasi",
+ "wasi 0.11.1+wasi-snapshot-preview1",
  "wasm-bindgen",
 ]
 
@@ -1447,7 +1467,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a69bcab0ad47271a0234d9422b131806bf3968021e5dc9328caf2d4cd58557fc"
 dependencies = [
  "libc",
- "wasi",
+ "wasi 0.11.1+wasi-snapshot-preview1",
  "windows-sys 0.61.2",
 ]
 
@@ -1485,6 +1505,17 @@ dependencies = [
  "fastly",
  "log",
  "mocktioneer-core",
+]
+
+[[package]]
+name = "mocktioneer-adapter-spin"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "edgezero-adapter-spin",
+ "edgezero-core",
+ "mocktioneer-core",
+ "spin-sdk",
 ]
 
 [[package]]
@@ -1900,6 +1931,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "redb"
+version = "3.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b440f171acaaddcd7e65eefc2ce4f4d4e05c1dffe2afe23f81af2a87cbfc4e0d"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "regex"
 version = "1.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1975,6 +2015,16 @@ dependencies = [
  "libc",
  "untrusted",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "routefinder"
+version = "0.5.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0971d3c8943a6267d6bd0d782fdc4afa7593e7381a92a3df950ff58897e066b5"
+dependencies = [
+ "smartcow",
+ "smartstring",
 ]
 
 [[package]]
@@ -2309,6 +2359,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
 
 [[package]]
+name = "smartcow"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "656fcb1c1fca8c4655372134ce87d8afdf5ec5949ebabe8d314be0141d8b5da2"
+dependencies = [
+ "smartstring",
+]
+
+[[package]]
+name = "smartstring"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3fb72c633efbaa2dd666986505016c32c3044395ceaf881518399d2f4127ee29"
+dependencies = [
+ "autocfg",
+ "static_assertions",
+ "version_check",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2316,6 +2386,52 @@ checksum = "86f4aa3ad99f2088c990dfa82d367e19cb29268ed67c574d10d0a4bfe71f07e0"
 dependencies = [
  "libc",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "spin-executor"
+version = "5.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bba409d00af758cd5de128da4a801e891af0545138f66a688f025f6d4e33870b"
+dependencies = [
+ "futures",
+ "once_cell",
+ "wasi 0.13.1+wasi-0.2.0",
+]
+
+[[package]]
+name = "spin-macro"
+version = "5.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f959f16928e3c023468e41da9ebb77442e2ce22315e8dab11508fe76b3567ee1"
+dependencies = [
+ "anyhow",
+ "bytes",
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "spin-sdk"
+version = "5.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8951c7c4ab7f87f332d497789eeed9631c8116988b628b4851eb2fa999ead019"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "bytes",
+ "chrono",
+ "form_urlencoded",
+ "futures",
+ "http",
+ "once_cell",
+ "routefinder",
+ "spin-executor",
+ "spin-macro",
+ "thiserror 2.0.18",
+ "wasi 0.13.1+wasi-0.2.0",
+ "wit-bindgen 0.51.0",
 ]
 
 [[package]]
@@ -2333,6 +2449,12 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "static_assertions"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
 name = "strsim"
@@ -2765,6 +2887,15 @@ name = "wasi"
 version = "0.11.1+wasi-snapshot-preview1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ccf3ec651a847eb01de73ccad15eb7d99f80485de043efb2f370cd654f4ea44b"
+
+[[package]]
+name = "wasi"
+version = "0.13.1+wasi-0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f43d1c36145feb89a3e61aa0ba3e582d976a8ab77f1474aa0adb80800fe0cf8"
+dependencies = [
+ "wit-bindgen-rt",
+]
 
 [[package]]
 name = "wasip2"
@@ -3282,6 +3413,15 @@ dependencies = [
  "anyhow",
  "heck",
  "wit-parser",
+]
+
+[[package]]
+name = "wit-bindgen-rt"
+version = "0.24.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3b0780cf7046630ed70f689a098cd8d56c5c3b22f2a7379bbdb088879963ff96"
+dependencies = [
+ "bitflags 2.10.0",
 ]
 
 [[package]]
