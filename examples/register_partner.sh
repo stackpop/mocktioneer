@@ -8,7 +8,7 @@ set -euo pipefail
 #
 # Environment variables:
 #   TS_BASE_URL           Trusted-server base URL (default: https://ts.publisher.com)
-#   TS_ADMIN_TOKEN        Publisher admin bearer token for /admin/partners/register
+#   TS_ADMIN_TOKEN        Publisher admin bearer token for /_ts/admin/partners/register
 #   MOCKTIONEER_BASE_URL  Mocktioneer base URL (default: http://localhost:8787)
 #   MOCKTIONEER_API_KEY   API key for batch sync auth (default: mtk-demo-key-change-me)
 #   MOCKTIONEER_PULL_TOKEN  Bearer token TS sends on pull sync calls (default: mtk-pull-token-change-me)
@@ -26,13 +26,13 @@ MOCKTIONEER_HOST=$(echo "${MOCKTIONEER_BASE_URL}" | sed -E 's|https?://||' | sed
 RESOLVE_URL="${MOCKTIONEER_BASE_URL}/resolve"
 RESOLVE_HOST=$(echo "${RESOLVE_URL}" | sed -E 's|https?://||' | sed -E 's|/.*||' | sed -E 's|:.*||')
 
-echo "Registering mocktioneer as EC partner at ${TS_BASE_URL}/admin/partners/register"
+echo "Registering mocktioneer as EC partner at ${TS_BASE_URL}/_ts/admin/partners/register"
 echo "  Mocktioneer host: ${MOCKTIONEER_HOST}"
 echo "  Pull sync URL:    ${RESOLVE_URL}"
 echo ""
 
 curl -sS -w "\nHTTP %{http_code}\n" \
-  -X POST "${TS_BASE_URL}/admin/partners/register" \
+  -X POST "${TS_BASE_URL}/_ts/admin/partners/register" \
   -H "Authorization: Bearer ${TS_ADMIN_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- <<EOF

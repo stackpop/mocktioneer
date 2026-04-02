@@ -18,6 +18,7 @@ use subtle::ConstantTimeEq;
 use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
+use crate::render::extract_ec_hash;
 use crate::auction::{
     build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
@@ -573,11 +574,11 @@ fn is_valid_hostname(s: &str) -> bool {
     !s.is_empty() && s.len() <= 256 && !s.contains(['/', '@', ':', '?', '#', ' ', '\t', '\n', '\r'])
 }
 
-/// Validates that a string contains only lowercase hex characters.
-fn validate_ec_hash(value: &str) -> Result<(), ValidationError> {
-    if value.len() != 64 || !value.chars().all(|c| c.is_ascii_hexdigit()) {
-        let mut err = ValidationError::new("invalid_ec_hash");
-        err.message = Some("ec_hash must be exactly 64 hex characters".into());
+/// Validates that a string is a valid EC identifier in `{64-hex}.{6-alnum}` format.
+fn validate_ec_id(value: &str) -> Result<(), ValidationError> {
+    if extract_ec_hash(value).is_none() {
+        let mut err = ValidationError::new("invalid_ec_id");
+        err.message = Some("ec_id must be in {64-hex}.{6-alnum} format".into());
         return Err(err);
     }
     Ok(())
@@ -601,9 +602,9 @@ struct SyncDoneParams {
 
 #[derive(Deserialize, Validate)]
 struct ResolveParams {
-    /// 64-character lowercase hex EC hash.
-    #[validate(custom(function = "validate_ec_hash"))]
-    ec_hash: String,
+    /// Full EC identifier in `{64-hex}.{6-alnum}` format.
+    #[validate(custom(function = "validate_ec_id"))]
+    ec_id: String,
     /// Client IP address.
     #[validate(length(min = 1, max = 45))]
     ip: String,
@@ -745,13 +746,15 @@ pub async fn handle_sync_done(ValidatedQuery(params): ValidatedQuery<SyncDonePar
     response
 }
 
-/// `GET /resolve?ec_hash={64-hex}&ip={ip_address}`
+/// `GET /resolve?ec_id={64-hex}.{6-alnum}&ip={ip_address}`
 ///
 /// Pull sync resolution endpoint. Trusted-server calls this S2S to resolve
-/// an EC hash + IP to a mocktioneer buyer UID.
+/// an EC identifier + IP to a mocktioneer buyer UID.
 ///
-/// Returns a deterministic UID derived from `SHA-256(ec_hash | ip)`:
-/// `mtk-{hash[0:12]}`. Always the same for the same `(ec_hash, ip)` pair.
+/// The `ec_id` is the full Edge Cookie value in `{64-hex}.{6-alnum}` format.
+/// The 64-hex prefix (hash) is extracted internally and used with the IP to
+/// derive a deterministic UID: `SHA-256(ec_hash | ip)` → `mtk-{hash[0:12]}`.
+/// Always the same for the same `(ec_id, ip)` pair.
 ///
 /// Authentication: `Authorization: Bearer {token}` validated against
 /// `MOCKTIONEER_PULL_TOKEN` env var (constant-time comparison). If the env
@@ -775,16 +778,20 @@ pub async fn handle_resolve(
         let provided_token = auth_header.strip_prefix("Bearer ").unwrap_or("");
         if !constant_time_token_eq(provided_token, &expected_token) {
             log::warn!(
-                "Pull sync auth failed for ec_hash={}",
-                sanitize_for_log(&params.ec_hash, 64)
+                "Pull sync auth failed for ec_id={}",
+                sanitize_for_log(&params.ec_id, 72)
             );
             return Ok(build_response(StatusCode::UNAUTHORIZED, Body::empty()));
         }
     }
 
+    // Extract the 64-hex hash prefix from the full ec_id, then hash with IP.
+    // Validation already confirmed the format, so unwrap is safe here.
+    let ec_hash = extract_ec_hash(&params.ec_id).expect("validated ec_id format");
+
     // Generate deterministic UID from ec_hash + IP: mtk-{sha256(ec_hash|ip)[0:12]}
     let mut hasher = Sha256::new();
-    hasher.update(params.ec_hash.as_bytes());
+    hasher.update(ec_hash.as_bytes());
     hasher.update(b"|");
     hasher.update(params.ip.as_bytes());
     let hash = hasher.finalize();
@@ -792,8 +799,8 @@ pub async fn handle_resolve(
     let uid = format!("mtk-{}", &hex[..12]);
 
     log::info!(
-        "Pull sync resolve: ec_hash={}..., ip={}, uid={}",
-        &params.ec_hash[..8],
+        "Pull sync resolve: ec_id={}..., ip={}, uid={}",
+        &params.ec_id[..8],
         params.ip,
         uid
     );
@@ -1474,8 +1481,8 @@ mod tests {
         // Ensure no auth token is set (tests may run concurrently)
         std::env::remove_var(PULL_TOKEN_ENV);
 
-        let hash = "a".repeat(64);
-        let uri = format!("/resolve?ec_hash={}&ip=203.0.113.1", hash);
+        let ec_id = format!("{}.AbC123", "a".repeat(64));
+        let uri = format!("/resolve?ec_id={}&ip=203.0.113.1", ec_id);
         let rctx = ctx(Method::GET, &uri, Body::empty(), &[]);
         let response = response_from(block_on(handle_resolve(rctx)));
         assert_eq!(response.status(), StatusCode::OK);
@@ -1502,9 +1509,9 @@ mod tests {
         // Ensure no auth token is set
         std::env::remove_var(PULL_TOKEN_ENV);
 
-        let hash = "b".repeat(64);
+        let ec_id = format!("{}.XyZ789", "b".repeat(64));
 
-        let uri1 = format!("/resolve?ec_hash={}&ip=203.0.113.1", hash);
+        let uri1 = format!("/resolve?ec_id={}&ip=203.0.113.1", ec_id);
         let ctx1 = ctx(Method::GET, &uri1, Body::empty(), &[]);
         let resp1 = response_from(block_on(handle_resolve(ctx1)));
         let body1 = String::from_utf8(resp1.into_body().into_bytes().to_vec()).unwrap();
@@ -1513,7 +1520,7 @@ mod tests {
             .unwrap()
             .to_string();
 
-        let uri2 = format!("/resolve?ec_hash={}&ip=198.51.100.1", hash);
+        let uri2 = format!("/resolve?ec_id={}&ip=198.51.100.1", ec_id);
         let ctx2 = ctx(Method::GET, &uri2, Body::empty(), &[]);
         let resp2 = response_from(block_on(handle_resolve(ctx2)));
         let body2 = String::from_utf8(resp2.into_body().into_bytes().to_vec()).unwrap();
@@ -1526,13 +1533,13 @@ mod tests {
     }
 
     #[test]
-    fn handle_resolve_rejects_invalid_ec_hash() {
+    fn handle_resolve_rejects_invalid_ec_id() {
         // Ensure no auth token is set
         std::env::remove_var(PULL_TOKEN_ENV);
 
         let ctx = ctx(
             Method::GET,
-            "/resolve?ec_hash=tooshort&ip=1.2.3.4",
+            "/resolve?ec_id=tooshort&ip=1.2.3.4",
             Body::empty(),
             &[],
         );
@@ -1540,7 +1547,7 @@ mod tests {
         assert!(
             response.status() == StatusCode::BAD_REQUEST
                 || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
-            "should reject invalid ec_hash length"
+            "should reject invalid ec_id format"
         );
     }
 
@@ -1551,8 +1558,8 @@ mod tests {
     fn handle_resolve_rejects_when_auth_fails() {
         std::env::set_var(PULL_TOKEN_ENV, "correct-token");
 
-        let hash = "c".repeat(64);
-        let uri = format!("/resolve?ec_hash={}&ip=1.2.3.4", hash);
+        let ec_id = format!("{}.TsT456", "c".repeat(64));
+        let uri = format!("/resolve?ec_id={}&ip=1.2.3.4", ec_id);
 
         // Request with wrong token
         let mut builder = request_builder();
@@ -1683,18 +1690,18 @@ mod tests {
     }
 
     #[test]
-    fn handle_resolve_rejects_non_hex_ec_hash() {
+    fn handle_resolve_rejects_non_hex_ec_id() {
         std::env::remove_var(PULL_TOKEN_ENV);
 
-        // 64 chars but not hex
-        let hash = "z".repeat(64);
-        let uri = format!("/resolve?ec_hash={}&ip=1.2.3.4", hash);
+        // 64 chars but not hex, plus valid suffix
+        let ec_id = format!("{}.AbC123", "z".repeat(64));
+        let uri = format!("/resolve?ec_id={}&ip=1.2.3.4", ec_id);
         let ctx = ctx(Method::GET, &uri, Body::empty(), &[]);
         let response = response_from(block_on(handle_resolve(ctx)));
         assert!(
             response.status() == StatusCode::BAD_REQUEST
                 || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
-            "should reject non-hex ec_hash"
+            "should reject non-hex ec_id"
         );
     }
 
