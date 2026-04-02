@@ -127,8 +127,7 @@ If the bid request includes [Edge Cookie fields](/integrations/trusted-server#bi
 ```json
 {
   "edge_cookie": {
-    "ec_value": "a1b2c3...64hex.AbC123",
-    "ec_hash": "a1b2c3...64hex",
+    "ec_id": "a1b2c3...64hex.AbC123",
     "buyer_uid": "mtk-a1b2c3d4e5f6",
     "consent": null,
     "eids_count": 1,
@@ -139,8 +138,7 @@ If the bid request includes [Edge Cookie fields](/integrations/trusted-server#bi
 
 | Field                 | Description                                                  |
 | --------------------- | ------------------------------------------------------------ |
-| `ec_value`            | Full EC value from `user.id` (format: `{64-hex}.{6-alnum}`)  |
-| `ec_hash`             | Stable 64-char hex prefix (the KV store key)                 |
+| `ec_id`               | Full EC identifier from `user.id` (`{64-hex}.{6-alnum}`)     |
 | `buyer_uid`           | Mocktioneer's synced UID from `user.buyeruid` or `user.eids` |
 | `consent`             | TCF consent string from `user.consent`, if present           |
 | `eids_count`          | Number of EID sources in the bid request                     |
