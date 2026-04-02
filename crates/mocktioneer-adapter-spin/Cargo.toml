@@ -1,0 +1,24 @@
+[package]
+name = "mocktioneer-adapter-spin"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[features]
+default = []
+spin = ["edgezero-adapter-spin/spin"]
+
+[dependencies]
+edgezero-adapter-spin = { workspace = true }
+mocktioneer-core = { workspace = true }
+anyhow = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+edgezero-adapter-spin = { workspace = true, features = ["spin"] }
+edgezero-core = { workspace = true }
+spin-sdk = { workspace = true }
