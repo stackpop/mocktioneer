@@ -194,7 +194,7 @@ fn test_aps_bid_multiple_sizes_per_slot() {
 
     let resp = build_aps_response(&req, "mocktioneer.test");
 
-    // Should bid on the highest CPM size (970x250 = $4.20 > 728x90 = $3.00)
+    // Should bid on the largest area size (970x250 = 242500 > 728x90 = 65520)
     assert_eq!(resp.contextual.slots.len(), 1);
     assert_eq!(resp.contextual.slots[0].size, "970x250");
 }

@@ -902,7 +902,7 @@ mod tests {
         let slots = contextual.get("slots").unwrap().as_array().unwrap();
         assert_eq!(slots.len(), 1);
 
-        // Check slot details (should select 970x250 with highest CPM from [728x90, 970x250])
+        // Check slot details (should select 970x250 with largest area from [728x90, 970x250])
         let slot = &slots[0];
         assert_eq!(
             slot.get("slotID").unwrap().as_str().unwrap(),

@@ -63,8 +63,6 @@ pub enum VerificationError {
     SignatureVerificationFailed,
     #[error("HTTP error: {0}")]
     HttpError(String),
-    #[error("No domain for JWKS verification")]
-    NoJwksDomain,
 }
 
 async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
