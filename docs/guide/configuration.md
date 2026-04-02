@@ -49,18 +49,21 @@ adapters = ["axum", "cloudflare", "fastly"]
 
 ### Available Routes
 
-| Path                       | Methods | Handler                   | Description             |
-| -------------------------- | ------- | ------------------------- | ----------------------- |
-| `/`                        | GET     | `handle_root`             | Service info page       |
-| `/openrtb2/auction`        | POST    | `handle_openrtb_auction`  | OpenRTB 2.x bid request |
-| `/e/dtb/bid`               | POST    | `handle_aps_bid`          | APS TAM bid request     |
-| `/static/img/{size}`       | GET     | `handle_static_img`       | SVG creative image      |
-| `/static/creatives/{size}` | GET     | `handle_static_creatives` | HTML creative wrapper   |
-| `/click`                   | GET     | `handle_click`            | Click landing page      |
-| `/pixel`                   | GET     | `handle_pixel`            | Tracking pixel          |
-| `/aps/win`                 | GET     | `handle_aps_win`          | APS win notification    |
-| `/adserver/mediate`        | POST    | `handle_adserver_mediate` | Auction mediation       |
-| `/_/sizes`                 | GET     | `handle_sizes`            | Supported sizes as JSON |
+| Path                       | Methods | Handler                   | Description              |
+| -------------------------- | ------- | ------------------------- | ------------------------ |
+| `/`                        | GET     | `handle_root`             | Service info page        |
+| `/openrtb2/auction`        | POST    | `handle_openrtb_auction`  | OpenRTB 2.x bid request  |
+| `/e/dtb/bid`               | POST    | `handle_aps_bid`          | APS TAM bid request      |
+| `/static/img/{size}`       | GET     | `handle_static_img`       | SVG creative image       |
+| `/static/creatives/{size}` | GET     | `handle_static_creatives` | HTML creative wrapper    |
+| `/click`                   | GET     | `handle_click`            | Click landing page       |
+| `/pixel`                   | GET     | `handle_pixel`            | Tracking pixel           |
+| `/aps/win`                 | GET     | `handle_aps_win`          | APS win notification     |
+| `/adserver/mediate`        | POST    | `handle_adserver_mediate` | Auction mediation        |
+| `/_/sizes`                 | GET     | `handle_sizes`            | Supported sizes as JSON  |
+| `/sync/start`              | GET     | `handle_sync_start`       | EC pixel sync initiation |
+| `/sync/done`               | GET     | `handle_sync_done`        | EC pixel sync callback   |
+| `/resolve`                 | GET     | `handle_resolve`          | EC pull sync resolution  |
 
 All routes also have OPTIONS handlers for CORS preflight.
 
@@ -141,6 +144,23 @@ echo_stdout = true
 | `endpoint`    | Log endpoint name (Fastly-specific)                  |
 | `level`       | Log level: `trace`, `debug`, `info`, `warn`, `error` |
 | `echo_stdout` | Whether to print logs to stdout                      |
+
+## Environment Variables
+
+Mocktioneer reads these optional environment variables at runtime for Edge Cookie sync configuration:
+
+| Variable                 | Description                                                             | Default               |
+| ------------------------ | ----------------------------------------------------------------------- | --------------------- |
+| `MOCKTIONEER_TS_DOMAINS` | Comma-separated allowlist of trusted-server hostnames for `/sync/start` | Unset (all allowed)   |
+| `MOCKTIONEER_PULL_TOKEN` | Bearer token required for `/resolve` authentication                     | Unset (auth disabled) |
+
+```bash
+# Example: restrict sync to specific trusted-server instances
+export MOCKTIONEER_TS_DOMAINS="ts.publisher.com,ts.staging.publisher.com"
+export MOCKTIONEER_PULL_TOKEN="mtk-pull-token-change-me"
+```
+
+See the [Trusted Server integration guide](/integrations/trusted-server) for full setup details.
 
 ## Rebuilding After Changes
 

@@ -20,9 +20,13 @@ Returns a 1x1 transparent GIF and optionally sets a tracking cookie.
 
 ### Behavior
 
-1. If no `mtkid` cookie exists, sets one with a UUIDv7 value
+1. If no `mtkid` cookie exists, sets one with a deterministic SHA-256-based value
 2. Returns a 1x1 transparent GIF
 3. Sets cache-control headers to prevent caching
+
+::: tip Deterministic IDs
+The `mtkid` value is derived from `SHA-256("mtkid:" || host)` and truncated to 32 hex characters. The same host always produces the same `mtkid` — there is no randomness. This cookie is shared with the [pixel sync](/api/sync) flow.
+:::
 
 ### Response Headers
 
@@ -31,22 +35,22 @@ Content-Type: image/gif
 Content-Length: 43
 Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 Pragma: no-cache
-Set-Cookie: mtkid=019abc123...; Path=/; Max-Age=31536000; SameSite=None; Secure; HttpOnly
+Set-Cookie: mtkid=a1b2c3d4e5f6...; Path=/; Max-Age=31536000; SameSite=None; Secure; HttpOnly
 ```
 
 The `Set-Cookie` header is only present when creating a new cookie.
 
 ### Cookie Details
 
-| Property | Value             |
-| -------- | ----------------- |
-| Name     | `mtkid`           |
-| Value    | UUIDv7            |
-| Path     | `/`               |
-| Max-Age  | 31536000 (1 year) |
-| SameSite | None              |
-| Secure   | Yes               |
-| HttpOnly | Yes               |
+| Property | Value                                     |
+| -------- | ----------------------------------------- |
+| Name     | `mtkid`                                   |
+| Value    | Deterministic SHA-256 hash (32 hex chars) |
+| Path     | `/`                                       |
+| Max-Age  | 31536000 (1 year)                         |
+| SameSite | None                                      |
+| Secure   | Yes                                       |
+| HttpOnly | Yes                                       |
 
 ### Examples
 

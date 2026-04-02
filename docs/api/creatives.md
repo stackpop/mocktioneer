@@ -118,6 +118,36 @@ curl "http://127.0.0.1:8787/static/img/300x250.svg?bid=2.50"
 curl http://127.0.0.1:8787/static/img/728x90.svg
 ```
 
+## Creative Metadata {#creative-metadata}
+
+When a creative is generated from an OpenRTB auction response, the HTML includes a hidden comment with JSON metadata containing signature data, request/response details, and Edge Cookie identity information.
+
+If the bid request includes [Edge Cookie fields](/integrations/trusted-server#bidstream-identity-decoration) (`user.id`, `user.eids`, `user.buyeruid`), the metadata includes an `edge_cookie` section:
+
+```json
+{
+  "edge_cookie": {
+    "ec_value": "a1b2c3...64hex.AbC123",
+    "ec_hash": "a1b2c3...64hex",
+    "buyer_uid": "mtk-a1b2c3d4e5f6",
+    "consent": null,
+    "eids_count": 1,
+    "mocktioneer_matched": true
+  }
+}
+```
+
+| Field                 | Description                                                  |
+| --------------------- | ------------------------------------------------------------ |
+| `ec_value`            | Full EC value from `user.id` (format: `{64-hex}.{6-alnum}`)  |
+| `ec_hash`             | Stable 64-char hex prefix (the KV store key)                 |
+| `buyer_uid`           | Mocktioneer's synced UID from `user.buyeruid` or `user.eids` |
+| `consent`             | TCF consent string from `user.consent`, if present           |
+| `eids_count`          | Number of EID sources in the bid request                     |
+| `mocktioneer_matched` | Whether Mocktioneer's own UID appeared in `user.eids`        |
+
+This is useful for debugging the full EC pipeline — you can inspect the rendered creative's source to verify which identity fields the bidder received.
+
 ## Embedding Creatives
 
 ### In iframe (from auction response)
