@@ -36,6 +36,14 @@ Mocktioneer exposes several HTTP endpoints for bid requests, creative serving, a
 | GET    | [`/click`](./tracking)  | Click landing page   |
 | GET    | [`/aps/win`](./aps-win) | APS win notification |
 
+### Edge Cookie Sync Endpoints
+
+| Method | Path                    | Description                         |
+| ------ | ----------------------- | ----------------------------------- |
+| GET    | [`/sync/start`](./sync) | Initiate pixel sync redirect        |
+| GET    | [`/sync/done`](./sync)  | Pixel sync callback (returns pixel) |
+| GET    | [`/resolve`](./resolve) | Pull sync identity resolution (S2S) |
+
 ### Utility Endpoints
 
 | Method | Path       | Description                  |
@@ -101,14 +109,17 @@ Errors are returned as JSON:
 
 ### HTTP Status Codes
 
-| Code | Meaning                      |
-| ---- | ---------------------------- |
-| 200  | Success                      |
-| 204  | Success (no content)         |
-| 400  | Bad request (malformed JSON) |
-| 404  | Not found                    |
-| 422  | Validation error             |
-| 500  | Internal server error        |
+| Code | Meaning                        |
+| ---- | ------------------------------ |
+| 200  | Success                        |
+| 204  | Success (no content)           |
+| 302  | Redirect (sync flow)           |
+| 400  | Bad request (malformed JSON)   |
+| 401  | Unauthorized (invalid token)   |
+| 403  | Forbidden (domain not allowed) |
+| 404  | Not found                      |
+| 422  | Validation error               |
+| 500  | Internal server error          |
 
 ## CORS Preflight {#cors-preflight}
 
