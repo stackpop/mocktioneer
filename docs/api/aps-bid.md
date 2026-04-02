@@ -60,8 +60,8 @@ The response matches the real Amazon APS API format with a `contextual` wrapper:
         "targeting": ["amzniid", "amznp", "amznsz", "amznbid", "amznactt"],
         "meta": ["slotID", "mediaType", "size"],
         "amzniid": "019b7f82e8de7e139d6d6a593171e7a0",
-        "amznbid": "MC4wMQ==",
-        "amznp": "MC4wMQ==",
+        "amznbid": "MC4y",
+        "amznp": "MC4y",
         "amznsz": "970x250",
         "amznactt": "OPEN"
       }
@@ -115,8 +115,8 @@ The price encoding differs between real APS and Mocktioneer:
 Decode Mocktioneer prices:
 
 ```bash
-echo "MC4yMA==" | base64 -d
-# Output: 0.20
+echo "MC4y" | base64 -d
+# Output: 0.2
 ```
 
 ## Examples
