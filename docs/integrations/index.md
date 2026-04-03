@@ -148,7 +148,7 @@ Test price handling and floor logic:
 }
 ```
 
-Mocktioneer always bids at `$0.20` CPM, so floors above that value should reject bids.
+Mocktioneer always bids at a fixed `$0.20` CPM and does not evaluate `bidfloor` itself. Use this predictable price to test that your SSP or mediation layer correctly filters bids below the floor threshold.
 
 ### Error Handling
 

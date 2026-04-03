@@ -55,7 +55,7 @@ Content-Type: application/json
       "version": "1.1",
       "signature": "base64-encoded-signature",
       "kid": "key-id",
-      "request_host": "publisher.example",
+      "request_host": "example.com",
       "request_scheme": "https",
       "ts": 1706900000000
     }

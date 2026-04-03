@@ -273,7 +273,7 @@ Include Mocktioneer alongside real bidders:
 
 ### Price Floor Testing
 
-Test floor enforcement (Mocktioneer bids at `$0.20` which will be below most floors):
+Test that your SSP enforces floors correctly (Mocktioneer always bids at a fixed `$0.20` and does not evaluate `bidfloor` itself):
 
 ```json
 {
