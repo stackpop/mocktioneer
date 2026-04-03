@@ -34,7 +34,7 @@ Mocktioneer provides:
 
 - Build ad tech features without waiting for real bidders
 - Debug integration issues with predictable responses
-- Test edge cases with controlled bid prices
+- Test edge cases with fixed, deterministic bid pricing
 
 ### CI/CD
 
@@ -44,14 +44,14 @@ Mocktioneer provides:
 
 ## Key Features
 
-| Feature         | Description                                  |
-| --------------- | -------------------------------------------- |
-| Multi-platform  | Runs on Fastly, Cloudflare, and native Axum  |
-| Manifest-driven | Single `edgezero.toml` configures everything |
-| Price control   | Override bid prices via request extensions   |
-| Standard sizes  | Supports common IAB ad sizes                 |
-| Cookie tracking | Optional pixel tracking with `mtkid` cookie  |
-| CORS enabled    | Works with browser-based clients             |
+| Feature         | Description                                   |
+| --------------- | --------------------------------------------- |
+| Multi-platform  | Runs on Fastly, Cloudflare, and native Axum   |
+| Manifest-driven | Single `edgezero.toml` configures everything  |
+| Fixed pricing   | Always returns `$0.20` CPM for generated bids |
+| Standard sizes  | Supports common IAB ad sizes                  |
+| Cookie tracking | Optional pixel tracking with `mtkid` cookie   |
+| CORS enabled    | Works with browser-based clients              |
 
 ## How It Works
 

@@ -150,9 +150,8 @@ through `render.rs`. Do not inline ad markup in handlers.
 
 ## Key Constants
 
-- `DEFAULT_CPM: f64 = 1.50` — base price for non-standard sizes
-- `MAX_AREA_BONUS: f64 = 3.00` — area-based bonus cap
-- `SIZE_MAP` — 13 standard IAB sizes via `phf::Map` (300x250, 728x90, 320x50, etc.)
+- `FIXED_BID_CPM: f64 = 0.20` — fixed price for all Mocktioneer-generated bids
+- `STANDARD_SIZES` — 13 standard IAB sizes as a const array (300x250, 728x90, 320x50, etc.)
 
 ## CI Gates
 
