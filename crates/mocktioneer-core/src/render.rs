@@ -40,7 +40,7 @@ pub struct EdgeCookieInfo {
     /// The full EC identifier from `user.id` (format: `{64-hex}.{6-alnum}`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ec_id: Option<String>,
-    /// The buyer UID from `user.buyeruid` or matched from `user.eids`.
+    /// The buyer UID from `user.buyeruid`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub buyer_uid: Option<String>,
     /// TCF consent string from `user.consent`.
@@ -50,8 +50,6 @@ pub struct EdgeCookieInfo {
     pub eids_count: usize,
     /// Full EIDs array for inspection.
     pub eids: Vec<Eid>,
-    /// Whether mocktioneer's own UID appeared in `user.eids`.
-    pub mocktioneer_matched: bool,
 }
 
 /// Extract the stable 64-char hex prefix from a full EC value.
@@ -68,8 +66,6 @@ pub fn extract_ec_hash(ec_value: &str) -> Option<&str> {
     }
     Some(prefix)
 }
-
-const MOCKTIONEER_SOURCE_DOMAIN: &str = "mocktioneer.dev";
 
 /// Build `EdgeCookieInfo` from an OpenRTB request's user object.
 ///
@@ -96,20 +92,7 @@ pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
         })
         .unwrap_or_default();
 
-    let mocktioneer_eid_uid = eids.iter().find_map(|eid| {
-        if eid.source == MOCKTIONEER_SOURCE_DOMAIN {
-            eid.uids.first().map(|u| u.id.clone())
-        } else {
-            None
-        }
-    });
-
-    // Prefer buyeruid, fall back to matched EID
-    let buyer_uid = user
-        .and_then(|u| u.buyeruid.clone())
-        .or(mocktioneer_eid_uid.clone());
-
-    let mocktioneer_matched = mocktioneer_eid_uid.is_some();
+    let buyer_uid = user.and_then(|u| u.buyeruid.clone());
 
     EdgeCookieInfo {
         ec_id,
@@ -117,7 +100,6 @@ pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
         consent: user.and_then(|u| u.consent.clone()),
         eids_count: eids.len(),
         eids,
-        mocktioneer_matched,
     }
 }
 
@@ -496,10 +478,6 @@ mod tests {
         assert_eq!(info.buyer_uid.as_deref(), Some("mtk-abc123"));
         assert_eq!(info.consent.as_deref(), Some("CPtest123"));
         assert_eq!(info.eids_count, 2);
-        assert!(
-            info.mocktioneer_matched,
-            "should match mocktioneer.dev source"
-        );
     }
 
     #[test]
@@ -515,7 +493,6 @@ mod tests {
         assert!(info.buyer_uid.is_none());
         assert!(info.consent.is_none());
         assert_eq!(info.eids_count, 0);
-        assert!(!info.mocktioneer_matched);
     }
 
     #[test]
@@ -536,7 +513,6 @@ mod tests {
 
         let info = extract_ec_info(&req);
         assert_eq!(info.eids_count, 1);
-        assert!(!info.mocktioneer_matched);
         assert!(info.buyer_uid.is_none());
     }
 
@@ -571,7 +547,6 @@ mod tests {
             adm.contains("\"edge_cookie\":"),
             "should contain edge_cookie section"
         );
-        assert!(adm.contains("\"mocktioneer_matched\": true"));
         assert!(adm.contains("\"eids_count\": 1"));
     }
 
@@ -602,13 +577,8 @@ mod tests {
         let info = extract_ec_info(&req);
         assert_eq!(info.eids_count, 2, "should find eids from user.ext.eids");
         assert!(
-            info.mocktioneer_matched,
-            "should match mocktioneer.dev in ext.eids"
-        );
-        assert_eq!(
-            info.buyer_uid.as_deref(),
-            Some("mtk-476b99ce5ff5"),
-            "should extract buyer_uid from ext.eids"
+            info.buyer_uid.is_none(),
+            "buyer_uid only comes from user.buyeruid"
         );
         assert_eq!(
             info.ec_id.as_deref(),
@@ -638,10 +608,6 @@ mod tests {
         let info = extract_ec_info(&req);
         assert_eq!(info.eids_count, 1, "should use top-level eids");
         assert_eq!(info.eids[0].source, "top-level.com");
-        assert!(
-            !info.mocktioneer_matched,
-            "ext.eids should be ignored when top-level is present"
-        );
     }
 
     #[test]
@@ -660,6 +626,5 @@ mod tests {
 
         let info = extract_ec_info(&req);
         assert_eq!(info.eids_count, 0);
-        assert!(!info.mocktioneer_matched);
     }
 }
