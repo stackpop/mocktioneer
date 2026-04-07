@@ -3,7 +3,7 @@ description = ""
 language = "rust"
 manifest_version = 3
 name = "mocktioneer-adapter-fastly"
-service_id = ""
+service_id = "gjhrMZzVV0abKOchxC59at"
 
 [local_server]
 

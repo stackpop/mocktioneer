@@ -50,6 +50,9 @@ pub struct EdgeCookieInfo {
     pub eids_count: usize,
     /// Full EIDs array for inspection.
     pub eids: Vec<Eid>,
+    /// Comma-separated list of unique market IDs from `user.eids[].uids[].ext.mkt`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mkt: Option<String>,
 }
 
 /// Extract the stable 64-char hex prefix from a full EC value.
@@ -94,12 +97,32 @@ pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
 
     let buyer_uid = user.and_then(|u| u.buyeruid.clone());
 
+    // Extract unique mkt values from eids[].uids[].ext.mkt
+    let mut mkt_values = std::collections::HashSet::new();
+    for eid in &eids {
+        for uid in &eid.uids {
+            if let Some(ext) = &uid.ext {
+                if let Some(mkt_val) = ext.get("mkt").and_then(|v| v.as_str()) {
+                    mkt_values.insert(mkt_val.to_string());
+                }
+            }
+        }
+    }
+    let mkt = if mkt_values.is_empty() {
+        None
+    } else {
+        let mut sorted: Vec<_> = mkt_values.into_iter().collect();
+        sorted.sort();
+        Some(sorted.join(","))
+    };
+
     EdgeCookieInfo {
         ec_id,
         buyer_uid,
         consent: user.and_then(|u| u.consent.clone()),
         eids_count: eids.len(),
         eids,
+        mkt,
     }
 }
 
@@ -626,5 +649,120 @@ mod tests {
 
         let info = extract_ec_info(&req);
         assert_eq!(info.eids_count, 0);
+    }
+
+    #[test]
+    fn test_extract_ec_info_single_mkt() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "single-mkt-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "user": {
+                "eids": [
+                    {
+                        "source": "liveramp.com",
+                        "uids": [{"id": "LR_xyz", "atype": 3, "ext": {"mkt": "US"}}]
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.mkt.as_deref(), Some("US"));
+    }
+
+    #[test]
+    fn test_extract_ec_info_multiple_mkt_values() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "multi-mkt-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "user": {
+                "eids": [
+                    {
+                        "source": "liveramp.com",
+                        "uids": [{"id": "LR_xyz", "atype": 3, "ext": {"mkt": "US"}}]
+                    },
+                    {
+                        "source": "uidapi.com",
+                        "uids": [{"id": "UID2_abc", "atype": 3, "ext": {"mkt": "EU"}}]
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.mkt.as_deref(), Some("EU,US"));
+    }
+
+    #[test]
+    fn test_extract_ec_info_duplicate_mkt_values() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "dup-mkt-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "user": {
+                "eids": [
+                    {
+                        "source": "liveramp.com",
+                        "uids": [{"id": "LR_xyz", "atype": 3, "ext": {"mkt": "US"}}]
+                    },
+                    {
+                        "source": "uidapi.com",
+                        "uids": [{"id": "UID2_abc", "atype": 3, "ext": {"mkt": "US"}}]
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(
+            info.mkt.as_deref(),
+            Some("US"),
+            "should deduplicate mkt values"
+        );
+    }
+
+    #[test]
+    fn test_extract_ec_info_no_mkt() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "no-mkt-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "user": {
+                "eids": [
+                    {
+                        "source": "liveramp.com",
+                        "uids": [{"id": "LR_xyz", "atype": 3}]
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert!(
+            info.mkt.is_none(),
+            "should be None when no mkt values present"
+        );
+    }
+
+    #[test]
+    fn test_extract_ec_info_mkt_not_string_ignored() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "bad-mkt-req",
+            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "user": {
+                "eids": [
+                    {
+                        "source": "liveramp.com",
+                        "uids": [{"id": "LR_xyz", "atype": 3, "ext": {"mkt": 123}}]
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert!(info.mkt.is_none(), "should ignore non-string mkt values");
     }
 }

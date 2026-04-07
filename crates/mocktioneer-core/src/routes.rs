@@ -18,11 +18,11 @@ use subtle::ConstantTimeEq;
 use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
-use crate::render::extract_ec_hash;
 use crate::auction::{
     build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
 use crate::openrtb::OpenRTBRequest;
+use crate::render::extract_ec_hash;
 use crate::render::{creative_html, info_html, render_svg, render_template_str, SignatureStatus};
 
 #[derive(Deserialize, Validate)]
@@ -272,6 +272,17 @@ pub async fn handle_openrtb_auction(
     };
 
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
+
+    // Extract and log Edge Cookie info including eids from bidstream
+    let ec_info = crate::render::extract_ec_info(&req);
+    if !ec_info.eids.is_empty() {
+        log::info!(
+            "auction id={}, eids_count={}, eids={:?}",
+            req.id,
+            ec_info.eids_count,
+            ec_info.eids
+        );
+    }
 
     // Build response with embedded metadata (signature status + request + response preview)
     let resp = build_openrtb_response(&req, &host, signature_status);
@@ -594,9 +605,11 @@ struct SyncStartParams {
 #[derive(Deserialize, Validate)]
 struct SyncDoneParams {
     /// Whether the sync succeeded ("1") or failed ("0").
+    #[validate(length(min = 1, max = 1))]
     ts_synced: String,
     /// Failure reason — present only when ts_synced=0.
     #[serde(default)]
+    #[validate(length(max = 256))]
     ts_reason: Option<String>,
 }
 
