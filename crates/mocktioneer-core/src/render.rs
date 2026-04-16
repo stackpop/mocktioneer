@@ -334,4 +334,13 @@ mod tests {
         assert!(adm.contains("\"seat\": \"mocktioneer\""));
         assert!(adm.contains("\"price\": 1.23"));
     }
+
+    #[test]
+    fn test_creative_html_always_shows_debug_badge() {
+        let html = creative_html(728, 90, true, false, "host.test");
+
+        assert!(html.contains("var sig = validSig[sigParam] ? sigParam : \"not_present\";"));
+        assert!(html.contains("badge.style.display = \"block\";"));
+        assert!(html.contains("No signature present"));
+    }
 }

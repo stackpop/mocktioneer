@@ -133,7 +133,8 @@ through `render.rs`. Do not inline ad markup in handlers.
   Avoid unnecessary refactoring, docstrings on untouched code, or premature abstractions.
 - **No direct `http` crate imports** — use `edgezero_core` re-exports.
 - **Determinism**: no randomness, no time-dependent pricing. Same input always
-  produces the same output.
+  produces the same output. Exception: signature timestamp freshness
+  validation uses the wall clock — required for replay prevention.
 
 ## Module Structure (mocktioneer-core/src/)
 
@@ -141,7 +142,7 @@ through `render.rs`. Do not inline ad markup in handlers.
 | ----------------- | ------------------------------------------------ |
 | `lib.rs`          | App bootstrapper via `edgezero_core::app!` macro |
 | `routes.rs`       | All HTTP handlers + query struct validation      |
-| `auction.rs`      | Size pricing, CPM calculation, standard sizes    |
+| `auction.rs`      | Fixed-price bidding, standard size validation    |
 | `openrtb.rs`      | OpenRTB 2.x request/response types               |
 | `aps.rs`          | APS TAM API types & bid handling                 |
 | `mediation.rs`    | Multi-bidder mediation logic                     |
@@ -150,9 +151,8 @@ through `render.rs`. Do not inline ad markup in handlers.
 
 ## Key Constants
 
-- `DEFAULT_CPM: f64 = 1.50` — base price for non-standard sizes
-- `MAX_AREA_BONUS: f64 = 3.00` — area-based bonus cap
-- `SIZE_MAP` — 13 standard IAB sizes via `phf::Map` (300x250, 728x90, 320x50, etc.)
+- `FIXED_BID_CPM: f64 = 0.20` — fixed price for all Mocktioneer-generated bids
+- `STANDARD_SIZES` — 13 standard IAB sizes as a const array (300x250, 728x90, 320x50, etc.)
 
 ## CI Gates
 
@@ -303,7 +303,7 @@ Custom commands live in `.claude/commands/`:
 - Minimal, carefully curated for WASM compatibility.
 - `Cargo.lock` is committed for reproducible builds.
 - Key crates: `edgezero-*` (framework), `serde`/`serde_json` (serialization),
-  `validator` (input validation), `handlebars` (templates), `phf` (static maps),
+  `validator` (input validation), `handlebars` (templates),
   `ed25519-dalek` (signatures), `uuid` (request IDs).
 - Optional `.cargo/config.toml.local` for local edgezero development without
   re-publishing.
@@ -320,4 +320,5 @@ Custom commands live in `.claude/commands/`:
 - Don't commit without running `cargo test` first.
 - Don't skip `cargo fmt` and `cargo clippy` — CI will reject the PR.
 - Don't introduce non-deterministic behavior (randomness, time-dependent logic).
+  Signature timestamp freshness is the lone carve-out for replay prevention.
 - Don't include `Co-Authored-By` trailers, "Generated with" footers, or any AI bylines in commits or PR bodies.
