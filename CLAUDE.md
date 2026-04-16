@@ -161,7 +161,7 @@ Every PR must pass:
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 3. `cargo test --workspace --all-targets`
-4. `cargo check --workspace --all-targets --features "fastly cloudflare"`
+4. `cargo check --workspace --all-targets --features "fastly cloudflare spin"`
 5. Playwright e2e tests (`tests/playwright/`)
 6. ESLint + Prettier on `docs/`
 

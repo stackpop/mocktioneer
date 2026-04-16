@@ -260,3 +260,4 @@ deploy = "spin deploy --from crates/mocktioneer-adapter-spin"
 
 [adapters.spin.logging]
 level = "info"
+echo_stdout = true
