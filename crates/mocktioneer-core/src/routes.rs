@@ -247,7 +247,6 @@ pub async fn handle_openrtb_auction(
             &req.id,
             req.ext.as_ref(),
             domain,
-            domain,
         )
         .await
         {
