@@ -297,7 +297,6 @@ pub async fn verify_request_id_signature(
     ctx: &RequestContext,
     request_id: &str,
     ext: Option<&serde_json::Value>,
-    domain: &str,
     site_domain: &str,
 ) -> Result<String, VerificationError> {
     let ext_obj = ext.and_then(|e| e.get("trusted_server")).ok_or_else(|| {
@@ -361,12 +360,12 @@ pub async fn verify_request_id_signature(
         "Signature verification requested: id={}, kid={}, domain={:?}, version={}, ts={}",
         request_id,
         key_id,
-        domain,
+        site_domain,
         version,
         timestamp
     );
 
-    let jwks = get_cached_jwks(ctx, domain).await?;
+    let jwks = get_cached_jwks(ctx, site_domain).await?;
     let public_key = find_public_key(&jwks, key_id)?;
     verify_ed25519_signature(public_key, signature, &payload)?;
 
@@ -407,7 +406,6 @@ mod tests {
             request_id,
             Some(&ext),
             "example.com",
-            "example.com",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -431,7 +429,6 @@ mod tests {
             request_id,
             Some(&ext),
             "example.com",
-            "example.com",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -453,7 +450,6 @@ mod tests {
             request_id,
             Some(&ext),
             "example.com",
-            "example.com",
         ));
         assert!(matches!(
             result.unwrap_err(),
@@ -471,7 +467,6 @@ mod tests {
             &ctx,
             request_id,
             None,
-            "example.com",
             "example.com",
         ));
         assert!(matches!(
@@ -500,7 +495,6 @@ mod tests {
             &ctx,
             request_id,
             Some(&ext),
-            "example.com",
             "example.com",
         ));
         assert!(matches!(
@@ -607,7 +601,6 @@ mod tests {
             "test-id",
             Some(&ext),
             "example.com",
-            "example.com",
         ));
         let err = result.unwrap_err().to_string();
         assert!(err.contains("does not match site.domain"));
@@ -633,7 +626,6 @@ mod tests {
             &ctx,
             "test-id",
             Some(&ext),
-            "example.com",
             "example.com",
         ));
         let err = result.unwrap_err();
@@ -661,7 +653,6 @@ mod tests {
             &ctx,
             "test-id",
             Some(&ext),
-            "example.com",
             "example.com",
         ));
         let err = result.unwrap_err();

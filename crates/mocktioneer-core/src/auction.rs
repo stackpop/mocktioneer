@@ -183,7 +183,7 @@ pub fn build_openrtb_response(
 ///
 /// Note: Real Amazon APS uses proprietary encoding that cannot be decoded without Amazon's keys.
 /// Our mock uses transparent base64 encoding that CAN be decoded for testing/debugging purposes.
-/// Example: `echo "Mi41MA==" | base64 -d` → `2.50`
+/// Example: `echo "MC4y" | base64 -d` → `0.2`
 fn encode_aps_price(price: f64) -> String {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
