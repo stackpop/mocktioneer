@@ -5,7 +5,7 @@
 //! empty) on the host target, allowing `cargo fmt`, `cargo clippy`, and
 //! `cargo test` to run across the whole workspace without pulling in WASM-only
 //! dependencies.
-#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code, unused_imports))]
+#![cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
 
 #[cfg(target_arch = "wasm32")]
 use mocktioneer_core::MocktioneerApp;

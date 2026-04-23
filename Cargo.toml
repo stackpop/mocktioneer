@@ -29,6 +29,8 @@ edgezero-adapter-spin = { git = "https://github.com/stackpop/edgezero.git", bran
 edgezero-cli = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-cli" }
 edgezero-core = { git = "https://github.com/stackpop/edgezero.git", branch = "main", package = "edgezero-core" }
 fastly = "0.11.9"
+# Keep the Spin SDK surface minimal; the adapter only uses `#[http_component]`
+# and HTTP request/response types.
 spin-sdk = { version = "5.2", default-features = false }
 futures = { version = "0.3", features = ["std", "executor"] }
 futures-util = "0.3.31"
