@@ -1,0 +1,16 @@
+spin_manifest_version = 3
+
+[application]
+name = "mocktioneer-adapter-spin"
+version = "0.1.0"
+
+[[trigger.http]]
+route = "/..."
+component = "mocktioneer"
+
+[component.mocktioneer]
+source = "../../target/wasm32-wasip2/release/mocktioneer_adapter_spin.wasm"
+allowed_outbound_hosts = []
+[component.mocktioneer.build]
+command = "cargo build --release --target wasm32-wasip2 -p mocktioneer-adapter-spin"
+watch = ["src/**/*.rs", "Cargo.toml"]
