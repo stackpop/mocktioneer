@@ -9,12 +9,16 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
+use url::Host;
 
 const JWKS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 const SIGNING_VERSION: &str = "1.1";
 
 /// Maximum allowed clock skew for timestamp freshness check (5 minutes in milliseconds).
 const TS_FRESHNESS_WINDOW_MS: u64 = 5 * 60 * 1000;
+
+/// Maximum JWKS response body size (64 KiB).
+const MAX_JWKS_BODY_BYTES: usize = 64 * 1024;
 
 #[derive(Debug, Clone, Deserialize)]
 struct TrustedServerResponse {
@@ -65,8 +69,41 @@ pub enum VerificationError {
     HttpError(String),
 }
 
+fn jwks_body_too_large_error() -> VerificationError {
+    VerificationError::HttpError(format!(
+        "JWKS response body exceeds {} byte limit",
+        MAX_JWKS_BODY_BYTES
+    ))
+}
+
+async fn collect_jwks_body(body: Body) -> Result<Vec<u8>, VerificationError> {
+    match body {
+        Body::Once(bytes) => {
+            if bytes.len() > MAX_JWKS_BODY_BYTES {
+                return Err(jwks_body_too_large_error());
+            }
+            Ok(bytes.to_vec())
+        }
+        Body::Stream(mut stream) => {
+            let mut collected = Vec::new();
+            while let Some(chunk) = stream.next().await {
+                let chunk = chunk.map_err(|e| {
+                    VerificationError::HttpError(format!("Stream read failed: {}", e))
+                })?;
+                if collected.len().saturating_add(chunk.len()) > MAX_JWKS_BODY_BYTES {
+                    return Err(jwks_body_too_large_error());
+                }
+                collected.extend_from_slice(&chunk);
+            }
+
+            Ok(collected)
+        }
+    }
+}
+
 async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
-    let jwks_url = format!("https://{}/.well-known/trusted-server.json", domain);
+    let host = validate_jwks_host(domain)?;
+    let jwks_url = format!("https://{}/.well-known/trusted-server.json", host);
 
     log::debug!("Fetching JWKS from {}", jwks_url);
 
@@ -91,22 +128,7 @@ async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, 
         )));
     }
 
-    let body = resp.into_body();
-
-    let body_bytes = match body {
-        Body::Once(bytes) => bytes.to_vec(),
-        Body::Stream(mut stream) => {
-            let mut collected = Vec::new();
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk.map_err(|e| {
-                    VerificationError::HttpError(format!("Stream read failed: {}", e))
-                })?;
-                collected.extend_from_slice(&chunk);
-            }
-
-            collected
-        }
-    };
+    let body_bytes = collect_jwks_body(resp.into_body()).await?;
     let response: TrustedServerResponse = serde_json::from_slice(&body_bytes)
         .map_err(|e| VerificationError::HttpError(format!("JWKS parse failed: {}", e)))?;
     Ok(response.jwks)
@@ -262,6 +284,67 @@ fn required_ext_u64(
         .ok_or_else(missing_error)
 }
 
+fn invalid_site_domain(domain: &str) -> VerificationError {
+    VerificationError::InvalidSignature(format!("Invalid site.domain host: {:?}", domain))
+}
+
+fn is_valid_public_dns_hostname(host: &str) -> bool {
+    if host.is_empty() || host.len() > 253 || host == "localhost" || !host.contains('.') {
+        return false;
+    }
+
+    host.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    })
+}
+
+fn validate_jwks_host(domain: &str) -> Result<String, VerificationError> {
+    let host = domain.trim();
+    if host.is_empty() {
+        return Err(VerificationError::InvalidSignature(
+            "Invalid site.domain: empty host".to_string(),
+        ));
+    }
+
+    if host
+        .bytes()
+        .any(|b| matches!(b, b'/' | b'\\' | b'@' | b'?' | b'#'))
+    {
+        return Err(invalid_site_domain(domain));
+    }
+
+    match Host::parse(host).map_err(|_| invalid_site_domain(domain))? {
+        Host::Domain(parsed) => {
+            let canonical = parsed.trim_end_matches('.').to_ascii_lowercase();
+            if is_valid_public_dns_hostname(&canonical) {
+                Ok(canonical)
+            } else {
+                Err(invalid_site_domain(domain))
+            }
+        }
+        Host::Ipv4(_) | Host::Ipv6(_) => Err(invalid_site_domain(domain)),
+    }
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn current_time_ms() -> Result<u64, VerificationError> {
+    let now_ms = js_sys::Date::now();
+    if now_ms.is_finite() && now_ms >= 0.0 {
+        Ok(now_ms as u64)
+    } else {
+        Err(VerificationError::InvalidSignature(
+            "System clock error".to_string(),
+        ))
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
 fn current_time_ms() -> Result<u64, VerificationError> {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -284,9 +367,15 @@ fn check_timestamp_freshness(timestamp_ms: u64) -> Result<(), VerificationError>
     let diff = now_ms.abs_diff(timestamp_ms);
 
     if diff > TS_FRESHNESS_WINDOW_MS {
+        let direction = if timestamp_ms > now_ms {
+            "future-dated"
+        } else {
+            "stale"
+        };
+
         return Err(VerificationError::InvalidSignature(format!(
-            "ext.trusted_server.ts is stale: {}ms drift exceeds {}ms window",
-            diff, TS_FRESHNESS_WINDOW_MS
+            "ext.trusted_server.ts is {}: {}ms drift exceeds {}ms window",
+            direction, diff, TS_FRESHNESS_WINDOW_MS
         )));
     }
 
@@ -308,7 +397,7 @@ pub async fn verify_request_id_signature(
     })?;
 
     let key_id = required_ext_str(ext_obj, "kid", || {
-        VerificationError::KeyNotFound("Missing ext.trusted_server.kid".to_string())
+        VerificationError::InvalidSignature("Missing ext.trusted_server.kid".to_string())
     })?;
 
     let version = required_ext_str(ext_obj, "version", || {
@@ -432,7 +521,7 @@ mod tests {
         ));
         assert!(matches!(
             result.unwrap_err(),
-            VerificationError::KeyNotFound(_)
+            VerificationError::InvalidSignature(_)
         ));
     }
 
@@ -501,6 +590,84 @@ mod tests {
             result.unwrap_err(),
             VerificationError::InvalidSignature(_)
         ));
+    }
+
+    #[test]
+    fn verify_missing_request_host_field() {
+        let now_ms = current_time_ms().unwrap();
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": "test-sig",
+                "kid": "test-key",
+                "version": "1.1",
+                "request_scheme": "https",
+                "ts": now_ms
+            }
+        });
+
+        let ctx = create_test_context();
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            "test-id",
+            Some(&ext),
+            "example.com",
+        ));
+        let err = result.unwrap_err();
+        assert!(matches!(err, VerificationError::InvalidSignature(_)));
+        assert!(err
+            .to_string()
+            .contains("Missing ext.trusted_server.request_host"));
+    }
+
+    #[test]
+    fn verify_missing_request_scheme_field() {
+        let now_ms = current_time_ms().unwrap();
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": "test-sig",
+                "kid": "test-key",
+                "version": "1.1",
+                "request_host": "example.com",
+                "ts": now_ms
+            }
+        });
+
+        let ctx = create_test_context();
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            "test-id",
+            Some(&ext),
+            "example.com",
+        ));
+        let err = result.unwrap_err();
+        assert!(matches!(err, VerificationError::InvalidSignature(_)));
+        assert!(err
+            .to_string()
+            .contains("Missing ext.trusted_server.request_scheme"));
+    }
+
+    #[test]
+    fn verify_missing_ts_field() {
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": "test-sig",
+                "kid": "test-key",
+                "version": "1.1",
+                "request_host": "example.com",
+                "request_scheme": "https"
+            }
+        });
+
+        let ctx = create_test_context();
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            "test-id",
+            Some(&ext),
+            "example.com",
+        ));
+        let err = result.unwrap_err();
+        assert!(matches!(err, VerificationError::InvalidSignature(_)));
+        assert!(err.to_string().contains("Missing ext.trusted_server.ts"));
     }
 
     #[test]
@@ -657,7 +824,7 @@ mod tests {
         ));
         let err = result.unwrap_err();
         assert!(matches!(err, VerificationError::InvalidSignature(_)));
-        assert!(err.to_string().contains("stale"));
+        assert!(err.to_string().contains("future-dated"));
     }
 
     #[test]
@@ -711,11 +878,148 @@ mod tests {
     }
 
     #[test]
+    fn verify_request_id_signature_success_path() {
+        use ed25519_dalek::{Signer, SigningKey};
+
+        let seed = [42u8; 32];
+        let signing_key = SigningKey::from_bytes(&seed);
+        let public_key_b64 = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().as_bytes());
+
+        let domain = "verify-success.example";
+        let request_id = "req-success";
+        let key_id = "kid-success";
+        let timestamp = current_time_ms().unwrap();
+        let payload = build_signing_payload(
+            request_id,
+            key_id,
+            domain,
+            "https",
+            timestamp,
+            SIGNING_VERSION,
+        )
+        .expect("payload");
+        let signature_b64 = URL_SAFE_NO_PAD.encode(signing_key.sign(payload.as_bytes()).to_bytes());
+
+        {
+            let mut cache = JWKS_CACHE.lock().unwrap();
+            cache.remove(domain);
+            cache.insert(
+                domain.to_string(),
+                JwksCache {
+                    jwks: JwksResponse {
+                        keys: vec![JwkKey {
+                            kid: key_id.to_string(),
+                            x: public_key_b64,
+                        }],
+                    },
+                    fetched_at: Instant::now(),
+                },
+            );
+        }
+
+        let ext = serde_json::json!({
+            "trusted_server": {
+                "signature": signature_b64,
+                "kid": key_id,
+                "version": SIGNING_VERSION,
+                "request_host": domain,
+                "request_scheme": "https",
+                "ts": timestamp
+            }
+        });
+
+        let ctx = create_test_context();
+        let result = block_on(verify_request_id_signature(
+            &ctx,
+            request_id,
+            Some(&ext),
+            domain,
+        ));
+
+        JWKS_CACHE.lock().unwrap().remove(domain);
+
+        assert_eq!(result.unwrap(), key_id);
+    }
+
+    #[test]
     fn canonicalize_host_cases() {
         assert_eq!(canonicalize_host("EXAMPLE.COM"), "example.com");
         assert_eq!(canonicalize_host("example.com:443"), "example.com");
         assert_eq!(canonicalize_host("example.com:80"), "example.com");
         assert_eq!(canonicalize_host("example.com:8080"), "example.com:8080");
         assert_eq!(canonicalize_host("  example.com  "), "example.com");
+    }
+
+    #[test]
+    fn collect_jwks_body_rejects_oversized_once_body() {
+        let body = Body::from_bytes(vec![0_u8; MAX_JWKS_BODY_BYTES + 1]);
+        let err = block_on(collect_jwks_body(body)).unwrap_err();
+        assert!(matches!(err, VerificationError::HttpError(_)));
+        assert!(err.to_string().contains("JWKS response body exceeds"));
+    }
+
+    #[test]
+    fn validate_jwks_host_accepts_hostname() {
+        assert_eq!(validate_jwks_host("example.com").unwrap(), "example.com");
+        assert_eq!(
+            validate_jwks_host("  Example.COM  ").unwrap(),
+            "example.com"
+        );
+    }
+
+    #[test]
+    fn validate_jwks_host_rejects_userinfo() {
+        let err = validate_jwks_host("foo@evil.com").unwrap_err().to_string();
+        assert!(err.contains("Invalid site.domain host"));
+    }
+
+    #[test]
+    fn validate_jwks_host_rejects_path_query_and_fragment() {
+        let path_err = validate_jwks_host("example.com/path")
+            .unwrap_err()
+            .to_string();
+        assert!(path_err.contains("Invalid site.domain host"));
+
+        let query_err = validate_jwks_host("example.com?x=1")
+            .unwrap_err()
+            .to_string();
+        assert!(query_err.contains("Invalid site.domain host"));
+
+        let fragment_err = validate_jwks_host("example.com#frag")
+            .unwrap_err()
+            .to_string();
+        assert!(fragment_err.contains("Invalid site.domain host"));
+    }
+
+    #[test]
+    fn validate_jwks_host_rejects_empty_input() {
+        let err = validate_jwks_host("   ").unwrap_err().to_string();
+        assert!(err.contains("empty host"));
+    }
+
+    #[test]
+    fn validate_jwks_host_rejects_localhost_and_single_label_hosts() {
+        let localhost_err = validate_jwks_host("localhost").unwrap_err().to_string();
+        assert!(localhost_err.contains("Invalid site.domain host"));
+
+        let single_label_err = validate_jwks_host("intranet").unwrap_err().to_string();
+        assert!(single_label_err.contains("Invalid site.domain host"));
+    }
+
+    #[test]
+    fn validate_jwks_host_rejects_ip_literals() {
+        let ipv4_err = validate_jwks_host("127.0.0.1").unwrap_err().to_string();
+        assert!(ipv4_err.contains("Invalid site.domain host"));
+
+        let link_local_err = validate_jwks_host("169.254.169.254")
+            .unwrap_err()
+            .to_string();
+        assert!(link_local_err.contains("Invalid site.domain host"));
+
+        let public_ip_err = validate_jwks_host("8.8.8.8").unwrap_err().to_string();
+        assert!(public_ip_err.contains("Invalid site.domain host"));
+
+        let ipv6_err = validate_jwks_host("[::1]").unwrap_err().to_string();
+        assert!(ipv6_err.contains("Invalid site.domain host"));
     }
 }

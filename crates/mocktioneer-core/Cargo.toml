@@ -22,5 +22,8 @@ url = { workspace = true }
 uuid = { workspace = true }
 validator = { workspace = true }
 
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
+js-sys = { workspace = true }
+
 [dev-dependencies]
 futures = { workspace = true }
