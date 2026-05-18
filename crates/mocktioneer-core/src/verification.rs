@@ -1,10 +1,10 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};
 use edgezero_core::body::Body;
 use edgezero_core::context::RequestContext;
 use edgezero_core::http::{Method, StatusCode, Uri};
 use edgezero_core::proxy::ProxyRequest;
-use futures_util::StreamExt;
+use futures_util::StreamExt as _;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -12,8 +12,17 @@ use std::time::{Duration, Instant};
 
 const JWKS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
 
+static JWKS_CACHE: LazyLock<Mutex<HashMap<String, JwksCache>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 #[derive(Debug, Clone, Deserialize)]
-struct TrustedServerResponse {
+struct JwkKey {
+    kid: String,
+    x: String, // Base64url-encoded Ed25519 public key
+}
+
+struct JwksCache {
+    fetched_at: Instant,
     jwks: JwksResponse,
 }
 
@@ -23,52 +32,43 @@ struct JwksResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct JwkKey {
-    kid: String,
-    x: String, // Base64url-encoded Ed25519 public key
-}
-
-struct JwksCache {
+struct TrustedServerResponse {
     jwks: JwksResponse,
-    fetched_at: Instant,
 }
-
-static JWKS_CACHE: LazyLock<Mutex<HashMap<String, JwksCache>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, thiserror::Error)]
 pub enum VerificationError {
-    #[error("Key not found: {0}")]
-    KeyNotFound(String),
-    #[error("Invalid signature: {0}")]
-    InvalidSignature(String),
-    #[error("Signature verification failed")]
-    SignatureVerificationFailed,
     #[error("HTTP error: {0}")]
     HttpError(String),
+    #[error("Invalid signature: {0}")]
+    InvalidSignature(String),
+    #[error("Key not found: {0}")]
+    KeyNotFound(String),
     #[error("No domain for JWKS verification")]
     NoJwksDomain,
+    #[error("Signature verification failed")]
+    SignatureVerificationFailed,
 }
 
 async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
-    let jwks_url = format!("https://{}/.well-known/trusted-server.json", domain);
+    let jwks_url = format!("https://{domain}/.well-known/trusted-server.json");
 
-    log::debug!("Fetching JWKS from {}", jwks_url);
+    log::debug!("Fetching JWKS from {jwks_url}");
 
     let uri = jwks_url
         .parse::<Uri>()
-        .map_err(|e| VerificationError::HttpError(format!("Invalid JWKS URL: {}", e)))?;
+        .map_err(|err| VerificationError::HttpError(format!("Invalid JWKS URL: {err}")))?;
 
-    log::info!("URI: {}", uri);
+    log::info!("URI: {uri}");
     let proxy_request = ProxyRequest::new(Method::GET, uri);
     let proxy_handle = ctx
         .proxy_handle()
-        .ok_or_else(|| VerificationError::HttpError("Proxy not available".to_string()))?;
+        .ok_or_else(|| VerificationError::HttpError("Proxy not available".to_owned()))?;
 
     let resp = proxy_handle
         .forward(proxy_request)
         .await
-        .map_err(|e| VerificationError::HttpError(format!("JWKS fetch failed: {}", e)))?;
+        .map_err(|err| VerificationError::HttpError(format!("JWKS fetch failed: {err}")))?;
 
     if resp.status() != StatusCode::OK {
         return Err(VerificationError::HttpError(format!(
@@ -83,18 +83,18 @@ async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, 
         Body::Once(bytes) => bytes.to_vec(),
         Body::Stream(mut stream) => {
             let mut collected = Vec::new();
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk.map_err(|e| {
-                    VerificationError::HttpError(format!("Stream read failed: {}", e))
+            while let Some(next_chunk) = stream.next().await {
+                let bytes = next_chunk.map_err(|err| {
+                    VerificationError::HttpError(format!("Stream read failed: {err}"))
                 })?;
-                collected.extend_from_slice(&chunk);
+                collected.extend_from_slice(&bytes);
             }
 
             collected
         }
     };
     let response: TrustedServerResponse = serde_json::from_slice(&body_bytes)
-        .map_err(|e| VerificationError::HttpError(format!("JWKS parse failed: {}", e)))?;
+        .map_err(|err| VerificationError::HttpError(format!("JWKS parse failed: {err}")))?;
     Ok(response.jwks)
 }
 
@@ -102,12 +102,12 @@ async fn get_cached_jwks(
     ctx: &RequestContext,
     domain: &str,
 ) -> Result<JwksResponse, VerificationError> {
-    let cache_key = domain.to_string();
+    let cache_key = domain.to_owned();
 
     {
         let cache = JWKS_CACHE
             .lock()
-            .map_err(|_| VerificationError::HttpError("Cache lock poisoned".to_string()))?;
+            .map_err(|err| VerificationError::HttpError(format!("Cache lock poisoned: {err}")))?;
 
         if let Some(cached) = cache.get(&cache_key) {
             if cached.fetched_at.elapsed() < JWKS_CACHE_TTL {
@@ -117,24 +117,23 @@ async fn get_cached_jwks(
                     cached.fetched_at.elapsed()
                 );
                 return Ok(cached.jwks.clone());
-            } else {
-                log::debug!(
-                    "JWKS cache expired for {} (age: {:?})",
-                    cache_key,
-                    cached.fetched_at.elapsed()
-                );
             }
+            log::debug!(
+                "JWKS cache expired for {} (age: {:?})",
+                cache_key,
+                cached.fetched_at.elapsed()
+            );
         } else {
-            log::debug!("JWKS cache empty for {} (first fetch)", cache_key);
+            log::debug!("JWKS cache empty for {cache_key} (first fetch)");
         }
     }
 
-    log::debug!("Fetching fresh JWKS for {}", cache_key);
+    log::debug!("Fetching fresh JWKS for {cache_key}");
     let jwks = fetch_jwks(ctx, domain).await?;
 
     let mut cache = JWKS_CACHE
         .lock()
-        .map_err(|_| VerificationError::HttpError("Cache lock poisoned".to_string()))?;
+        .map_err(|err| VerificationError::HttpError(format!("Cache lock poisoned: {err}")))?;
 
     cache.insert(
         cache_key,
@@ -147,12 +146,15 @@ async fn get_cached_jwks(
     Ok(jwks)
 }
 
-fn find_public_key<'a>(jwks: &'a JwksResponse, kid: &str) -> Result<&'a str, VerificationError> {
+fn find_public_key<'jwks>(
+    jwks: &'jwks JwksResponse,
+    kid: &str,
+) -> Result<&'jwks str, VerificationError> {
     jwks.keys
         .iter()
-        .find(|k| k.kid == kid)
-        .map(|k| k.x.as_str())
-        .ok_or_else(|| VerificationError::KeyNotFound(format!("Key {} not found in JWKS", kid)))
+        .find(|key| key.kid == kid)
+        .map(|key| key.x.as_str())
+        .ok_or_else(|| VerificationError::KeyNotFound(format!("Key {kid} not found in JWKS")))
 }
 
 fn verify_ed25519_signature(
@@ -160,8 +162,8 @@ fn verify_ed25519_signature(
     signature_b64: &str,
     message: &str,
 ) -> Result<(), VerificationError> {
-    let public_key_bytes = URL_SAFE_NO_PAD.decode(public_key_b64).map_err(|e| {
-        VerificationError::InvalidSignature(format!("Invalid public key encoding: {}", e))
+    let public_key_bytes = URL_SAFE_NO_PAD.decode(public_key_b64).map_err(|err| {
+        VerificationError::InvalidSignature(format!("Invalid public key encoding: {err}"))
     })?;
 
     if public_key_bytes.len() != 32 {
@@ -171,14 +173,14 @@ fn verify_ed25519_signature(
         )));
     }
 
-    let mut key_array = [0u8; 32];
+    let mut key_array = [0_u8; 32];
     key_array.copy_from_slice(&public_key_bytes);
 
     let verifying_key = VerifyingKey::from_bytes(&key_array)
-        .map_err(|e| VerificationError::InvalidSignature(format!("Invalid public key: {}", e)))?;
+        .map_err(|err| VerificationError::InvalidSignature(format!("Invalid public key: {err}")))?;
 
-    let signature_bytes = URL_SAFE_NO_PAD.decode(signature_b64).map_err(|e| {
-        VerificationError::InvalidSignature(format!("Invalid signature encoding: {}", e))
+    let signature_bytes = URL_SAFE_NO_PAD.decode(signature_b64).map_err(|err| {
+        VerificationError::InvalidSignature(format!("Invalid signature encoding: {err}"))
     })?;
 
     if signature_bytes.len() != 64 {
@@ -188,51 +190,61 @@ fn verify_ed25519_signature(
         )));
     }
 
-    let mut sig_array = [0u8; 64];
+    let mut sig_array = [0_u8; 64];
     sig_array.copy_from_slice(&signature_bytes);
 
     let signature = Signature::from_bytes(&sig_array);
 
     verifying_key
         .verify(message.as_bytes(), &signature)
-        .map_err(|_| VerificationError::SignatureVerificationFailed)?;
+        .map_err(|_err| VerificationError::SignatureVerificationFailed)?;
 
     Ok(())
 }
 
+/// Verifies the Ed25519 signature attached to an `OpenRTB` request ID.
+///
+/// # Errors
+///
+/// Returns [`VerificationError`] when the `ext.trusted_server` object is
+/// missing or malformed, when the JWKS document cannot be fetched, when the
+/// referenced key is absent, or when the signature does not match.
+#[inline]
 pub async fn verify_request_id_signature(
     ctx: &RequestContext,
     request_id: &str,
     ext: Option<&serde_json::Value>,
     domain: &str,
 ) -> Result<String, VerificationError> {
-    let ext_obj = ext.and_then(|e| e.get("trusted_server")).ok_or_else(|| {
-        VerificationError::InvalidSignature("Missing ext.trusted_server".to_string())
-    })?;
+    let ext_obj = ext
+        .and_then(|value| value.get("trusted_server"))
+        .ok_or_else(|| {
+            VerificationError::InvalidSignature("Missing ext.trusted_server".to_owned())
+        })?;
 
     let signature = ext_obj
         .get("signature")
-        .and_then(|v| v.as_str())
+        .and_then(serde_json::Value::as_str)
         .ok_or_else(|| {
-            VerificationError::InvalidSignature("Missing ext.trusted_server.signature".to_string())
+            VerificationError::InvalidSignature("Missing ext.trusted_server.signature".to_owned())
         })?;
 
-    let key_id = ext_obj.get("kid").and_then(|v| v.as_str()).ok_or_else(|| {
-        VerificationError::KeyNotFound("Missing ext.trusted_server.kid".to_string())
-    })?;
+    let key_id = ext_obj
+        .get("kid")
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| {
+            VerificationError::KeyNotFound("Missing ext.trusted_server.kid".to_owned())
+        })?;
 
     log::info!(
-        "Signature verification requested: id={}, kid={}, domain={:?}",
-        request_id,
-        key_id,
-        domain
+        "Signature verification requested: id={request_id}, kid={key_id}, domain={domain:?}"
     );
 
     let jwks = get_cached_jwks(ctx, domain).await?;
     let public_key = find_public_key(&jwks, key_id)?;
     verify_ed25519_signature(public_key, signature, request_id)?;
 
-    Ok(key_id.to_string())
+    Ok(key_id.to_owned())
 }
 
 #[cfg(test)]
@@ -342,8 +354,8 @@ mod tests {
     fn find_public_key_found() {
         let jwks = JwksResponse {
             keys: vec![JwkKey {
-                kid: "key-001".to_string(),
-                x: "test-key-base64url".to_string(),
+                kid: "key-001".to_owned(),
+                x: "test-key-base64url".to_owned(),
             }],
         };
 

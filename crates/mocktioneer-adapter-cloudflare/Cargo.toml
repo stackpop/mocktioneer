@@ -26,3 +26,6 @@ mocktioneer-core = { workspace = true }
 edgezero-adapter-cloudflare = { workspace = true, features = ["cloudflare"] }
 edgezero-core = { workspace = true }
 worker = { workspace = true }
+
+[lints]
+workspace = true

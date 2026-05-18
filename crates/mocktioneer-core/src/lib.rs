@@ -8,8 +8,10 @@ pub mod verification;
 
 edgezero_core::app!("../../edgezero.toml", MocktioneerApp);
 
-use edgezero_core::app::Hooks;
+use edgezero_core::app::{App, Hooks as _};
 
-pub fn build_app() -> edgezero_core::app::App {
+#[inline]
+#[must_use]
+pub fn build_app() -> App {
     MocktioneerApp::build_app()
 }
