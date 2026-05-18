@@ -570,3 +570,135 @@ pub struct Native {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ver: Option<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn json(value: &impl Serialize) -> serde_json::Value {
+        serde_json::to_value(value).expect("serialize")
+    }
+
+    #[test]
+    fn banner_round_trip_uses_w_h_json_keys() {
+        let banner = Banner {
+            height: Some(250_i64),
+            width: Some(300_i64),
+            ..Default::default()
+        };
+        let value = json(&banner);
+        assert_eq!(value["w"], 300_i32);
+        assert_eq!(value["h"], 250_i32);
+        assert!(value.get("width").is_none());
+        assert!(value.get("height").is_none());
+
+        let parsed: Banner =
+            serde_json::from_value(serde_json::json!({"w": 300_i32, "h": 250_i32}))
+                .expect("deserialize");
+        assert_eq!(parsed.width, Some(300_i64));
+        assert_eq!(parsed.height, Some(250_i64));
+    }
+
+    #[test]
+    fn format_round_trip_uses_w_h_json_keys() {
+        let format = Format {
+            height: 90_i64,
+            width: 728_i64,
+            ..Default::default()
+        };
+        let value = json(&format);
+        assert_eq!(value["w"], 728_i32);
+        assert_eq!(value["h"], 90_i32);
+
+        let parsed: Format = serde_json::from_value(serde_json::json!({"w": 728_i32, "h": 90_i32}))
+            .expect("deserialize");
+        assert_eq!(parsed.width, 728_i64);
+        assert_eq!(parsed.height, 90_i64);
+    }
+
+    #[test]
+    fn bid_round_trip_uses_w_h_json_keys() {
+        let bid = Bid {
+            id: "b1".to_owned(),
+            impid: "i1".to_owned(),
+            price: 1.0_f64,
+            height: Some(600_i64),
+            width: Some(160_i64),
+            ..Default::default()
+        };
+        let value = json(&bid);
+        assert_eq!(value["w"], 160_i32);
+        assert_eq!(value["h"], 600_i32);
+
+        let parsed: Bid = serde_json::from_value(serde_json::json!({
+            "id": "b1", "impid": "i1", "price": 1.0_f64, "w": 160_i32, "h": 600_i32
+        }))
+        .expect("deserialize");
+        assert_eq!(parsed.width, Some(160_i64));
+        assert_eq!(parsed.height, Some(600_i64));
+    }
+
+    #[test]
+    fn device_round_trip_uses_w_h_json_keys() {
+        let device = Device {
+            height: Some(800_i64),
+            width: Some(1200_i64),
+            ..Default::default()
+        };
+        let value = json(&device);
+        assert_eq!(value["w"], 1200_i32);
+        assert_eq!(value["h"], 800_i32);
+    }
+
+    #[test]
+    fn video_round_trip_uses_w_h_json_keys() {
+        let video = Video {
+            height: Some(480_i64),
+            width: Some(640_i64),
+            ..Default::default()
+        };
+        let value = json(&video);
+        assert_eq!(value["w"], 640_i32);
+        assert_eq!(value["h"], 480_i32);
+    }
+
+    #[test]
+    fn site_round_trip_maps_r_ref_to_ref_json_key() {
+        let site = Site {
+            r#ref: Some("https://referrer.example".to_owned()),
+            ref_: Some("legacy".to_owned()),
+            ..Default::default()
+        };
+        let value = json(&site);
+        assert_eq!(value["ref"], "https://referrer.example");
+        assert_eq!(value["ref_"], "legacy");
+
+        let parsed: Site = serde_json::from_value(serde_json::json!({
+            "ref": "https://referrer.example",
+            "ref_": "legacy"
+        }))
+        .expect("deserialize");
+        assert_eq!(parsed.r#ref.as_deref(), Some("https://referrer.example"));
+        assert_eq!(parsed.ref_.as_deref(), Some("legacy"));
+    }
+
+    #[test]
+    fn geo_round_trip_maps_kind_to_underscore_type_json_key() {
+        let geo = Geo {
+            kind: Some(1_i64),
+            type2: Some(2_i64),
+            ..Default::default()
+        };
+        let value = json(&geo);
+        assert_eq!(value["_type"], 1_i32);
+        assert_eq!(value["type"], 2_i32);
+        assert!(value.get("kind").is_none());
+        assert!(value.get("type2").is_none());
+
+        let parsed: Geo =
+            serde_json::from_value(serde_json::json!({"_type": 1_i32, "type": 2_i32}))
+                .expect("deserialize");
+        assert_eq!(parsed.kind, Some(1_i64));
+        assert_eq!(parsed.type2, Some(2_i64));
+    }
+}
