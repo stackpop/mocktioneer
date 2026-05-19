@@ -10,23 +10,23 @@ const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html.hbs
 const INFO_TMPL: &str = include_str!("../static/templates/info.html.hbs");
 const SVG_TMPL: &str = include_str!("../static/templates/image.svg.hbs");
 
-/// Signature verification status for creative metadata
+/// Signature verification status for creative metadata.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", content = "details")]
 pub enum SignatureStatus {
-    /// Signature verification failed
+    /// Signature verification failed.
     Failed { reason: String },
-    /// No signature was present in the request
+    /// No signature was present in the request.
     NotPresent { reason: String },
-    /// Signature was present and successfully verified
+    /// Signature was present and successfully verified.
     Verified { kid: String },
 }
 
-/// Metadata to embed in creative HTML comments
+/// Metadata to embed in creative HTML comments.
 #[derive(Debug, Clone, Serialize)]
 pub struct CreativeMetadata<'req> {
     pub request: &'req OpenRTBRequest,
-    /// The `OpenRTB` response with `adm` fields stripped (to avoid recursion)
+    /// The `OpenRTB` response with `adm` fields stripped (to avoid recursion).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<JsonValue>,
     pub signature: SignatureStatus,

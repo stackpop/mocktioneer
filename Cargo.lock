@@ -574,7 +574,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#a26704f7dd50390146701e14bebd82456cfab03e"
+source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#97d02de5c830cb759f879ffc7671cc11d0c7a116"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -597,7 +597,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#a26704f7dd50390146701e14bebd82456cfab03e"
+source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#97d02de5c830cb759f879ffc7671cc11d0c7a116"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -615,7 +615,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#a26704f7dd50390146701e14bebd82456cfab03e"
+source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#97d02de5c830cb759f879ffc7671cc11d0c7a116"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -637,7 +637,7 @@ dependencies = [
 [[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#a26704f7dd50390146701e14bebd82456cfab03e"
+source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#97d02de5c830cb759f879ffc7671cc11d0c7a116"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -665,7 +665,7 @@ dependencies = [
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#a26704f7dd50390146701e14bebd82456cfab03e"
+source = "git+https://github.com/stackpop/edgezero.git?branch=chore%2Fstrict-clippy#97d02de5c830cb759f879ffc7671cc11d0c7a116"
 dependencies = [
  "log",
  "proc-macro2",

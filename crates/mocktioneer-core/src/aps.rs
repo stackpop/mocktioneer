@@ -13,23 +13,23 @@ use validator::Validate;
 /// APS TAM bid request format based on /e/dtb/bid endpoint.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ApsBidRequest {
-    /// Page URL
+    /// Page URL.
     #[serde(rename = "pageUrl", skip_serializing_if = "Option::is_none")]
     pub page_url: Option<String>,
 
-    /// Publisher ID (e.g., "5555")
+    /// Publisher ID (e.g., "5555").
     #[serde(rename = "pubId")]
     pub pub_id: String,
 
-    /// Slot configurations
+    /// Slot configurations.
     #[validate(length(min = 1_u64))]
     pub slots: Vec<ApsSlot>,
 
-    /// Timeout in milliseconds
+    /// Timeout in milliseconds.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
 
-    /// User agent
+    /// User agent.
     #[serde(rename = "ua", skip_serializing_if = "Option::is_none")]
     pub user_agent: Option<String>,
 }
@@ -37,14 +37,14 @@ pub struct ApsBidRequest {
 /// APS slot configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApsSlot {
-    /// Ad sizes [[width, height], ...]
+    /// Ad sizes [[width, height], ...].
     pub sizes: Vec<[u32; 2]>,
 
-    /// Slot identifier
+    /// Slot identifier.
     #[serde(rename = "slotID")]
     pub slot_id: String,
 
-    /// Slot name (optional)
+    /// Slot name (optional).
     #[serde(rename = "slotName", skip_serializing_if = "Option::is_none")]
     pub slot_name: Option<String>,
 }
@@ -54,41 +54,41 @@ pub struct ApsSlot {
 // ============================================================================
 
 /// APS TAM bid response format matching real Amazon API.
-/// Example response from <https://aax.amazon-adsystem.com/e/dtb/bid>
+/// Example response from <https://aax.amazon-adsystem.com/e/dtb/bid>.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApsBidResponse {
-    /// Contextual wrapper containing all response data
+    /// Contextual wrapper containing all response data.
     pub contextual: ApsContextual,
 }
 
 /// APS Contextual response containing slots and metadata.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApsContextual {
-    /// Callback version
+    /// Callback version.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cb: Option<String>,
 
-    /// Client-side feature enablement flag
+    /// Client-side feature enablement flag.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cfe: Option<bool>,
 
-    /// Client feature name (CSM script path)
+    /// Client feature name (CSM script path).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cfn: Option<String>,
 
-    /// Campaign tracking URL
+    /// Campaign tracking URL.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cmp: Option<String>,
 
-    /// Event tracking enabled
+    /// Event tracking enabled.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ev: Option<bool>,
 
-    /// Event tracking host
+    /// Event tracking host.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub host: Option<String>,
 
-    /// Array of slot responses (one per requested slot)
+    /// Array of slot responses (one per requested slot).
     #[serde(default)]
     pub slots: Vec<ApsSlotResponse>,
 
@@ -105,46 +105,46 @@ pub struct ApsSlotResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amznactt: Option<String>,
 
-    /// Amazon encoded bid price
+    /// Amazon encoded bid price.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amznbid: Option<String>,
 
-    /// Amazon impression ID (unique identifier for this bid)
+    /// Amazon impression ID (unique identifier for this bid).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amzniid: Option<String>,
 
-    /// Amazon encoded price (alternative encoding)
+    /// Amazon encoded price (alternative encoding).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amznp: Option<String>,
 
-    /// Amazon size in `WxH` format (e.g., "300x250")
+    /// Amazon size in `WxH` format (e.g., "300x250").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amznsz: Option<String>,
 
-    /// Creative ID
+    /// Creative ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crid: Option<String>,
 
-    /// Fill indicator flag ("1" = filled, "0" = no fill)
+    /// Fill indicator flag ("1" = filled, "0" = no fill).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fif: Option<String>,
 
-    /// Media type ("d" for display, "v" for video)
+    /// Media type ("d" for display, "v" for video).
     #[serde(rename = "mediaType", skip_serializing_if = "Option::is_none")]
     pub media_type: Option<String>,
 
-    /// List of metadata field names
+    /// List of metadata field names.
     #[serde(default)]
     pub meta: Vec<String>,
 
-    /// Creative size (e.g., "300x250")
+    /// Creative size (e.g., "300x250").
     pub size: String,
 
-    /// Slot ID this response is for
+    /// Slot ID this response is for.
     #[serde(rename = "slotID")]
     pub slot_id: String,
 
-    /// List of targeting key names that are set on this slot
+    /// List of targeting key names that are set on this slot.
     #[serde(default)]
     pub targeting: Vec<String>,
 }

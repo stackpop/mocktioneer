@@ -1,4 +1,4 @@
-//! Mock Ad Server Mediation
+//! Mock Ad Server Mediation.
 //!
 //! Provides a simple mediation endpoint that accepts bids from multiple bidders
 //! and selects winners based on price (highest price wins).
@@ -11,88 +11,88 @@ use std::collections::BTreeMap;
 use uuid::Uuid;
 use validator::Validate;
 
-/// Mediation request containing impression definitions and bidder responses
+/// Mediation request containing impression definitions and bidder responses.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationRequest {
-    /// Mediation-specific extensions
+    /// Mediation-specific extensions.
     #[validate(nested)]
     pub ext: MediationExt,
 
-    /// Auction ID
+    /// Auction ID.
     #[validate(length(min = 1_u64))]
     pub id: String,
 
-    /// Impression definitions (from original auction request)
+    /// Impression definitions (from original auction request).
     #[validate(length(min = 1_u64))]
     pub imp: Vec<Imp>,
 }
 
-/// Extensions for mediation request
+/// Extensions for mediation request.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationExt {
-    /// Responses from all bidders
+    /// Responses from all bidders.
     #[validate(length(min = 1_u64))]
     #[validate(nested)]
     pub bidder_responses: Vec<BidderResponse>,
 
-    /// Optional mediation configuration
+    /// Optional mediation configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(nested)]
     pub config: Option<MediationConfig>,
 }
 
-/// Response from a single bidder
+/// Response from a single bidder.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct BidderResponse {
-    /// Bidder name/identifier (e.g., "amazon-aps", "prebid")
+    /// Bidder name/identifier (e.g., "amazon-aps", "prebid").
     #[validate(length(min = 1_u64))]
     pub bidder: String,
 
-    /// Bids from this bidder
+    /// Bids from this bidder.
     #[validate(nested)]
     pub bids: Vec<MediationBid>,
 }
 
-/// A single bid from a bidder
+/// A single bid from a bidder.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationBid {
-    /// Creative markup (HTML)
-    /// Optional - if not provided, mediation will generate an iframe creative
+    /// Creative markup (HTML).
+    /// Optional - if not provided, mediation will generate an iframe creative.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adm: Option<String>,
 
-    /// Advertiser domains
+    /// Advertiser domains.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adomain: Option<Vec<String>>,
 
-    /// Creative ID
+    /// Creative ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crid: Option<String>,
 
-    /// Creative height
+    /// Creative height.
     #[serde(rename = "h")]
     #[validate(range(min = 1_i64))]
     pub height: i64,
 
-    /// Impression ID this bid is for
+    /// Impression ID this bid is for.
     #[validate(length(min = 1_u64))]
     pub imp_id: String,
 
-    /// Bid price (CPM)
+    /// Bid price (CPM).
     #[validate(range(min = 0.0_f64))]
     pub price: f64,
 
-    /// Creative width
+    /// Creative width.
     #[serde(rename = "w")]
     #[validate(range(min = 1_i64))]
     pub width: i64,
 }
 
-/// Mediation configuration
+/// Mediation configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationConfig {
-    /// Minimum acceptable bid price (CPM)
-    /// Bids below this floor will be rejected
+    /// Minimum acceptable bid price (CPM).
+    /// Bids below this floor will be rejected.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(range(min = 0.0_f64))]
     pub price_floor: Option<f64>,
@@ -102,7 +102,7 @@ fn new_id() -> String {
     Uuid::now_v7().simple().to_string()
 }
 
-/// Run mediation algorithm and return winning bids
+/// Run mediation algorithm and return winning bids.
 ///
 /// Algorithm:
 /// 1. Collect all bids grouped by impression ID
@@ -183,7 +183,7 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
     build_openrtb_response(request.id, request.imp, winning_bids, base_host)
 }
 
-/// Build `OpenRTB` response from winning bids
+/// Build `OpenRTB` response from winning bids.
 fn build_openrtb_response(
     id: String,
     imps: Vec<Imp>,

@@ -16,7 +16,7 @@ use uuid::Uuid;
 pub const DEFAULT_CPM: f64 = 1.50;
 
 /// Maximum area-based bonus added to `DEFAULT_CPM` for non-standard sizes.
-/// Final CPM = `DEFAULT_CPM` + min(area/100000, `MAX_AREA_BONUS`)
+/// Final CPM = `DEFAULT_CPM` + min(area/100000, `MAX_AREA_BONUS`).
 pub const MAX_AREA_BONUS: f64 = 3.00;
 
 /// Compile-time perfect hash map for standard sizes: "`WxH`" -> cpm.
@@ -245,7 +245,7 @@ pub fn build_openrtb_response(
 ///
 /// Note: Real Amazon APS uses proprietary encoding that cannot be decoded without Amazon's keys.
 /// Our mock uses transparent base64 encoding that CAN be decoded for testing/debugging purposes.
-/// Example: `echo "Mi41MA==" | base64 -d` → `2.50`
+/// Example: `echo "Mi41MA==" | base64 -d` → `2.50`.
 fn encode_aps_price(price: f64) -> String {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 

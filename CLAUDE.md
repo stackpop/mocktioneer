@@ -25,7 +25,7 @@ tests/playwright/                 # Playwright e2e tests (creative visibility, s
 
 ## Toolchain & Versions
 
-- **Rust**: 1.91.1 (from `.tool-versions`)
+- **Rust**: 1.95.0 (from `.tool-versions`)
 - **Node.js**: 24.12.0 (for docs site and Playwright tests)
 - **Fastly CLI**: v13.0.0
 - **Edition**: 2021

@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
-const JWKS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const JWKS_CACHE_TTL: Duration = Duration::from_mins(10);
 
 static JWKS_CACHE: LazyLock<Mutex<HashMap<String, JwksCache>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
