@@ -52,8 +52,8 @@ jobs:
       - name: Check feature compilation
         run: cargo check --workspace --all-targets --features "fastly cloudflare"
 
-  adapter-wasm-check:
-    name: ${{ matrix.adapter }} wasm check
+  adapter-wasm-tests:
+    name: ${{ matrix.adapter }} wasm tests
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -61,8 +61,12 @@ jobs:
         include:
           - adapter: cloudflare
             target: wasm32-unknown-unknown
+            runner_env: CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER
+            runner_value: wasm-bindgen-test-runner
           - adapter: fastly
             target: wasm32-wasip1
+            runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
+            runner_value: viceroy run
     steps:
       - uses: actions/checkout@v4
 
@@ -92,11 +96,49 @@ jobs:
       - name: Add wasm target
         run: rustup target add ${{ matrix.target }}
 
+      - name: Resolve wasm-bindgen CLI version
+        if: matrix.adapter == 'cloudflare'
+        id: wasm-bindgen-version
+        shell: bash
+        run: |
+          version="$(
+            awk '
+              $1 == "name" && $3 == "\"wasm-bindgen\"" { in_pkg=1; next }
+              in_pkg && $1 == "version" {
+                gsub(/"/, "", $3)
+                print $3
+                exit
+              }
+            ' Cargo.lock
+          )"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # `--force` overwrites a cache-restored binary (cargo install would
+      # otherwise refuse); `--locked` keeps the version pinned and reproducible.
+      - name: Install wasm-bindgen test runner
+        if: matrix.adapter == 'cloudflare'
+        run: cargo install wasm-bindgen-cli --version "${{ steps.wasm-bindgen-version.outputs.version }}" --locked --force
+
+      - name: Resolve Viceroy version
+        if: matrix.adapter == 'fastly'
+        id: viceroy-version
+        shell: bash
+        run: echo "version=$(grep '^viceroy ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      # Version comes from `.tool-versions` so local dev and CI share a single
+      # source of truth.
+      - name: Setup Viceroy
+        if: matrix.adapter == 'fastly'
+        run: cargo install viceroy --version "${{ steps.viceroy-version.outputs.version }}" --locked --force
+
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
 
-      - name: Check ${{ matrix.adapter }} wasm target
-        run: cargo check -p mocktioneer-adapter-${{ matrix.adapter }} --features ${{ matrix.adapter }} --target ${{ matrix.target }}
+      - name: Run ${{ matrix.adapter }} wasm contract tests
+        env:
+          ${{ matrix.runner_env }}: ${{ matrix.runner_value }}
+        run: cargo test -p mocktioneer-adapter-${{ matrix.adapter }} --features ${{ matrix.adapter }} --target ${{ matrix.target }} --test contract
 
   playwright:
     name: playwright tests

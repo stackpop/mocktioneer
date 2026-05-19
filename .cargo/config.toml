@@ -1,2 +1,10 @@
 [net]
 git-fetch-with-cli = true
+
+# Viceroy runner for wasm32-wasip1 contract tests. Cargo invokes the runner
+# with cwd set to the package's manifest directory
+# (`crates/mocktioneer-adapter-fastly/`), so the `-C` path is relative to
+# that and resolves to the same `fastly.toml` regardless of where `cargo
+# test` is invoked from.
+[target.wasm32-wasip1]
+runner = "viceroy run -C ../../crates/mocktioneer-adapter-fastly/fastly.toml -- "
