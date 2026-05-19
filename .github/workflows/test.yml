@@ -43,12 +43,6 @@ jobs:
         with:
           toolchain: ${{ steps.rust-version.outputs.rust-version }}
 
-      - name: Add wasm32-wasi target
-        run: rustup target add wasm32-wasip1
-
-      - name: Setup Viceroy
-        run: cargo install viceroy --locked
-
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
 
@@ -57,6 +51,52 @@ jobs:
 
       - name: Check feature compilation
         run: cargo check --workspace --all-targets --features "fastly cloudflare"
+
+  adapter-wasm-check:
+    name: ${{ matrix.adapter }} wasm check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - adapter: cloudflare
+            target: wasm32-unknown-unknown
+          - adapter: fastly
+            target: wasm32-wasip1
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.adapter }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.adapter }}-
+
+      - name: Retrieve Rust version
+        id: rust-version
+        run: echo "rust-version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Set up Rust tool chain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ steps.rust-version.outputs.rust-version }}
+
+      - name: Add wasm target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Fetch dependencies (locked)
+        run: cargo fetch --locked
+
+      - name: Check ${{ matrix.adapter }} wasm target
+        run: cargo check -p mocktioneer-adapter-${{ matrix.adapter }} --features ${{ matrix.adapter }} --target ${{ matrix.target }}
 
   playwright:
     name: playwright tests
