@@ -36,9 +36,7 @@ async fn root_dispatches_through_cloudflare_adapter() {
     let req = cf_request(CfMethod::Get, "/");
     let (env, ctx) = test_env_ctx();
 
-    let mut response = dispatch(&app, req, env, ctx)
-        .await
-        .expect("cf response");
+    let mut response = dispatch(&app, req, env, ctx).await.expect("cf response");
 
     assert_eq!(response.status_code(), 200);
     let body = response.bytes().await.expect("body bytes");

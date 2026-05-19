@@ -5,8 +5,8 @@
 )]
 
 use edgezero_adapter_fastly::request::dispatch;
-use fastly::Request as FastlyRequest;
 use fastly::http::{Method as FastlyMethod, StatusCode as FastlyStatus};
+use fastly::Request as FastlyRequest;
 use mocktioneer_core::build_app;
 
 fn fastly_request(method: FastlyMethod, path: &str) -> FastlyRequest {
