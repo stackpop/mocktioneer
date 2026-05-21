@@ -10,6 +10,10 @@ use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 use worker::wasm_bindgen::JsCast as _;
 use worker::{Context, Env, Method as CfMethod, Request as CfRequest, RequestInit};
 
+// `run_in_browser` selects the browser harness, but CI runs these tests
+// headless under Node via the `wasm-bindgen-test-runner` set in
+// `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER` — the runner picks the
+// environment, this macro only declares the harness mode.
 wasm_bindgen_test_configure!(run_in_browser);
 
 fn cf_request(method: CfMethod, path: &str) -> CfRequest {

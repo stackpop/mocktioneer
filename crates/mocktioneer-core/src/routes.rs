@@ -124,8 +124,6 @@ struct SizeDimensions {
     width: i64,
 }
 
-impl SizeDimensions {}
-
 struct ValidatedSize<F>(SizeDimensions, PhantomData<F>);
 
 pub struct Cors;
@@ -344,6 +342,8 @@ pub async fn handle_pixel(
     let cookie_name = "mtkid";
     let mut set_cookie = None;
 
+    // `pid` is validated during extraction (length 1..=128) but intentionally
+    // unused: the pixel endpoint only echoes a tracking cookie, not the pid.
     let PixelQueryParams { .. } = params;
 
     let existing = headers

@@ -269,8 +269,13 @@ pub struct Site {
     pub page: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher: Option<Publisher>,
+    /// `OpenRTB` spec `Site.ref` — the referrer URL. Raw identifier `r#ref`
+    /// serializes to the JSON key `ref`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub r#ref: Option<String>,
+    /// Non-spec compatibility field: captures a literal `ref_` JSON key
+    /// emitted by some legacy callers. Distinct from `r#ref` (the spec
+    /// `ref`); retained so such payloads round-trip without data loss.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ref_: Option<String>,
 }
@@ -401,6 +406,9 @@ pub struct Geo {
     pub ext: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ipservice: Option<i64>,
+    /// Non-spec compatibility field: captures a literal `_type` JSON key
+    /// emitted by some legacy callers. The `OpenRTB` spec `Geo.type`
+    /// (location source) is carried by [`Geo::type2`] instead.
     #[serde(rename = "_type", skip_serializing_if = "Option::is_none")]
     pub kind: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -411,6 +419,9 @@ pub struct Geo {
     pub lon: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
+    /// `OpenRTB` spec `Geo.type` — source of the location data
+    /// (1 = GPS, 2 = IP, 3 = user-provided). Named `type2` because `type`
+    /// is a Rust keyword; serializes to the JSON key `type`.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type2: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
