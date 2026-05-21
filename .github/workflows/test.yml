@@ -47,7 +47,7 @@ jobs:
         run: rustup target add wasm32-wasip1
 
       - name: Setup Viceroy
-        run: cargo install viceroy --locked
+        run: cargo install viceroy --version 0.16.0 --locked
 
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
