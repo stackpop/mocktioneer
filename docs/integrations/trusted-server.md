@@ -59,6 +59,8 @@ export TS_BASE_URL="https://ts.publisher.com"
 export TS_ADMIN_USER="admin"
 export TS_ADMIN_PASS="your-password"
 export MOCKTIONEER_BASE_URL="https://mocktioneer.example.com"
+export MOCKTIONEER_API_KEY="<YOUR_BATCH_SYNC_API_KEY>"
+export MOCKTIONEER_PULL_TOKEN="<YOUR_PULL_TOKEN>"
 
 ./examples/register_partner.sh
 ```
@@ -81,7 +83,7 @@ This registers Mocktioneer with the following capabilities:
   "id": "mocktioneer",
   "name": "Mocktioneer Mock DSP",
   "allowed_return_domains": ["mocktioneer.example.com"],
-  "api_key": "mtk-demo-key-change-me",
+  "api_key": "<YOUR_BATCH_SYNC_API_KEY>",
   "bidstream_enabled": true,
   "source_domain": "mocktioneer.dev",
   "openrtb_atype": 3,
@@ -92,7 +94,7 @@ This registers Mocktioneer with the following capabilities:
   "pull_sync_allowed_domains": ["mocktioneer.example.com"],
   "pull_sync_ttl_sec": 86400,
   "pull_sync_rate_limit": 10,
-  "ts_pull_token": "mtk-pull-token-change-me"
+  "ts_pull_token": "<YOUR_PULL_TOKEN>"
 }
 ```
 
@@ -106,11 +108,11 @@ This registers Mocktioneer with the following capabilities:
 | `TS_ADMIN_USER`          | Basic Auth username for admin API              | **Required**                             |
 | `TS_ADMIN_PASS`          | Basic Auth password for admin API              | **Required**                             |
 | `MOCKTIONEER_BASE_URL`   | Mocktioneer's public base URL                  | `https://origin-mocktioneer.cdintel.com` |
-| `MOCKTIONEER_API_KEY`    | API key for batch sync authentication          | `mtk-demo-key-change-me`                 |
-| `MOCKTIONEER_PULL_TOKEN` | Bearer token trusted-server sends on pull sync | `mtk-pull-token-change-me`               |
+| `MOCKTIONEER_API_KEY`    | API key for batch sync authentication          | **Required**                             |
+| `MOCKTIONEER_PULL_TOKEN` | Bearer token trusted-server sends on pull sync | **Required**                             |
 
-::: warning Change Default Tokens
-The default `MOCKTIONEER_API_KEY` and `MOCKTIONEER_PULL_TOKEN` values are placeholders. Set real values in production.
+::: warning Use Real Secrets
+`MOCKTIONEER_API_KEY` and `MOCKTIONEER_PULL_TOKEN` are credentials. Set deployment-specific secret values; the examples above use placeholders only.
 :::
 
 ### 2. Configure Mocktioneer Environment
@@ -122,19 +124,19 @@ Set these environment variables on your Mocktioneer deployment:
 export MOCKTIONEER_TS_DOMAINS="ts.publisher.com,ts.staging.publisher.com"
 
 # Optional: require authentication on /resolve
-export MOCKTIONEER_PULL_TOKEN="mtk-pull-token-change-me"
+export MOCKTIONEER_PULL_TOKEN="<YOUR_PULL_TOKEN>"
 ```
 
-| Variable                 | Description                                                             | Default               |
-| ------------------------ | ----------------------------------------------------------------------- | --------------------- |
-| `MOCKTIONEER_TS_DOMAINS` | Comma-separated allowlist of trusted-server hostnames for `/sync/start` | Unset (all allowed)   |
-| `MOCKTIONEER_PULL_TOKEN` | Bearer token for `/resolve` authentication                              | Unset (auth disabled) |
+| Variable                 | Description                                                             | Default                                                        |
+| ------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `MOCKTIONEER_TS_DOMAINS` | Comma-separated allowlist of trusted-server hostnames for `/sync/start` | Unset (all syntactically valid domains allowed; demo/dev mode) |
+| `MOCKTIONEER_PULL_TOKEN` | Bearer token for `/resolve` authentication                              | Unset (auth disabled); empty values fail closed                |
 
 ## Sync Methods
 
 ### Pixel Sync (Browser-Based)
 
-Pixel sync uses a browser redirect chain to associate Mocktioneer's `mtkid` cookie with the publisher's Edge Cookie. This is the primary sync method for browser-based environments.
+Pixel sync uses a browser redirect chain to associate Mocktioneer's `mtkid` cookie with the publisher's Edge Cookie. When Mocktioneer generates an `mtkid`, it is deterministic and host-scoped for mock/test repeatability rather than a per-visitor production identifier. This is the primary sync method for browser-based environments.
 
 **Flow:**
 
@@ -233,6 +235,8 @@ This allows you to inspect the rendered creative and verify which EC fields were
 export TS_BASE_URL="https://ts.publisher.com"
 export TS_ADMIN_USER="admin"
 export TS_ADMIN_PASS="password"
+export MOCKTIONEER_API_KEY="<YOUR_BATCH_SYNC_API_KEY>"
+export MOCKTIONEER_PULL_TOKEN="<YOUR_PULL_TOKEN>"
 ./examples/register_partner.sh
 
 # Start Mocktioneer locally
@@ -277,7 +281,8 @@ curl -s -X POST http://127.0.0.1:8787/openrtb2/auction \
 ## Security Considerations
 
 - **Open-redirect protection**: `/sync/start` validates `ts_domain` as a clean hostname, rejecting paths, ports, auth strings, and query parameters
-- **Domain allowlist**: Set `MOCKTIONEER_TS_DOMAINS` to restrict which trusted-server instances can initiate sync
-- **Constant-time auth**: `/resolve` uses SHA-256 digest comparison to prevent timing attacks on the Bearer token
+- **Domain allowlist**: Set `MOCKTIONEER_TS_DOMAINS` to restrict which trusted-server instances can initiate sync. When unset, any syntactically valid hostname is allowed for demo/dev use.
+- **Constant-time auth**: `/resolve` uses SHA-256 digest comparison to prevent timing attacks on the Bearer token. If `MOCKTIONEER_PULL_TOKEN` is set but empty, requests fail closed.
 - **Input sanitization**: User-supplied values are sanitized before logging (control characters stripped, length truncated)
-- **Deterministic IDs**: No randomness — all generated IDs use SHA-256 hashing for reproducibility
+- **Deterministic IDs**: Generated `mtkid` values are host-scoped SHA-256 hashes for reproducible mock/test behavior, not per-visitor production IDs
+- **Cloudflare Workers note**: `MOCKTIONEER_TS_DOMAINS` and `MOCKTIONEER_PULL_TOKEN` are currently read through `std::env::var`; `wrangler.toml` bindings are not enforced by this core code path. Use platform controls or adapter-level configuration for production Cloudflare deployments.

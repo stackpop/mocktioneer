@@ -149,16 +149,20 @@ echo_stdout = true
 
 Mocktioneer reads these optional environment variables at runtime for Edge Cookie sync configuration:
 
-| Variable                 | Description                                                             | Default               |
-| ------------------------ | ----------------------------------------------------------------------- | --------------------- |
-| `MOCKTIONEER_TS_DOMAINS` | Comma-separated allowlist of trusted-server hostnames for `/sync/start` | Unset (all allowed)   |
-| `MOCKTIONEER_PULL_TOKEN` | Bearer token required for `/resolve` authentication                     | Unset (auth disabled) |
+| Variable                 | Description                                                             | Default                                                        |
+| ------------------------ | ----------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `MOCKTIONEER_TS_DOMAINS` | Comma-separated allowlist of trusted-server hostnames for `/sync/start` | Unset (all syntactically valid domains allowed; demo/dev mode) |
+| `MOCKTIONEER_PULL_TOKEN` | Bearer token required for `/resolve` authentication                     | Unset (auth disabled); empty values fail closed                |
 
 ```bash
 # Example: restrict sync to specific trusted-server instances
 export MOCKTIONEER_TS_DOMAINS="ts.publisher.com,ts.staging.publisher.com"
-export MOCKTIONEER_PULL_TOKEN="mtk-pull-token-change-me"
+export MOCKTIONEER_PULL_TOKEN="<YOUR_PULL_TOKEN>"
 ```
+
+::: warning Production Security
+Set both `MOCKTIONEER_TS_DOMAINS` and a non-empty `MOCKTIONEER_PULL_TOKEN` for production-style deployments. On Cloudflare Workers, these values are currently read with `std::env::var`, so `wrangler.toml` bindings are not enforced by this core code path.
+:::
 
 See the [Trusted Server integration guide](/integrations/trusted-server) for full setup details.
 

@@ -18,12 +18,13 @@ use subtle::ConstantTimeEq;
 use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
-use crate::render::extract_ec_hash;
 use crate::auction::{
     build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
 use crate::openrtb::OpenRTBRequest;
-use crate::render::{creative_html, info_html, render_svg, render_template_str, SignatureStatus};
+use crate::render::{
+    creative_html, extract_ec_hash, info_html, render_svg, render_template_str, SignatureStatus,
+};
 
 #[derive(Deserialize, Validate)]
 struct StaticImgQuery {
@@ -112,8 +113,6 @@ struct SizeDimensions {
     width: i64,
     height: i64,
 }
-
-impl SizeDimensions {}
 
 struct ValidatedSize<F>(SizeDimensions, PhantomData<F>);
 
@@ -344,10 +343,10 @@ const MTKID_MAX_AGE: u64 = 60 * 60 * 24 * 365;
 
 /// Read an existing `mtkid` cookie or generate a new one deterministically.
 ///
-/// When no `mtkid` cookie is present, generates a deterministic ID using
-/// `SHA-256("mtkid:" || host)` truncated to 32 hex chars. This satisfies the
-/// project's determinism requirement (same host always produces the same ID)
-/// while still producing unique IDs per deployment.
+/// When no `mtkid` cookie is present, generates a deterministic host-scoped ID
+/// using `SHA-256("mtkid:" || host)` truncated to 32 hex chars. This is
+/// intentionally mock/test-oriented: first-time visitors on the same host get
+/// the same generated value instead of a per-visitor identifier.
 ///
 /// Returns `(mtkid_value, Option<set_cookie_header_value>)`.
 fn get_or_create_mtkid(headers: &HeaderMap, host: &str) -> (String, Option<String>) {
@@ -359,8 +358,9 @@ fn get_or_create_mtkid(headers: &HeaderMap, host: &str) -> (String, Option<Strin
     match existing {
         Some(id) => (id.to_string(), None),
         None => {
-            // Deterministic: SHA-256("mtkid:" || host), truncated to 32 hex chars.
-            // Same host always produces the same mtkid. Different hosts differ.
+            // Deterministic and host-scoped: SHA-256("mtkid:" || host),
+            // truncated to 32 hex chars. Same host always produces the same
+            // generated mtkid; existing cookies are still reused as-is.
             let mut hasher = Sha256::new();
             hasher.update(b"mtkid:");
             hasher.update(host.as_bytes());
@@ -568,19 +568,59 @@ const PULL_TOKEN_ENV: &str = "MOCKTIONEER_PULL_TOKEN";
 /// in controlled environments.
 const TS_ALLOWED_DOMAINS_ENV: &str = "MOCKTIONEER_TS_DOMAINS";
 
-/// Returns true if `s` looks like a valid hostname (no path, auth, port, or fragment).
+fn validation_error(code: &'static str, message: &'static str) -> ValidationError {
+    let mut err = ValidationError::new(code);
+    err.message = Some(message.into());
+    err
+}
+
+/// Returns true if `s` is a clean hostname (no path, auth, port, or fragment).
 fn is_valid_hostname(s: &str) -> bool {
-    !s.is_empty() && s.len() <= 256 && !s.contains(['/', '@', ':', '?', '#', ' ', '\t', '\n', '\r'])
+    if s.is_empty() || s.len() > 253 || s.contains(['/', '@', ':', '?', '#', ' ', '\t', '\n', '\r'])
+    {
+        return false;
+    }
+
+    s.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    })
 }
 
 /// Validates that a string is a valid EC identifier in `{64-hex}.{6-alnum}` format.
 fn validate_ec_id(value: &str) -> Result<(), ValidationError> {
     if extract_ec_hash(value).is_none() {
-        let mut err = ValidationError::new("invalid_ec_id");
-        err.message = Some("ec_id must be in {64-hex}.{6-alnum} format".into());
-        return Err(err);
+        return Err(validation_error(
+            "invalid_ec_id",
+            "ec_id must be in {64-hex}.{6-alnum} format",
+        ));
     }
     Ok(())
+}
+
+/// Validates trusted-server sync status values.
+fn validate_ts_synced(value: &str) -> Result<(), ValidationError> {
+    if matches!(value, "0" | "1") {
+        Ok(())
+    } else {
+        Err(validation_error(
+            "invalid_ts_synced",
+            "ts_synced must be either 0 or 1",
+        ))
+    }
+}
+
+/// Validates client IP address values accepted by `/resolve`.
+fn validate_ip_address(value: &str) -> Result<(), ValidationError> {
+    value
+        .parse::<std::net::IpAddr>()
+        .map(|_| ())
+        .map_err(|_| validation_error("invalid_ip", "ip must be a valid IPv4 or IPv6 address"))
 }
 
 #[derive(Deserialize, Validate)]
@@ -593,9 +633,11 @@ struct SyncStartParams {
 #[derive(Deserialize, Validate)]
 struct SyncDoneParams {
     /// Whether the sync succeeded ("1") or failed ("0").
+    #[validate(custom(function = "validate_ts_synced"))]
     ts_synced: String,
     /// Failure reason — present only when ts_synced=0.
     #[serde(default)]
+    #[validate(length(max = 256))]
     ts_reason: Option<String>,
 }
 
@@ -605,13 +647,13 @@ struct ResolveParams {
     #[validate(custom(function = "validate_ec_id"))]
     ec_id: String,
     /// Client IP address.
-    #[validate(length(min = 1, max = 45))]
+    #[validate(length(min = 1, max = 45), custom(function = "validate_ip_address"))]
     ip: String,
 }
 
 #[derive(Serialize)]
 struct ResolveResponse {
-    uid: Option<String>,
+    uid: String,
 }
 
 /// `GET /sync/start?ts_domain=publisher.example.com`
@@ -652,7 +694,7 @@ pub async fn handle_sync_start(
         if !is_allowed {
             log::warn!(
                 "EC sync start rejected: ts_domain={} not in {}",
-                params.ts_domain,
+                sanitize_for_log(&params.ts_domain, 64),
                 TS_ALLOWED_DOMAINS_ENV
             );
             return build_response(StatusCode::FORBIDDEN, Body::empty());
@@ -679,15 +721,18 @@ pub async fn handle_sync_start(
     );
 
     log::info!(
-        "EC sync start: mtkid={}, redirect to {}",
-        mtkid,
-        redirect_url
+        "EC sync start: mtkid={}, ts_domain={}",
+        sanitize_for_log(&mtkid, 64),
+        sanitize_for_log(&params.ts_domain, 64)
     );
 
     let loc = match HeaderValue::from_str(&redirect_url) {
         Ok(v) => v,
         Err(_) => {
-            log::error!("EC sync start: invalid redirect URL: {}", redirect_url);
+            log::error!(
+                "EC sync start: invalid redirect URL for ts_domain={}",
+                sanitize_for_log(&params.ts_domain, 64)
+            );
             return build_response(StatusCode::INTERNAL_SERVER_ERROR, Body::empty());
         }
     };
@@ -757,7 +802,8 @@ pub async fn handle_sync_done(ValidatedQuery(params): ValidatedQuery<SyncDonePar
 ///
 /// Authentication: `Authorization: Bearer {token}` validated against
 /// `MOCKTIONEER_PULL_TOKEN` env var (constant-time comparison). If the env
-/// var is unset, auth is skipped.
+/// var is unset, auth is skipped. If the env var is set but empty, requests
+/// fail closed with `401 Unauthorized`.
 ///
 /// **WASM note:** `std::env::var` returns `Err` on Cloudflare Workers,
 /// which means auth is silently disabled on that platform. See
@@ -767,44 +813,38 @@ pub async fn handle_resolve(
     Headers(headers): Headers,
     ValidatedQuery(params): ValidatedQuery<ResolveParams>,
 ) -> Result<Response, EdgeError> {
-    // Check bearer token if configured
-    if let Ok(expected_token) = std::env::var(PULL_TOKEN_ENV) {
-        let auth_header = headers
-            .get(header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("");
+    let expected_token = std::env::var(PULL_TOKEN_ENV).ok();
+    let auth_header = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
 
-        let provided_token = auth_header.strip_prefix("Bearer ").unwrap_or("");
-        if !constant_time_token_eq(provided_token, &expected_token) {
+    match authorize_pull_token(auth_header, expected_token.as_deref()) {
+        PullAuthOutcome::Authorized => {}
+        PullAuthOutcome::Unauthorized => {
             log::warn!(
-                "Pull sync auth failed for ec_id={}",
-                sanitize_for_log(&params.ec_id, 72)
+                "Pull sync auth failed for ec_id_prefix={}...",
+                ec_id_log_prefix(&params.ec_id)
+            );
+            return Ok(build_response(StatusCode::UNAUTHORIZED, Body::empty()));
+        }
+        PullAuthOutcome::Misconfigured => {
+            log::error!(
+                "{} is set but empty; rejecting pull sync request",
+                PULL_TOKEN_ENV
             );
             return Ok(build_response(StatusCode::UNAUTHORIZED, Body::empty()));
         }
     }
 
-    // Extract the 64-hex hash prefix from the full ec_id, then hash with IP.
-    // Validation already confirmed the format, so unwrap is safe here.
-    let ec_hash = extract_ec_hash(&params.ec_id).expect("validated ec_id format");
-
-    // Generate deterministic UID from ec_hash + IP: mtk-{sha256(ec_hash|ip)[0:12]}
-    let mut hasher = Sha256::new();
-    hasher.update(ec_hash.as_bytes());
-    hasher.update(b"|");
-    hasher.update(params.ip.as_bytes());
-    let hash = hasher.finalize();
-    let hex = hex_encode(&hash);
-    let uid = format!("mtk-{}", &hex[..12]);
+    let uid = resolve_uid(&params.ec_id, &params.ip)?;
 
     log::info!(
-        "Pull sync resolve: ec_id={}..., ip={}, uid={}",
-        &params.ec_id[..8],
-        params.ip,
-        uid
+        "Pull sync resolve: ec_id_prefix={}..., ip={}",
+        ec_id_log_prefix(&params.ec_id),
+        sanitize_for_log(&params.ip, 45)
     );
 
-    let body = Body::json(&ResolveResponse { uid: Some(uid) }).map_err(|e| {
+    let body = Body::json(&ResolveResponse { uid }).map_err(|e| {
         log::error!("Failed to serialize resolve response: {}", e);
         EdgeError::internal(e)
     })?;
@@ -814,6 +854,58 @@ pub async fn handle_resolve(
         HeaderValue::from_static("application/json"),
     );
     Ok(response)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullAuthOutcome {
+    Authorized,
+    Unauthorized,
+    Misconfigured,
+}
+
+fn authorize_pull_token(
+    auth_header: Option<&str>,
+    expected_token: Option<&str>,
+) -> PullAuthOutcome {
+    let Some(expected_token) = expected_token else {
+        return PullAuthOutcome::Authorized;
+    };
+
+    if expected_token.trim().is_empty() {
+        return PullAuthOutcome::Misconfigured;
+    }
+
+    let provided_token = auth_header
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .unwrap_or("");
+
+    if constant_time_token_eq(provided_token, expected_token) {
+        PullAuthOutcome::Authorized
+    } else {
+        PullAuthOutcome::Unauthorized
+    }
+}
+
+fn resolve_uid(ec_id: &str, ip: &str) -> Result<String, EdgeError> {
+    let ec_hash = extract_ec_hash(ec_id)
+        .ok_or_else(|| EdgeError::validation("invalid ec_id format".to_string()))?;
+    Ok(resolve_uid_from_ec_hash(ec_hash, ip))
+}
+
+fn resolve_uid_from_ec_hash(ec_hash: &str, ip: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(ec_hash.as_bytes());
+    hasher.update(b"|");
+    hasher.update(ip.as_bytes());
+    let hash = hasher.finalize();
+    let hex = hex_encode(&hash);
+    format!("mtk-{}", &hex[..12])
+}
+
+fn ec_id_log_prefix(ec_id: &str) -> String {
+    extract_ec_hash(ec_id)
+        .map(|ec_hash| ec_hash.chars().take(8).collect())
+        .unwrap_or_else(|| sanitize_for_log(ec_id, 8))
 }
 
 /// Minimal percent-encoding for URL query parameter values.
@@ -1476,66 +1568,50 @@ mod tests {
     }
 
     #[test]
-    fn handle_resolve_returns_deterministic_uid() {
-        // Ensure no auth token is set (tests may run concurrently)
-        std::env::remove_var(PULL_TOKEN_ENV);
-
-        let ec_id = format!("{}.AbC123", "a".repeat(64));
-        let uri = format!("/resolve?ec_id={}&ip=203.0.113.1", ec_id);
-        let rctx = ctx(Method::GET, &uri, Body::empty(), &[]);
-        let response = response_from(block_on(handle_resolve(rctx)));
-        assert_eq!(response.status(), StatusCode::OK);
-        let body = String::from_utf8(response.into_body().into_bytes().to_vec()).unwrap();
-        let json: serde_json::Value = serde_json::from_str(&body).unwrap();
-        let uid = json["uid"].as_str().expect("should have uid").to_string();
-        assert!(uid.starts_with("mtk-"), "uid should start with mtk-");
-        assert_eq!(uid.len(), 16, "uid should be mtk- + 12 hex chars");
-
-        // Same IP should produce the same UID (deterministic)
-        let rctx2 = ctx(Method::GET, &uri, Body::empty(), &[]);
-        let response2 = response_from(block_on(handle_resolve(rctx2)));
-        let body2 = String::from_utf8(response2.into_body().into_bytes().to_vec()).unwrap();
-        let json2: serde_json::Value = serde_json::from_str(&body2).unwrap();
-        assert_eq!(
-            json2["uid"].as_str().unwrap(),
-            &uid,
-            "should be deterministic"
+    fn handle_sync_done_rejects_invalid_status() {
+        let ctx = ctx(Method::GET, "/sync/done?ts_synced=x", Body::empty(), &[]);
+        let response = response_from(block_on(handle_sync_done(ctx)));
+        assert!(
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+            "should reject ts_synced values other than 0 or 1"
         );
     }
 
     #[test]
-    fn handle_resolve_different_ips_produce_different_uids() {
-        // Ensure no auth token is set
-        std::env::remove_var(PULL_TOKEN_ENV);
+    fn handle_sync_done_rejects_overlong_reason() {
+        let uri = format!("/sync/done?ts_synced=0&ts_reason={}", "x".repeat(257));
+        let ctx = ctx(Method::GET, &uri, Body::empty(), &[]);
+        let response = response_from(block_on(handle_sync_done(ctx)));
+        assert!(
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+            "should reject overlong ts_reason values"
+        );
+    }
 
+    #[test]
+    fn resolve_uid_returns_deterministic_uid() {
+        let ec_id = format!("{}.AbC123", "a".repeat(64));
+        let uid = resolve_uid(&ec_id, "203.0.113.1").expect("uid");
+        assert!(uid.starts_with("mtk-"), "uid should start with mtk-");
+        assert_eq!(uid.len(), 16, "uid should be mtk- + 12 hex chars");
+
+        let uid2 = resolve_uid(&ec_id, "203.0.113.1").expect("uid");
+        assert_eq!(uid2, uid, "should be deterministic");
+    }
+
+    #[test]
+    fn resolve_uid_different_ips_produce_different_uids() {
         let ec_id = format!("{}.XyZ789", "b".repeat(64));
-
-        let uri1 = format!("/resolve?ec_id={}&ip=203.0.113.1", ec_id);
-        let ctx1 = ctx(Method::GET, &uri1, Body::empty(), &[]);
-        let resp1 = response_from(block_on(handle_resolve(ctx1)));
-        let body1 = String::from_utf8(resp1.into_body().into_bytes().to_vec()).unwrap();
-        let uid1 = serde_json::from_str::<serde_json::Value>(&body1).unwrap()["uid"]
-            .as_str()
-            .unwrap()
-            .to_string();
-
-        let uri2 = format!("/resolve?ec_id={}&ip=198.51.100.1", ec_id);
-        let ctx2 = ctx(Method::GET, &uri2, Body::empty(), &[]);
-        let resp2 = response_from(block_on(handle_resolve(ctx2)));
-        let body2 = String::from_utf8(resp2.into_body().into_bytes().to_vec()).unwrap();
-        let uid2 = serde_json::from_str::<serde_json::Value>(&body2).unwrap()["uid"]
-            .as_str()
-            .unwrap()
-            .to_string();
+        let uid1 = resolve_uid(&ec_id, "203.0.113.1").expect("uid");
+        let uid2 = resolve_uid(&ec_id, "198.51.100.1").expect("uid");
 
         assert_ne!(uid1, uid2, "different IPs should produce different UIDs");
     }
 
     #[test]
     fn handle_resolve_rejects_invalid_ec_id() {
-        // Ensure no auth token is set
-        std::env::remove_var(PULL_TOKEN_ENV);
-
         let ctx = ctx(
             Method::GET,
             "/resolve?ec_id=tooshort&ip=1.2.3.4",
@@ -1550,40 +1626,68 @@ mod tests {
         );
     }
 
-    /// Auth test is run with `--ignored` because it uses env vars that conflict
-    /// with parallel test execution. Run: `cargo test -p mocktioneer-core -- --ignored`
     #[test]
-    #[ignore = "uses env vars that race with parallel tests"]
-    fn handle_resolve_rejects_when_auth_fails() {
-        std::env::set_var(PULL_TOKEN_ENV, "correct-token");
+    fn handle_resolve_rejects_invalid_ip() {
+        let ec_id = format!("{}.AbC123", "a".repeat(64));
+        let uri = format!("/resolve?ec_id={}&ip=not-an-ip", ec_id);
+        let ctx = ctx(Method::GET, &uri, Body::empty(), &[]);
+        let response = response_from(block_on(handle_resolve(ctx)));
+        assert!(
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+            "should reject invalid IP address"
+        );
+    }
 
-        let ec_id = format!("{}.TsT456", "c".repeat(64));
-        let uri = format!("/resolve?ec_id={}&ip=1.2.3.4", ec_id);
+    #[test]
+    fn validate_ip_address_accepts_ipv4_and_ipv6() {
+        assert!(validate_ip_address("203.0.113.1").is_ok());
+        assert!(validate_ip_address("2001:db8::1").is_ok());
+        assert!(validate_ip_address("not-an-ip").is_err());
+    }
 
-        // Request with wrong token
-        let mut builder = request_builder();
-        builder = builder
-            .method(Method::GET)
-            .uri(&uri)
-            .header("Authorization", "Bearer wrong-token");
-        let request = builder.body(Body::empty()).expect("request");
-        let rctx = RequestContext::new(request, PathParams::default());
-        let response = response_from(block_on(handle_resolve(rctx)));
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    #[test]
+    fn authorize_pull_token_allows_unset_auth() {
+        assert_eq!(
+            authorize_pull_token(None, None),
+            PullAuthOutcome::Authorized
+        );
+    }
 
-        // Request with correct token should succeed
-        let mut builder2 = request_builder();
-        builder2 = builder2
-            .method(Method::GET)
-            .uri(&uri)
-            .header("Authorization", "Bearer correct-token");
-        let request2 = builder2.body(Body::empty()).expect("request");
-        let rctx2 = RequestContext::new(request2, PathParams::default());
-        let response2 = response_from(block_on(handle_resolve(rctx2)));
-        assert_eq!(response2.status(), StatusCode::OK);
+    #[test]
+    fn authorize_pull_token_accepts_correct_bearer_token() {
+        assert_eq!(
+            authorize_pull_token(Some("Bearer correct-token"), Some("correct-token")),
+            PullAuthOutcome::Authorized
+        );
+    }
 
-        // Clean up env var
-        std::env::remove_var(PULL_TOKEN_ENV);
+    #[test]
+    fn authorize_pull_token_rejects_missing_or_wrong_bearer_token() {
+        assert_eq!(
+            authorize_pull_token(None, Some("correct-token")),
+            PullAuthOutcome::Unauthorized
+        );
+        assert_eq!(
+            authorize_pull_token(Some("Bearer wrong-token"), Some("correct-token")),
+            PullAuthOutcome::Unauthorized
+        );
+        assert_eq!(
+            authorize_pull_token(Some("Basic correct-token"), Some("correct-token")),
+            PullAuthOutcome::Unauthorized
+        );
+    }
+
+    #[test]
+    fn authorize_pull_token_rejects_empty_configured_token() {
+        assert_eq!(
+            authorize_pull_token(Some("Bearer "), Some("")),
+            PullAuthOutcome::Misconfigured
+        );
+        assert_eq!(
+            authorize_pull_token(Some("Bearer anything"), Some("   ")),
+            PullAuthOutcome::Misconfigured
+        );
     }
 
     #[test]
@@ -1608,6 +1712,7 @@ mod tests {
         assert!(is_valid_hostname("ts.publisher.com"));
         assert!(is_valid_hostname("localhost"));
         assert!(is_valid_hostname("my-server.example.org"));
+        assert!(is_valid_hostname("127.0.0.1"));
     }
 
     #[test]
@@ -1619,6 +1724,18 @@ mod tests {
         assert!(!is_valid_hostname("evil.com#fragment"));
         assert!(!is_valid_hostname("evil.com foo"));
         assert!(!is_valid_hostname(""));
+    }
+
+    #[test]
+    fn is_valid_hostname_rejects_invalid_labels() {
+        assert!(!is_valid_hostname("bad..example.com"));
+        assert!(!is_valid_hostname("-bad.example.com"));
+        assert!(!is_valid_hostname("bad-.example.com"));
+        assert!(!is_valid_hostname("bad_label.example.com"));
+        assert!(!is_valid_hostname(&format!(
+            "{}.example.com",
+            "a".repeat(64)
+        )));
     }
 
     #[test]
@@ -1690,8 +1807,6 @@ mod tests {
 
     #[test]
     fn handle_resolve_rejects_non_hex_ec_id() {
-        std::env::remove_var(PULL_TOKEN_ENV);
-
         // 64 chars but not hex, plus valid suffix
         let ec_id = format!("{}.AbC123", "z".repeat(64));
         let uri = format!("/resolve?ec_id={}&ip=1.2.3.4", ec_id);
@@ -1705,7 +1820,7 @@ mod tests {
     }
 
     #[test]
-    fn handle_pixel_produces_deterministic_mtkid() {
+    fn handle_pixel_produces_host_scoped_deterministic_mtkid() {
         let ctx1 = ctx(Method::GET, "/pixel?pid=test", Body::empty(), &[]);
         let response1 = response_from(block_on(handle_pixel(ctx1)));
         let cookie1 = response1
@@ -1726,6 +1841,9 @@ mod tests {
             .unwrap()
             .to_string();
 
-        assert_eq!(cookie1, cookie2, "same host should produce same mtkid");
+        assert_eq!(
+            cookie1, cookie2,
+            "same host should produce the same mock/test mtkid"
+        );
     }
 }

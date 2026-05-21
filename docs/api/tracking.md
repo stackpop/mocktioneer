@@ -20,12 +20,12 @@ Returns a 1x1 transparent GIF and optionally sets a tracking cookie.
 
 ### Behavior
 
-1. If no `mtkid` cookie exists, sets one with a deterministic SHA-256-based value
+1. If no `mtkid` cookie exists, sets one with a deterministic host-scoped SHA-256-based value
 2. Returns a 1x1 transparent GIF
 3. Sets cache-control headers to prevent caching
 
-::: tip Deterministic IDs
-The `mtkid` value is derived from `SHA-256("mtkid:" || host)` and truncated to 32 hex characters. The same host always produces the same `mtkid` — there is no randomness. This cookie is shared with the [pixel sync](/api/sync) flow.
+::: tip Deterministic Host-Scoped IDs
+When no existing cookie is present, the `mtkid` value is derived from `SHA-256("mtkid:" || host)` and truncated to 32 hex characters. The same Mocktioneer host always produces the same generated `mtkid`, so this is intentionally mock/test-oriented and not a per-visitor production identifier. This cookie is shared with the [pixel sync](/api/sync) flow.
 :::
 
 ### Response Headers
@@ -42,15 +42,15 @@ The `Set-Cookie` header is only present when creating a new cookie.
 
 ### Cookie Details
 
-| Property | Value                                     |
-| -------- | ----------------------------------------- |
-| Name     | `mtkid`                                   |
-| Value    | Deterministic SHA-256 hash (32 hex chars) |
-| Path     | `/`                                       |
-| Max-Age  | 31536000 (1 year)                         |
-| SameSite | None                                      |
-| Secure   | Yes                                       |
-| HttpOnly | Yes                                       |
+| Property | Value                                                 |
+| -------- | ----------------------------------------------------- |
+| Name     | `mtkid`                                               |
+| Value    | Host-scoped deterministic SHA-256 hash (32 hex chars) |
+| Path     | `/`                                                   |
+| Max-Age  | 31536000 (1 year)                                     |
+| SameSite | None                                                  |
+| Secure   | Yes                                                   |
+| HttpOnly | Yes                                                   |
 
 ### Examples
 

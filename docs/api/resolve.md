@@ -15,21 +15,21 @@ Returns a deterministic buyer UID derived from the EC identifier and IP combinat
 | Parameter | Location | Type   | Required | Description                                       |
 | --------- | -------- | ------ | -------- | ------------------------------------------------- |
 | `ec_id`   | Query    | string | Yes      | Full EC identifier in `{64-hex}.{6-alnum}` format |
-| `ip`      | Query    | string | Yes      | Client IP address (1-45 characters)               |
+| `ip`      | Query    | string | Yes      | Valid IPv4 or IPv6 client IP address              |
 
 ## Authentication
 
-When `MOCKTIONEER_PULL_TOKEN` is set, the endpoint requires a Bearer token in the `Authorization` header. The token is compared using constant-time comparison (SHA-256 digest) to prevent timing attacks.
+When `MOCKTIONEER_PULL_TOKEN` is set to a non-empty value, the endpoint requires a Bearer token in the `Authorization` header. The token is compared using constant-time comparison (SHA-256 digest) to prevent timing attacks.
 
 ```bash
 curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123&ip=1.2.3.4" \
-  -H "Authorization: Bearer mtk-pull-token-change-me"
+  -H "Authorization: Bearer ${MOCKTIONEER_PULL_TOKEN}"
 ```
 
-When `MOCKTIONEER_PULL_TOKEN` is not set, authentication is disabled and any request is accepted.
+When `MOCKTIONEER_PULL_TOKEN` is not set, authentication is disabled and any request is accepted. If it is set but empty, requests fail closed with `401 Unauthorized`.
 
 ::: warning WASM Note
-On Cloudflare Workers, `std::env::var` returns `Err`, so authentication is effectively disabled in that environment. Use Cloudflare's built-in access controls (e.g., Service Auth tokens) instead.
+On Cloudflare Workers, this endpoint currently reads `MOCKTIONEER_PULL_TOKEN` with `std::env::var`, which does not see `wrangler.toml` bindings. Authentication is effectively disabled there unless enforced by platform controls such as Cloudflare Service Auth tokens.
 :::
 
 ## Response Format
@@ -45,7 +45,7 @@ On Cloudflare Workers, `std::env::var` returns `Err`, so authentication is effec
 | `uid` | string | Deterministic UID: `mtk-` prefix + 12 hex chars |
 
 ::: tip Deterministic UIDs
-The 64-hex hash prefix is extracted from the `ec_id`, then hashed with the IP: `SHA-256(ec_hash || ip)` truncated to 12 hex characters, prefixed with `mtk-`. The same `(ec_id, ip)` pair always produces the same UID.
+The 64-hex hash prefix is extracted from the `ec_id`, then hashed with the IP as `SHA-256(ec_hash | ip)` truncated to 12 hex characters, prefixed with `mtk-`. The same `(ec_id, ip)` pair always produces the same UID.
 :::
 
 ## Examples
@@ -56,7 +56,7 @@ curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1
 
 # With authentication
 curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123&ip=192.168.1.1" \
-  -H "Authorization: Bearer mtk-pull-token-change-me" | jq .
+  -H "Authorization: Bearer ${MOCKTIONEER_PULL_TOKEN}" | jq .
 ```
 
 ```json
@@ -103,10 +103,13 @@ curl "http://127.0.0.1:8787/resolve?ec_id=zzzz...64chars....AbC123&ip=1.2.3.4"
 # Returns 400 Bad Request
 ```
 
-### Missing ip (400)
+### Missing or invalid ip (400)
 
 ```bash
 curl "http://127.0.0.1:8787/resolve?ec_id=a1b2...64hex.AbC123"
+# Returns 400 Bad Request
+
+curl "http://127.0.0.1:8787/resolve?ec_id=a1b2...64hex.AbC123&ip=not-an-ip"
 # Returns 400 Bad Request
 ```
 
@@ -122,9 +125,9 @@ curl "http://127.0.0.1:8787/resolve?ec_id=a1b2...64hex.AbC123&ip=1.2.3.4" \
 
 ## Environment Variables
 
-| Variable                 | Description                                                                            | Default |
-| ------------------------ | -------------------------------------------------------------------------------------- | ------- |
-| `MOCKTIONEER_PULL_TOKEN` | Bearer token required for `/resolve` requests. When unset, authentication is disabled. | Unset   |
+| Variable                 | Description                                                                                                              | Default |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ | ------- |
+| `MOCKTIONEER_PULL_TOKEN` | Bearer token required for `/resolve` requests. When unset, authentication is disabled; when empty, requests fail closed. | Unset   |
 
 ## Next Steps
 

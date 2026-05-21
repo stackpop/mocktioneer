@@ -51,7 +51,7 @@ Initiates the pixel sync by redirecting the browser to the trusted-server's `/sy
 
 1. Validates `ts_domain` as a clean hostname (no paths, ports, auth, or query strings)
 2. If `MOCKTIONEER_TS_DOMAINS` is set, checks `ts_domain` against the allowlist
-3. Reads existing `mtkid` cookie or creates a new deterministic one
+3. Reads existing `mtkid` cookie or creates a new deterministic, host-scoped mock/test one
 4. Redirects to `https://{ts_domain}/sync?partner=mocktioneer&uid={mtkid}&return={self}/sync/done`
 
 ### Response
@@ -69,18 +69,22 @@ The `Set-Cookie` header is only present when creating a new cookie.
 
 ### Cookie Details
 
-| Property | Value                                     |
-| -------- | ----------------------------------------- |
-| Name     | `mtkid`                                   |
-| Value    | Deterministic SHA-256 hash (32 hex chars) |
-| Path     | `/`                                       |
-| Max-Age  | 31536000 (1 year)                         |
-| SameSite | None                                      |
-| Secure   | Yes                                       |
-| HttpOnly | Yes                                       |
+| Property | Value                                                 |
+| -------- | ----------------------------------------------------- |
+| Name     | `mtkid`                                               |
+| Value    | Host-scoped deterministic SHA-256 hash (32 hex chars) |
+| Path     | `/`                                                   |
+| Max-Age  | 31536000 (1 year)                                     |
+| SameSite | None                                                  |
+| Secure   | Yes                                                   |
+| HttpOnly | Yes                                                   |
 
-::: tip Deterministic IDs
-The `mtkid` value is derived from `SHA-256("mtkid:" || host)` and truncated to 32 hex characters. The same host always produces the same `mtkid` — there is no randomness.
+::: tip Deterministic Host-Scoped IDs
+When no existing cookie is present, the generated `mtkid` value is derived from `SHA-256("mtkid:" || host)` and truncated to 32 hex characters. The same Mocktioneer host always produces the same generated `mtkid`, so this is intentionally mock/test-oriented and not a per-visitor production identifier.
+:::
+
+::: warning Configure an Allowlist in Production
+When `MOCKTIONEER_TS_DOMAINS` is unset, `/sync/start` accepts any syntactically valid hostname. This is convenient for local demos, but production deployments should set an explicit allowlist.
 :::
 
 ### Examples
@@ -115,7 +119,7 @@ curl http://127.0.0.1:8787/sync/start
 
 #### Invalid hostname (400)
 
-Characters like `/`, `@`, `:`, `?`, `#`, or whitespace in `ts_domain` are rejected:
+Characters like `/`, `@`, `:`, `?`, `#`, or whitespace in `ts_domain` are rejected. Empty labels, labels longer than 63 characters, underscores, and labels starting or ending with `-` are also rejected:
 
 ```bash
 curl "http://127.0.0.1:8787/sync/start?ts_domain=evil.com/redirect"
@@ -154,10 +158,10 @@ Receives the callback from trusted-server after the sync completes. Returns a 1x
 
 ### Parameters
 
-| Parameter   | Location | Type   | Required | Description                           |
-| ----------- | -------- | ------ | -------- | ------------------------------------- |
-| `ts_synced` | Query    | string | Yes      | `"1"` for success, `"0"` for failure  |
-| `ts_reason` | Query    | string | No       | Failure reason (e.g., `"no_consent"`) |
+| Parameter   | Location | Type   | Required | Description                                          |
+| ----------- | -------- | ------ | -------- | ---------------------------------------------------- |
+| `ts_synced` | Query    | string | Yes      | `"1"` for success, `"0"` for failure                 |
+| `ts_reason` | Query    | string | No       | Failure reason, max 256 chars (e.g., `"no_consent"`) |
 
 ### Response
 
@@ -167,7 +171,7 @@ Always returns a 1x1 transparent GIF:
 HTTP/1.1 200 OK
 Content-Type: image/gif
 Content-Length: 43
-Cache-Control: no-store
+Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 ```
 
 ### Examples
@@ -184,14 +188,18 @@ curl -v "http://127.0.0.1:8787/sync/done?ts_synced=0&ts_reason=no_consent"
 
 ## Environment Variables
 
-| Variable                 | Description                                                                                                             | Default                     |
-| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- | --------------------------- |
-| `MOCKTIONEER_TS_DOMAINS` | Comma-separated allowlist of trusted-server hostnames. When set, `/sync/start` rejects any `ts_domain` not in the list. | Unset (all domains allowed) |
+| Variable                 | Description                                                                                                             | Default                                                        |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `MOCKTIONEER_TS_DOMAINS` | Comma-separated allowlist of trusted-server hostnames. When set, `/sync/start` rejects any `ts_domain` not in the list. | Unset (all syntactically valid domains allowed; demo/dev mode) |
 
 ```bash
 # Allow only specific trusted-server instances
 export MOCKTIONEER_TS_DOMAINS="ts.publisher.com,ts.staging.publisher.com"
 ```
+
+::: warning WASM Note
+On Cloudflare Workers, this endpoint currently reads `MOCKTIONEER_TS_DOMAINS` with `std::env::var`, which does not see `wrangler.toml` bindings. Use platform controls or adapter-level configuration for production Cloudflare deployments.
+:::
 
 ## Next Steps
 
