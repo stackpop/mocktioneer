@@ -212,7 +212,7 @@ mod tests {
     }
 
     #[test]
-    fn aps_bid_selects_highest_cpm_from_multiple_standard_sizes() {
+    fn aps_bid_selects_largest_area_from_multiple_standard_sizes() {
         let req = ApsBidRequest {
             pub_id: "5555".to_owned(),
             slots: vec![ApsSlot {

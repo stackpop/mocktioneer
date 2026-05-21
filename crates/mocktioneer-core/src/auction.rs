@@ -3,97 +3,48 @@ use crate::openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
 use crate::render::{iframe_html, CreativeMetadata, SignatureStatus};
-use phf::phf_map;
-use serde_json::json;
-use std::cmp::Ordering;
 use uuid::Uuid;
 
 // ============================================================================
-// Standard Ad Sizes - single source of truth for supported sizes and pricing
+// Standard Ad Sizes - single source of truth for supported sizes
 // ============================================================================
 
-/// Default CPM for non-standard sizes (base price before area adjustment).
-pub const DEFAULT_CPM: f64 = 1.50;
+/// Fixed CPM used for all Mocktioneer-generated bids.
+pub const FIXED_BID_CPM: f64 = 0.20;
 
-/// Maximum area-based bonus added to `DEFAULT_CPM` for non-standard sizes.
-/// Final CPM = `DEFAULT_CPM` + min(area/100000, `MAX_AREA_BONUS`).
-pub const MAX_AREA_BONUS: f64 = 3.00;
-
-/// Compile-time perfect hash map for standard sizes: "`WxH`" -> cpm.
-/// Zero runtime initialization cost.
-static SIZE_MAP: phf::Map<&'static str, f64> = phf_map! {
+/// Standard IAB ad sizes supported by Mocktioneer.
+/// Sorted by (width, height) for deterministic iteration order.
+const STANDARD_SIZES: [(i64, i64); 13] = [
     // Desktop & General Display Sizes
-    "300x250" => 2.50_f64,  // Medium Rectangle
-    "336x280" => 2.60_f64,  // Large Rectangle
-    "728x90" => 3.00_f64,   // Leaderboard
-    "970x90" => 3.80_f64,   // Large Leaderboard
-    "160x600" => 3.20_f64,  // Wide Skyscraper
-    "300x600" => 3.50_f64,  // Half Page
-    "970x250" => 4.20_f64,  // Billboard
-    "468x60" => 2.00_f64,   // Banner
-    // Mobile-Specific Sizes
-    "320x50" => 1.80_f64,   // Mobile Leaderboard
-    "300x50" => 1.70_f64,   // Mobile Banner (alternative)
-    "320x100" => 2.20_f64,  // Large Mobile Banner
-    "320x480" => 2.80_f64,  // Mobile Interstitial Portrait
-    "480x320" => 2.80_f64,  // Mobile Interstitial Landscape
-};
-
-/// Format dimensions as lookup key.
-#[inline]
-fn size_key(width: i64, height: i64) -> String {
-    format!("{width}x{height}")
-}
+    (160, 600), // Wide Skyscraper
+    (300, 50),  // Mobile Banner (alternative)
+    (300, 250), // Medium Rectangle
+    (300, 600), // Half Page
+    (320, 50),  // Mobile Leaderboard
+    (320, 100), // Large Mobile Banner
+    (320, 480), // Mobile Interstitial Portrait
+    (336, 280), // Large Rectangle
+    (468, 60),  // Banner
+    (480, 320), // Mobile Interstitial Landscape
+    (728, 90),  // Leaderboard
+    (970, 90),  // Large Leaderboard
+    (970, 250), // Billboard
+];
 
 /// Check if dimensions match a standard ad size.
 #[inline]
 #[must_use]
 pub fn is_standard_size(width: i64, height: i64) -> bool {
-    SIZE_MAP.contains_key(size_key(width, height).as_str())
-}
-
-/// Get CPM for a size. Returns configured CPM for standard sizes, area-based fallback otherwise.
-#[inline]
-#[must_use]
-#[expect(
-    clippy::float_arithmetic,
-    reason = "CPM pricing fallback is intrinsically a floating-point calculation"
-)]
-pub fn get_cpm(width: i64, height: i64) -> f64 {
-    SIZE_MAP
-        .get(size_key(width, height).as_str())
-        .copied()
-        .unwrap_or_else(|| {
-            // Fallback: area-based pricing for non-standard sizes.
-            // Saturating multiplication on i64; conversion via i32 keeps f64 lossless.
-            let product = width.saturating_mul(height);
-            let clamped = product.clamp(i64::from(i32::MIN), i64::from(i32::MAX));
-            let area = f64::from(i32::try_from(clamped).unwrap_or(i32::MAX));
-            ((DEFAULT_CPM + (area / 100_000.0_f64).min(MAX_AREA_BONUS)) * 100.0_f64).round()
-                / 100.0_f64
-        })
+    STANDARD_SIZES
+        .iter()
+        .any(|&(std_width, std_height)| std_width == width && std_height == height)
 }
 
 /// Returns an iterator over all standard ad sizes as (width, height) tuples.
 /// Useful for generating test fixtures or validating external configurations.
 #[inline]
 pub fn standard_sizes() -> impl Iterator<Item = (i64, i64)> {
-    let mut sizes: Vec<(i64, i64)> = SIZE_MAP
-        .keys()
-        .filter_map(|key| {
-            let (w_str, h_str) = key.split_once('x')?;
-            let width = w_str.parse::<i64>().ok()?;
-            let height = h_str.parse::<i64>().ok()?;
-            Some((width, height))
-        })
-        .collect();
-    sizes.sort_unstable();
-    debug_assert_eq!(
-        sizes.len(),
-        SIZE_MAP.len(),
-        "SIZE_MAP contains invalid size keys"
-    );
-    sizes.into_iter()
+    STANDARD_SIZES.iter().copied()
 }
 
 fn new_id() -> String {
@@ -132,8 +83,7 @@ pub fn standard_or_default((width, height): (i64, i64)) -> (i64, i64) {
 /// Build an `OpenRTB` bid response for the given request.
 ///
 /// - Enforces standard ad sizes (non-standard sizes default to 300x250)
-/// - Uses size-based CPM pricing ($1.70 - $4.20 depending on size)
-/// - Price can be overridden via `imp.ext.mocktioneer.bid`
+/// - Uses a fixed CPM price ($0.20)
 /// - Embeds signature verification status, the original request, and a preview
 ///   of the response as HTML comments in each creative
 /// - The signature badge is rendered inside the creative via the `sig` query param
@@ -151,16 +101,23 @@ pub fn build_openrtb_response(
         let bid_id = new_id();
         let crid = format!("mocktioneer-{}", imp.id);
 
-        // Extract custom bid from imp.ext.mocktioneer.bid if present
-        let custom_bid = imp
+        // Warn when callers supply a bid override that is no longer honored
+        if imp
             .ext
             .as_ref()
             .and_then(|ext| ext.mocktioneer.as_ref())
-            .and_then(|moc| moc.bid);
+            .and_then(|moc| moc.bid)
+            .is_some()
+        {
+            log::warn!(
+                "imp[{}].ext.mocktioneer.bid is deprecated and ignored; \
+                 all bids use fixed price ${}",
+                imp.id,
+                FIXED_BID_CPM
+            );
+        }
 
-        // Use custom bid if provided, otherwise use size-based CPM
-        let price = custom_bid.unwrap_or_else(|| get_cpm(width, height));
-        let bid_ext = custom_bid.map(|bid| json!({"mocktioneer": {"bid": bid}}));
+        let price = FIXED_BID_CPM;
 
         bids.push(OpenrtbBid {
             id: bid_id,
@@ -172,7 +129,7 @@ pub fn build_openrtb_response(
             height: Some(height),
             mtype: Some(MediaType::Banner),
             adomain: Some(vec!["example.com".to_owned()]),
-            ext: bid_ext,
+            ext: None,
             ..Default::default()
         });
     }
@@ -209,18 +166,10 @@ pub fn build_openrtb_response(
     let final_bids: Vec<OpenrtbBid> = bids
         .into_iter()
         .map(|mut bid| {
-            let bid_for_iframe = bid.ext.is_some().then_some(bid.price);
             let crid = bid.crid.as_deref().unwrap_or("unknown");
             let width = bid.width.unwrap_or(300);
             let height = bid.height.unwrap_or(250);
-            bid.adm = Some(iframe_html(
-                base_host,
-                crid,
-                width,
-                height,
-                bid_for_iframe,
-                &metadata,
-            ));
+            bid.adm = Some(iframe_html(base_host, crid, width, height, None, &metadata));
             bid
         })
         .collect();
@@ -245,7 +194,7 @@ pub fn build_openrtb_response(
 ///
 /// Note: Real Amazon APS uses proprietary encoding that cannot be decoded without Amazon's keys.
 /// Our mock uses transparent base64 encoding that CAN be decoded for testing/debugging purposes.
-/// Example: `echo "Mi41MA==" | base64 -d` → `2.50`.
+/// Example: `echo "MC4y" | base64 -d` → `0.2`.
 fn encode_aps_price(price: f64) -> String {
     use base64::{engine::general_purpose::STANDARD, Engine as _};
 
@@ -270,9 +219,7 @@ pub fn decode_aps_price(encoded: &str) -> Option<f64> {
 /// Build APS TAM response from an APS bid request matching real Amazon API format.
 ///
 /// This function generates mock bids for all slots with standard sizes:
-/// - Variable bid prices based on ad size (via `get_cpm()`)
-///   - Ranges from $1.70 - $4.20 CPM for standard sizes
-///   - Example: 300x250 = $2.50, 970x250 = $4.20, 320x50 = $1.80
+/// - Fixed bid price of $0.20 CPM
 /// - 100% fill rate for standard sizes
 /// - Returns contextual format matching real Amazon APS API
 /// - No creative HTML (APS doesn't return adm field)
@@ -283,21 +230,21 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidRespons
     let mut slots: Vec<ApsSlotResponse> = Vec::new();
 
     for slot in &req.slots {
-        // Find the standard size with the highest CPM from all sizes in the slot
+        // Find the standard size with the largest area from all sizes in the slot
         let best_size = slot
             .sizes
             .iter()
             .filter_map(|&[width, height]| {
-                let w_i64 = i64::from(width);
-                let h_i64 = i64::from(height);
-                is_standard_size(w_i64, h_i64).then(|| {
-                    let price = get_cpm(w_i64, h_i64);
-                    (width, height, price)
+                let width_i64 = i64::from(width);
+                let height_i64 = i64::from(height);
+                is_standard_size(width_i64, height_i64).then(|| {
+                    let area = width_i64.saturating_mul(height_i64);
+                    (width, height, area)
                 })
             })
-            .max_by(|lhs, rhs| lhs.2.partial_cmp(&rhs.2).unwrap_or(Ordering::Equal));
+            .max_by_key(|&(_, _, area)| area);
 
-        let Some((width, height, price)) = best_size else {
+        let Some((width, height, _)) = best_size else {
             // No standard sizes found, skip this slot
             log::debug!(
                 "APS: Skipping slot '{}' - no standard sizes in {:?}",
@@ -307,7 +254,8 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidRespons
             continue;
         };
 
-        // Generate bid components (price already calculated in best_size selection)
+        // Generate bid components using fixed CPM pricing
+        let price = FIXED_BID_CPM;
         let impression_id = new_id();
         let crid = format!("{}-{}", new_id(), "mocktioneer");
         let size_str = format!("{width}x{height}");
@@ -409,7 +357,7 @@ mod tests {
             pub_id: "test".to_owned(),
             slots: vec![ApsSlot {
                 slot_id: "slot1".to_owned(),
-                sizes: vec![[300, 250]], // CPM is $2.50
+                sizes: vec![[300, 250]], // CPM is fixed at $0.20
                 slot_name: None,
             }],
             page_url: None,
@@ -421,16 +369,16 @@ mod tests {
 
         // Use decode_aps_price to verify the encoded price
         let price = decode_aps_price(slot.amznbid.as_ref().unwrap()).unwrap();
-        assert_eq!(price.to_bits(), 2.5_f64.to_bits());
+        assert_eq!(price.to_bits(), FIXED_BID_CPM.to_bits());
     }
 
     #[test]
-    fn build_aps_response_selects_highest_cpm() {
+    fn build_aps_response_selects_largest_area() {
         let req = ApsBidRequest {
             pub_id: "test".to_owned(),
             slots: vec![ApsSlot {
                 slot_id: "slot1".to_owned(),
-                sizes: vec![[300, 250], [970, 250]], // 970x250 has higher CPM ($4.20 vs $2.50)
+                sizes: vec![[300, 250], [970, 250]], // 970x250 has larger area (242500 vs 75000)
                 slot_name: None,
             }],
             page_url: None,
@@ -441,7 +389,7 @@ mod tests {
 
         assert_eq!(resp.contextual.slots.len(), 1);
         let slot = &resp.contextual.slots[0];
-        assert_eq!(slot.size, "970x250"); // Should pick higher CPM size
+        assert_eq!(slot.size, "970x250"); // Should pick largest area
     }
 
     #[test]
@@ -450,7 +398,7 @@ mod tests {
             pub_id: "test".to_owned(),
             slots: vec![ApsSlot {
                 slot_id: "slot1".to_owned(),
-                sizes: vec![[300, 250]],
+                sizes: vec![[300, 250]], // CPM is fixed at $0.20
                 slot_name: None,
             }],
             page_url: None,
@@ -594,18 +542,7 @@ mod tests {
     }
 
     #[test]
-    fn is_standard_size_works() {
-        // Standard sizes should be recognized
-        assert!(is_standard_size(300, 250));
-        assert!(is_standard_size(728, 90));
-        // Non-standard sizes should not
-        assert!(!is_standard_size(333, 222));
-        assert!(!is_standard_size(0, 0));
-        assert!(!is_standard_size(300, 251));
-    }
-
-    #[test]
-    fn price_from_ext_and_iframe_bid_param() {
+    fn ext_bid_override_is_ignored() {
         let req = OpenRTBRequest {
             id: "r4".to_owned(),
             imp: vec![OpenrtbImp {
@@ -624,18 +561,22 @@ mod tests {
         };
         let resp = build_openrtb_response(&req, "host.test", test_signature());
         let bid = &resp.seatbid[0].bid[0];
-        assert_eq!(bid.price.to_bits(), 2.5_f64.to_bits());
-        let ext_bid = bid
-            .ext
-            .as_ref()
-            .and_then(|ext| ext.get("mocktioneer"))
-            .and_then(|moc| moc.get("bid"))
-            .and_then(serde_json::Value::as_f64)
-            .unwrap();
-        assert_eq!(ext_bid.to_bits(), 2.5_f64.to_bits());
-        // Iframe should include bid=2.50 parameter
+        assert_eq!(bid.price.to_bits(), FIXED_BID_CPM.to_bits());
+        assert!(bid.ext.is_none());
+        // Iframe should not include request-provided bid override
         let adm = bid.adm.as_ref().unwrap();
-        assert!(adm.contains("bid=2.50"));
+        assert!(!adm.contains("bid=2.50"));
+    }
+
+    #[test]
+    fn is_standard_size_works() {
+        // Standard sizes should be recognized
+        assert!(is_standard_size(300, 250));
+        assert!(is_standard_size(728, 90));
+        // Non-standard sizes should not
+        assert!(!is_standard_size(333, 222));
+        assert!(!is_standard_size(0, 0));
+        assert!(!is_standard_size(300, 251));
     }
 
     #[test]

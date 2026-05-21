@@ -21,7 +21,7 @@ features:
   - title: Deterministic Bids
     details: Predictable banner bids and simple creative templates for reliable QA flows
   - title: OpenRTB 2.x Compliant
-    details: Full banner inventory support with standard bid responses and price overrides
+    details: Full banner inventory support with standard bid responses and fixed pricing
   - title: APS TAM Support
     details: Amazon Publisher Services bid endpoint with real API format compatibility
   - title: Zero Backend

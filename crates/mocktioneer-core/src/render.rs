@@ -234,6 +234,16 @@ mod tests {
     }
 
     #[test]
+    fn banner_adm_iframe_omits_bid_param_when_absent() {
+        let (_, metadata) = metadata_fixture(SignatureStatus::Verified {
+            kid: "key-001".to_owned(),
+        });
+        let adm = iframe_html("host.test", "crid123", 320, 50, None, &metadata);
+        assert!(adm.contains("//host.test/static/creatives/320x50.html?crid=crid123&sig=verified"));
+        assert!(!adm.contains("bid="));
+    }
+
+    #[test]
     fn iframe_html_includes_metadata_comment() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "test-req-123",
@@ -374,5 +384,14 @@ mod tests {
         assert!(adm.contains("\"seatbid\":"));
         assert!(adm.contains("\"seat\": \"mocktioneer\""));
         assert!(adm.contains("\"price\": 1.23"));
+    }
+
+    #[test]
+    fn creative_html_always_shows_debug_badge() {
+        let html = creative_html(728, 90, true, false, "host.test");
+
+        assert!(html.contains("var sig = validSig[sigParam] ? sigParam : \"not_present\";"));
+        assert!(html.contains("badge.style.display = \"block\";"));
+        assert!(html.contains("No signature present"));
     }
 }
