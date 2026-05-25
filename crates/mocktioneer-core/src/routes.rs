@@ -574,10 +574,17 @@ fn validation_error(code: &'static str, message: &'static str) -> ValidationErro
     err
 }
 
-/// Returns true if `s` is a clean hostname (no path, auth, port, or fragment).
+/// Returns true if `s` is a clean redirect hostname.
+///
+/// This intentionally allows local/demo hostnames such as `localhost`, but rejects
+/// IP literals and any path, auth, port, query, fragment, or whitespace syntax.
 fn is_valid_hostname(s: &str) -> bool {
     if s.is_empty() || s.len() > 253 || s.contains(['/', '@', ':', '?', '#', ' ', '\t', '\n', '\r'])
     {
+        return false;
+    }
+
+    if s.parse::<std::net::IpAddr>().is_ok() {
         return false;
     }
 
@@ -626,7 +633,7 @@ fn validate_ip_address(value: &str) -> Result<(), ValidationError> {
 #[derive(Deserialize, Validate)]
 struct SyncStartParams {
     /// The trusted-server hostname (e.g., "ts.publisher.com").
-    #[validate(length(min = 1, max = 256))]
+    #[validate(length(min = 1, max = 253))]
     ts_domain: String,
 }
 
@@ -687,18 +694,14 @@ pub async fn handle_sync_start(
     }
 
     // Validate ts_domain against allowlist when configured
-    if let Ok(allowed) = std::env::var(TS_ALLOWED_DOMAINS_ENV) {
-        let is_allowed = allowed
-            .split(',')
-            .any(|d| d.trim().eq_ignore_ascii_case(&params.ts_domain));
-        if !is_allowed {
-            log::warn!(
-                "EC sync start rejected: ts_domain={} not in {}",
-                sanitize_for_log(&params.ts_domain, 64),
-                TS_ALLOWED_DOMAINS_ENV
-            );
-            return build_response(StatusCode::FORBIDDEN, Body::empty());
-        }
+    let allowed_domains = std::env::var(TS_ALLOWED_DOMAINS_ENV).ok();
+    if !is_ts_domain_allowed(&params.ts_domain, allowed_domains.as_deref()) {
+        log::warn!(
+            "EC sync start rejected: ts_domain={} not in {}",
+            sanitize_for_log(&params.ts_domain, 64),
+            TS_ALLOWED_DOMAINS_ENV
+        );
+        return build_response(StatusCode::FORBIDDEN, Body::empty());
     }
 
     let (mtkid, set_cookie) = get_or_create_mtkid(&headers, &host);
@@ -908,6 +911,14 @@ fn ec_id_log_prefix(ec_id: &str) -> String {
         .unwrap_or_else(|| sanitize_for_log(ec_id, 8))
 }
 
+fn is_ts_domain_allowed(ts_domain: &str, allowed_domains: Option<&str>) -> bool {
+    allowed_domains.is_none_or(|allowed| {
+        allowed
+            .split(',')
+            .any(|domain| domain.trim().eq_ignore_ascii_case(ts_domain))
+    })
+}
+
 /// Minimal percent-encoding for URL query parameter values.
 fn urlencoding(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
@@ -918,15 +929,15 @@ fn urlencoding(s: &str) -> String {
             }
             _ => {
                 out.push('%');
-                out.push(char::from(HEX_CHARS[(b >> 4) as usize]));
-                out.push(char::from(HEX_CHARS[(b & 0x0f) as usize]));
+                out.push(char::from(PERCENT_HEX_CHARS_UPPER[(b >> 4) as usize]));
+                out.push(char::from(PERCENT_HEX_CHARS_UPPER[(b & 0x0f) as usize]));
             }
         }
     }
     out
 }
 
-const HEX_CHARS: [u8; 16] = *b"0123456789ABCDEF";
+const PERCENT_HEX_CHARS_UPPER: [u8; 16] = *b"0123456789ABCDEF";
 
 /// Encode bytes as lowercase hex string.
 fn hex_encode(bytes: &[u8]) -> String {
@@ -1712,7 +1723,57 @@ mod tests {
         assert!(is_valid_hostname("ts.publisher.com"));
         assert!(is_valid_hostname("localhost"));
         assert!(is_valid_hostname("my-server.example.org"));
-        assert!(is_valid_hostname("127.0.0.1"));
+    }
+
+    #[test]
+    fn is_valid_hostname_rejects_ip_literals() {
+        assert!(!is_valid_hostname("127.0.0.1"));
+        assert!(!is_valid_hostname("203.0.113.10"));
+        assert!(!is_valid_hostname("::1"));
+        assert!(!is_valid_hostname("2001:db8::1"));
+    }
+
+    #[test]
+    fn sync_start_params_enforces_dns_length_limit() {
+        let valid_domain = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(61)
+        );
+        assert_eq!(valid_domain.len(), 253);
+        let valid_params = SyncStartParams {
+            ts_domain: valid_domain,
+        };
+        assert!(valid_params.validate().is_ok());
+
+        let invalid_domain = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(62)
+        );
+        assert_eq!(invalid_domain.len(), 254);
+        let invalid_params = SyncStartParams {
+            ts_domain: invalid_domain,
+        };
+        assert!(invalid_params.validate().is_err());
+    }
+
+    #[test]
+    fn is_ts_domain_allowed_handles_unset_and_matching_allowlists() {
+        assert!(is_ts_domain_allowed("ts.publisher.com", None));
+        assert!(is_ts_domain_allowed(
+            "ts.publisher.com",
+            Some("other.example, TS.PUBLISHER.COM ")
+        ));
+        assert!(!is_ts_domain_allowed(
+            "evil.example.com",
+            Some("ts.publisher.com,other.example")
+        ));
+        assert!(!is_ts_domain_allowed("ts.publisher.com", Some("")));
     }
 
     #[test]

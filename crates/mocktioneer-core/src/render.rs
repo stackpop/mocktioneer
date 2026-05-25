@@ -104,12 +104,12 @@ pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
         }
     });
 
+    let mocktioneer_matched = mocktioneer_eid_uid.is_some();
+
     // Prefer buyeruid, fall back to matched EID
     let buyer_uid = user
         .and_then(|u| u.buyeruid.clone())
-        .or(mocktioneer_eid_uid.clone());
-
-    let mocktioneer_matched = mocktioneer_eid_uid.is_some();
+        .or(mocktioneer_eid_uid);
 
     EdgeCookieInfo {
         ec_id,
