@@ -5,6 +5,8 @@
 
 # crate-local outputs
 **/bin/
+**/build/
+**/dist
 **/pkg/
 
 # env
@@ -33,4 +35,7 @@ test-results/
 
 # Cloudflare Workers
 .wrangler/
-**/build/
+
+
+# Spin
+.spin/
