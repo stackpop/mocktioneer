@@ -67,6 +67,10 @@ jobs:
             target: wasm32-wasip1
             runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
             runner_value: viceroy run
+          - adapter: spin
+            target: wasm32-wasip1
+            runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
+            runner_value: wasmtime run
     steps:
       - uses: actions/checkout@v6
 
@@ -131,6 +135,14 @@ jobs:
       - name: Setup Viceroy
         if: matrix.adapter == 'fastly'
         run: cargo install viceroy --version "${{ steps.viceroy-version.outputs.version }}" --locked --force
+
+      - name: Setup Wasmtime
+        if: matrix.adapter == 'spin'
+        run: |
+          if ! command -v wasmtime &>/dev/null; then
+            curl https://wasmtime.dev/install.sh -sSf | bash
+            echo "$HOME/.wasmtime/bin" >> "$GITHUB_PATH"
+          fi
 
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
