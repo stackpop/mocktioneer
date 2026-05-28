@@ -10,10 +10,11 @@ use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 use worker::wasm_bindgen::JsCast as _;
 use worker::{Context, Env, Method as CfMethod, Request as CfRequest, RequestInit};
 
-// `run_in_browser` selects the browser harness, but CI runs these tests
-// headless under Node via the `wasm-bindgen-test-runner` set in
-// `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER` — the runner picks the
-// environment, this macro only declares the harness mode.
+// `run_in_browser` selects the wasm-bindgen browser harness. In CI this runs
+// headless in Firefox (via the geckodriver that ships on the ubuntu-latest
+// runners); locally it picks up whichever browser driver is on PATH.
+// `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner` is
+// what wires the runner into `cargo test`; the harness mode is declared here.
 wasm_bindgen_test_configure!(run_in_browser);
 
 fn cf_request(method: CfMethod, path: &str) -> CfRequest {
