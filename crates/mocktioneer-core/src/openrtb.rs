@@ -269,15 +269,10 @@ pub struct Site {
     pub page: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub publisher: Option<Publisher>,
-    /// `OpenRTB` spec `Site.ref` — the referrer URL. Raw identifier `r#ref`
-    /// serializes to the JSON key `ref`.
+    /// `OpenRTB` spec `Site.ref` — the page referrer URL. Raw identifier
+    /// `r#ref` serializes to the JSON key `ref`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub r#ref: Option<String>,
-    /// Non-spec compatibility field: captures a literal `ref_` JSON key
-    /// emitted by some legacy callers. Distinct from `r#ref` (the spec
-    /// `ref`); retained so such payloads round-trip without data loss.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ref_: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -406,11 +401,6 @@ pub struct Geo {
     pub ext: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ipservice: Option<i64>,
-    /// Non-spec compatibility field: captures a literal `_type` JSON key
-    /// emitted by some legacy callers. The `OpenRTB` spec `Geo.type`
-    /// (location source) is carried by [`Geo::type2`] instead.
-    #[serde(rename = "_type", skip_serializing_if = "Option::is_none")]
-    pub kind: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lastfix: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -420,8 +410,9 @@ pub struct Geo {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
     /// `OpenRTB` spec `Geo.type` — source of the location data
-    /// (1 = GPS, 2 = IP, 3 = user-provided). Named `type2` because `type`
-    /// is a Rust keyword; serializes to the JSON key `type`.
+    /// (1 = GPS, 2 = IP, 3 = user-provided). The Rust field is named
+    /// `type2` because `type` is a Rust keyword; `#[serde(rename)]`
+    /// preserves the spec JSON key.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type2: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -677,39 +668,29 @@ mod tests {
     fn site_round_trip_maps_r_ref_to_ref_json_key() {
         let site = Site {
             r#ref: Some("https://referrer.example".to_owned()),
-            ref_: Some("legacy".to_owned()),
             ..Default::default()
         };
         let value = json(&site);
         assert_eq!(value["ref"], "https://referrer.example");
-        assert_eq!(value["ref_"], "legacy");
 
-        let parsed: Site = serde_json::from_value(serde_json::json!({
-            "ref": "https://referrer.example",
-            "ref_": "legacy"
-        }))
-        .expect("deserialize");
+        let parsed: Site =
+            serde_json::from_value(serde_json::json!({"ref": "https://referrer.example"}))
+                .expect("deserialize");
         assert_eq!(parsed.r#ref.as_deref(), Some("https://referrer.example"));
-        assert_eq!(parsed.ref_.as_deref(), Some("legacy"));
     }
 
     #[test]
-    fn geo_round_trip_maps_kind_to_underscore_type_json_key() {
+    fn geo_round_trip_maps_type2_to_type_json_key() {
         let geo = Geo {
-            kind: Some(1_i64),
             type2: Some(2_i64),
             ..Default::default()
         };
         let value = json(&geo);
-        assert_eq!(value["_type"], 1_i32);
         assert_eq!(value["type"], 2_i32);
-        assert!(value.get("kind").is_none());
         assert!(value.get("type2").is_none());
 
         let parsed: Geo =
-            serde_json::from_value(serde_json::json!({"_type": 1_i32, "type": 2_i32}))
-                .expect("deserialize");
-        assert_eq!(parsed.kind, Some(1_i64));
+            serde_json::from_value(serde_json::json!({"type": 2_i32})).expect("deserialize");
         assert_eq!(parsed.type2, Some(2_i64));
     }
 }
