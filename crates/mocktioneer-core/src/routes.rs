@@ -12,8 +12,9 @@ use edgezero_core::http::{
 };
 use edgezero_core::middleware::{Middleware, Next};
 use edgezero_core::{body::Body, error::EdgeError};
-use serde::Deserialize;
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use subtle::ConstantTimeEq;
 use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
@@ -21,7 +22,9 @@ use crate::auction::{
     build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
 use crate::openrtb::OpenRTBRequest;
-use crate::render::{creative_html, info_html, render_svg, render_template_str, SignatureStatus};
+use crate::render::{
+    creative_html, extract_ec_hash, info_html, render_svg, render_template_str, SignatureStatus,
+};
 
 #[derive(Deserialize, Validate)]
 struct StaticImgQuery {
@@ -110,8 +113,6 @@ struct SizeDimensions {
     width: i64,
     height: i64,
 }
-
-impl SizeDimensions {}
 
 struct ValidatedSize<F>(SizeDimensions, PhantomData<F>);
 
@@ -337,30 +338,52 @@ fn parse_cookie<'a>(cookie_header: &'a str, name: &str) -> Option<&'a str> {
 
 const PIXEL_GIF: &[u8] = include_bytes!("../static/pixel.gif");
 
-#[action]
-pub async fn handle_pixel(
-    Headers(headers): Headers,
-    ValidatedQuery(params): ValidatedQuery<PixelQueryParams>,
-) -> Response {
-    let cookie_name = "mtkid";
-    let mut set_cookie = None;
+const MTKID_COOKIE_NAME: &str = "mtkid";
+const MTKID_MAX_AGE: u64 = 60 * 60 * 24 * 365;
 
-    let PixelQueryParams { pid: _ } = params;
-
+/// Read an existing `mtkid` cookie or generate a new one deterministically.
+///
+/// When no `mtkid` cookie is present, generates a deterministic host-scoped ID
+/// using `SHA-256("mtkid:" || host)` truncated to 32 hex chars. This is
+/// intentionally mock/test-oriented: first-time visitors on the same host get
+/// the same generated value instead of a per-visitor identifier.
+///
+/// Returns `(mtkid_value, Option<set_cookie_header_value>)`.
+fn get_or_create_mtkid(headers: &HeaderMap, host: &str) -> (String, Option<String>) {
     let existing = headers
         .get(header::COOKIE)
         .and_then(|c| c.to_str().ok())
-        .and_then(|c| parse_cookie(c, cookie_name));
+        .and_then(|c| parse_cookie(c, MTKID_COOKIE_NAME));
 
-    if existing.is_none() {
-        let id = Uuid::now_v7().as_simple().to_string();
-        let max_age = 60 * 60 * 24 * 365;
-        let cookie_val = format!(
-            "{}={}; Path=/; Max-Age={}; SameSite=None; Secure; HttpOnly",
-            cookie_name, id, max_age
-        );
-        set_cookie = Some(cookie_val);
+    match existing {
+        Some(id) => (id.to_string(), None),
+        None => {
+            // Deterministic and host-scoped: SHA-256("mtkid:" || host),
+            // truncated to 32 hex chars. Same host always produces the same
+            // generated mtkid; existing cookies are still reused as-is.
+            let mut hasher = Sha256::new();
+            hasher.update(b"mtkid:");
+            hasher.update(host.as_bytes());
+            let hash = hasher.finalize();
+            let id = hex_encode(&hash)[..32].to_string();
+            let cookie_val = format!(
+                "{}={}; Path=/; Max-Age={}; SameSite=None; Secure; HttpOnly",
+                MTKID_COOKIE_NAME, id, MTKID_MAX_AGE
+            );
+            (id, Some(cookie_val))
+        }
     }
+}
+
+#[action]
+pub async fn handle_pixel(
+    Headers(headers): Headers,
+    ForwardedHost(host): ForwardedHost,
+    ValidatedQuery(params): ValidatedQuery<PixelQueryParams>,
+) -> Response {
+    let PixelQueryParams { pid: _ } = params;
+
+    let (_, set_cookie) = get_or_create_mtkid(&headers, &host);
 
     let mut response = build_response(StatusCode::OK, Body::from(PIXEL_GIF));
     {
@@ -522,6 +545,439 @@ pub async fn handle_sizes() -> Response {
         HeaderValue::from_static("application/json"),
     );
     response
+}
+
+// ---------------------------------------------------------------------------
+// Edge Cookie (EC) sync endpoints
+// ---------------------------------------------------------------------------
+
+/// The partner ID that mocktioneer uses when registering with trusted-server.
+const PARTNER_ID: &str = "mocktioneer";
+
+/// Env var for the bearer token expected on inbound pull sync requests.
+const PULL_TOKEN_ENV: &str = "MOCKTIONEER_PULL_TOKEN";
+
+/// Env var for allowed trusted-server domains (comma-separated).
+/// When set, `/sync/start` only redirects to domains in this list.
+/// When unset, any `ts_domain` is accepted (development mode).
+///
+/// **WASM note:** `std::env::var` returns `Err` on Cloudflare Workers
+/// (no env var support via `std::env`). On that platform, the allowlist
+/// is effectively disabled. For production Cloudflare deployments, use
+/// a platform-native config mechanism or accept the open-redirect risk
+/// in controlled environments.
+const TS_ALLOWED_DOMAINS_ENV: &str = "MOCKTIONEER_TS_DOMAINS";
+
+fn validation_error(code: &'static str, message: &'static str) -> ValidationError {
+    let mut err = ValidationError::new(code);
+    err.message = Some(message.into());
+    err
+}
+
+/// Returns true if `s` is a clean redirect hostname.
+///
+/// This intentionally allows local/demo hostnames such as `localhost`, but rejects
+/// IP literals and any path, auth, port, query, fragment, or whitespace syntax.
+fn is_valid_hostname(s: &str) -> bool {
+    if s.is_empty() || s.len() > 253 || s.contains(['/', '@', ':', '?', '#', ' ', '\t', '\n', '\r'])
+    {
+        return false;
+    }
+
+    if s.parse::<std::net::IpAddr>().is_ok() {
+        return false;
+    }
+
+    s.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
+    })
+}
+
+/// Validates that a string is a valid EC identifier in `{64-hex}.{6-alnum}` format.
+fn validate_ec_id(value: &str) -> Result<(), ValidationError> {
+    if extract_ec_hash(value).is_none() {
+        return Err(validation_error(
+            "invalid_ec_id",
+            "ec_id must be in {64-hex}.{6-alnum} format",
+        ));
+    }
+    Ok(())
+}
+
+/// Validates trusted-server sync status values.
+fn validate_ts_synced(value: &str) -> Result<(), ValidationError> {
+    if matches!(value, "0" | "1") {
+        Ok(())
+    } else {
+        Err(validation_error(
+            "invalid_ts_synced",
+            "ts_synced must be either 0 or 1",
+        ))
+    }
+}
+
+/// Validates client IP address values accepted by `/resolve`.
+fn validate_ip_address(value: &str) -> Result<(), ValidationError> {
+    value
+        .parse::<std::net::IpAddr>()
+        .map(|_| ())
+        .map_err(|_| validation_error("invalid_ip", "ip must be a valid IPv4 or IPv6 address"))
+}
+
+#[derive(Deserialize, Validate)]
+struct SyncStartParams {
+    /// The trusted-server hostname (e.g., "ts.publisher.com").
+    #[validate(length(min = 1, max = 253))]
+    ts_domain: String,
+}
+
+#[derive(Deserialize, Validate)]
+struct SyncDoneParams {
+    /// Whether the sync succeeded ("1") or failed ("0").
+    #[validate(custom(function = "validate_ts_synced"))]
+    ts_synced: String,
+    /// Failure reason — present only when ts_synced=0.
+    #[serde(default)]
+    #[validate(length(max = 256))]
+    ts_reason: Option<String>,
+}
+
+#[derive(Deserialize, Validate)]
+struct ResolveParams {
+    /// Full EC identifier in `{64-hex}.{6-alnum}` format.
+    #[validate(custom(function = "validate_ec_id"))]
+    ec_id: String,
+    /// Client IP address.
+    #[validate(length(min = 1, max = 45), custom(function = "validate_ip_address"))]
+    ip: String,
+}
+
+#[derive(Serialize)]
+struct ResolveResponse {
+    uid: String,
+}
+
+/// `GET /sync/start?ts_domain=publisher.example.com`
+///
+/// Initiates the pixel sync redirect chain:
+/// 1. Reads/sets the `mtkid` cookie (mocktioneer's buyer UID).
+/// 2. Redirects to trusted-server's `GET /sync` with `partner=mocktioneer`,
+///    `uid={mtkid}`, and `return={self}/sync/done`.
+///
+/// **Open-redirect protection:** When `MOCKTIONEER_TS_DOMAINS` is set
+/// (comma-separated allowlist), the `ts_domain` query param is validated
+/// against it. Requests with unlisted domains receive `403 Forbidden`.
+/// When unset, any domain is accepted (development/demo mode).
+///
+/// Additionally, `ts_domain` is always validated as a clean hostname —
+/// values containing `/`, `@`, `:`, `?`, `#`, or whitespace are rejected
+/// with `400 Bad Request` to prevent path injection even without an allowlist.
+#[action]
+pub async fn handle_sync_start(
+    Headers(headers): Headers,
+    ForwardedHost(host): ForwardedHost,
+    ValidatedQuery(params): ValidatedQuery<SyncStartParams>,
+) -> Response {
+    // Reject ts_domain values that contain path/auth/port/fragment characters
+    if !is_valid_hostname(&params.ts_domain) {
+        log::warn!(
+            "EC sync start rejected: ts_domain={} is not a valid hostname",
+            sanitize_for_log(&params.ts_domain, 64)
+        );
+        return build_response(StatusCode::BAD_REQUEST, Body::empty());
+    }
+
+    // Validate ts_domain against allowlist when configured
+    let allowed_domains = std::env::var(TS_ALLOWED_DOMAINS_ENV).ok();
+    if !is_ts_domain_allowed(&params.ts_domain, allowed_domains.as_deref()) {
+        log::warn!(
+            "EC sync start rejected: ts_domain={} not in {}",
+            sanitize_for_log(&params.ts_domain, 64),
+            TS_ALLOWED_DOMAINS_ENV
+        );
+        return build_response(StatusCode::FORBIDDEN, Body::empty());
+    }
+
+    let (mtkid, set_cookie) = get_or_create_mtkid(&headers, &host);
+
+    // Build the return URL (where TS redirects back after sync)
+    let scheme = if is_local_host(&host) {
+        "http"
+    } else {
+        "https"
+    };
+    let return_url = format!("{}://{}/sync/done", scheme, host);
+
+    // Build the redirect to trusted-server's /sync endpoint
+    let redirect_url = format!(
+        "https://{}/sync?partner={}&uid={}&return={}",
+        params.ts_domain,
+        PARTNER_ID,
+        urlencoding(&mtkid),
+        urlencoding(&return_url),
+    );
+
+    log::info!(
+        "EC sync start: mtkid={}, ts_domain={}",
+        sanitize_for_log(&mtkid, 64),
+        sanitize_for_log(&params.ts_domain, 64)
+    );
+
+    let loc = match HeaderValue::from_str(&redirect_url) {
+        Ok(v) => v,
+        Err(_) => {
+            log::error!(
+                "EC sync start: invalid redirect URL for ts_domain={}",
+                sanitize_for_log(&params.ts_domain, 64)
+            );
+            return build_response(StatusCode::INTERNAL_SERVER_ERROR, Body::empty());
+        }
+    };
+
+    let mut response = build_response(StatusCode::FOUND, Body::empty());
+    {
+        let h = response.headers_mut();
+        h.insert(header::LOCATION, loc);
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
+        );
+    }
+
+    if let Some(cookie) = set_cookie {
+        if let Ok(value) = HeaderValue::from_str(&cookie) {
+            response.headers_mut().append("Set-Cookie", value);
+        }
+    }
+
+    response
+}
+
+/// `GET /sync/done?ts_synced=1` or `GET /sync/done?ts_synced=0&ts_reason=no_consent`
+///
+/// Callback from trusted-server after pixel sync completes. Returns a 1x1 pixel
+/// so the browser redirect chain terminates cleanly.
+#[action]
+pub async fn handle_sync_done(ValidatedQuery(params): ValidatedQuery<SyncDoneParams>) -> Response {
+    let success = params.ts_synced == "1";
+    let reason = params.ts_reason.as_deref().unwrap_or("none");
+    if success {
+        log::info!("EC sync done: success");
+    } else {
+        log::warn!(
+            "EC sync done: failed, reason={}",
+            sanitize_for_log(reason, 128)
+        );
+    }
+
+    // Return 1x1 transparent pixel
+    let mut response = build_response(StatusCode::OK, Body::from(PIXEL_GIF));
+    {
+        let h = response.headers_mut();
+        h.insert(header::CONTENT_TYPE, HeaderValue::from_static("image/gif"));
+        h.insert(
+            header::CACHE_CONTROL,
+            HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
+        );
+        h.insert(
+            header::CONTENT_LENGTH,
+            HeaderValue::from_str(&PIXEL_GIF.len().to_string()).expect("length"),
+        );
+    }
+    response
+}
+
+/// `GET /resolve?ec_id={64-hex}.{6-alnum}&ip={ip_address}`
+///
+/// Pull sync resolution endpoint. Trusted-server calls this S2S to resolve
+/// an EC identifier + IP to a mocktioneer buyer UID.
+///
+/// The `ec_id` is the full Edge Cookie value in `{64-hex}.{6-alnum}` format.
+/// The 64-hex prefix (hash) is extracted internally and used with the IP to
+/// derive a deterministic UID: `SHA-256(ec_hash | ip)` → `mtk-{hash[0:12]}`.
+/// Always the same for the same `(ec_id, ip)` pair.
+///
+/// Authentication: `Authorization: Bearer {token}` validated against
+/// `MOCKTIONEER_PULL_TOKEN` env var (constant-time comparison). If the env
+/// var is unset, auth is skipped. If the env var is set but empty, requests
+/// fail closed with `401 Unauthorized`.
+///
+/// **WASM note:** `std::env::var` returns `Err` on Cloudflare Workers,
+/// which means auth is silently disabled on that platform. See
+/// `TS_ALLOWED_DOMAINS_ENV` for the same limitation.
+#[action]
+pub async fn handle_resolve(
+    Headers(headers): Headers,
+    ValidatedQuery(params): ValidatedQuery<ResolveParams>,
+) -> Result<Response, EdgeError> {
+    let expected_token = std::env::var(PULL_TOKEN_ENV).ok();
+    let auth_header = headers
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok());
+
+    match authorize_pull_token(auth_header, expected_token.as_deref()) {
+        PullAuthOutcome::Authorized => {}
+        PullAuthOutcome::Unauthorized => {
+            log::warn!(
+                "Pull sync auth failed for ec_id_prefix={}...",
+                ec_id_log_prefix(&params.ec_id)
+            );
+            return Ok(build_response(StatusCode::UNAUTHORIZED, Body::empty()));
+        }
+        PullAuthOutcome::Misconfigured => {
+            log::error!(
+                "{} is set but empty; rejecting pull sync request",
+                PULL_TOKEN_ENV
+            );
+            return Ok(build_response(StatusCode::UNAUTHORIZED, Body::empty()));
+        }
+    }
+
+    let uid = resolve_uid(&params.ec_id, &params.ip)?;
+
+    log::info!(
+        "Pull sync resolve: ec_id_prefix={}..., ip={}",
+        ec_id_log_prefix(&params.ec_id),
+        sanitize_for_log(&params.ip, 45)
+    );
+
+    let body = Body::json(&ResolveResponse { uid }).map_err(|e| {
+        log::error!("Failed to serialize resolve response: {}", e);
+        EdgeError::internal(e)
+    })?;
+    let mut response = build_response(StatusCode::OK, body);
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    Ok(response)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PullAuthOutcome {
+    Authorized,
+    Unauthorized,
+    Misconfigured,
+}
+
+fn authorize_pull_token(
+    auth_header: Option<&str>,
+    expected_token: Option<&str>,
+) -> PullAuthOutcome {
+    let Some(expected_token) = expected_token else {
+        return PullAuthOutcome::Authorized;
+    };
+
+    if expected_token.trim().is_empty() {
+        return PullAuthOutcome::Misconfigured;
+    }
+
+    let provided_token = auth_header
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .unwrap_or("");
+
+    if constant_time_token_eq(provided_token, expected_token) {
+        PullAuthOutcome::Authorized
+    } else {
+        PullAuthOutcome::Unauthorized
+    }
+}
+
+fn resolve_uid(ec_id: &str, ip: &str) -> Result<String, EdgeError> {
+    let ec_hash = extract_ec_hash(ec_id)
+        .ok_or_else(|| EdgeError::validation("invalid ec_id format".to_string()))?;
+    Ok(resolve_uid_from_ec_hash(ec_hash, ip))
+}
+
+fn resolve_uid_from_ec_hash(ec_hash: &str, ip: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(ec_hash.as_bytes());
+    hasher.update(b"|");
+    hasher.update(ip.as_bytes());
+    let hash = hasher.finalize();
+    let hex = hex_encode(&hash);
+    format!("mtk-{}", &hex[..12])
+}
+
+fn ec_id_log_prefix(ec_id: &str) -> String {
+    extract_ec_hash(ec_id)
+        .map(|ec_hash| ec_hash.chars().take(8).collect())
+        .unwrap_or_else(|| sanitize_for_log(ec_id, 8))
+}
+
+fn is_ts_domain_allowed(ts_domain: &str, allowed_domains: Option<&str>) -> bool {
+    allowed_domains.is_none_or(|allowed| {
+        allowed
+            .split(',')
+            .any(|domain| domain.trim().eq_ignore_ascii_case(ts_domain))
+    })
+}
+
+/// Minimal percent-encoding for URL query parameter values.
+fn urlencoding(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(b as char);
+            }
+            _ => {
+                out.push('%');
+                out.push(char::from(PERCENT_HEX_CHARS_UPPER[(b >> 4) as usize]));
+                out.push(char::from(PERCENT_HEX_CHARS_UPPER[(b & 0x0f) as usize]));
+            }
+        }
+    }
+    out
+}
+
+const PERCENT_HEX_CHARS_UPPER: [u8; 16] = *b"0123456789ABCDEF";
+
+/// Encode bytes as lowercase hex string.
+fn hex_encode(bytes: &[u8]) -> String {
+    let mut s = String::with_capacity(bytes.len() * 2);
+    for &b in bytes {
+        s.push(char::from(b"0123456789abcdef"[(b >> 4) as usize]));
+        s.push(char::from(b"0123456789abcdef"[(b & 0x0f) as usize]));
+    }
+    s
+}
+
+/// Constant-time token comparison using `subtle::ConstantTimeEq`.
+/// Compares SHA-256 digests to avoid leaking length information.
+fn constant_time_token_eq(provided: &str, expected: &str) -> bool {
+    let hash_a = Sha256::digest(provided.as_bytes());
+    let hash_b = Sha256::digest(expected.as_bytes());
+    hash_a.ct_eq(&hash_b).into()
+}
+
+/// Returns true if the host looks like a local development address.
+fn is_local_host(host: &str) -> bool {
+    // Handle bracketed IPv6 with port: [::1]:8787 → ::1
+    let hostname = if host.starts_with('[') {
+        host.split(']').next().map(|s| &s[1..]).unwrap_or(host)
+    } else {
+        host.split(':').next().unwrap_or(host)
+    };
+    hostname == "localhost"
+        || hostname == "127.0.0.1"
+        || hostname == "::1"
+        || hostname.ends_with(".localhost")
+}
+
+/// Sanitize a user-supplied string for safe logging.
+/// Strips control characters and truncates to `max_len`.
+fn sanitize_for_log(s: &str, max_len: usize) -> String {
+    s.chars()
+        .filter(|c| !c.is_control())
+        .take(max_len)
+        .collect()
 }
 
 #[cfg(test)]
@@ -1001,5 +1457,454 @@ mod tests {
         assert!(first["height"].is_i64());
         // CPM is no longer included — bid price is fixed at FIXED_BID_CPM
         assert!(first.get("cpm").is_none());
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge Cookie (EC) sync endpoint tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn handle_sync_start_redirects_with_new_mtkid() {
+        let ctx = ctx(
+            Method::GET,
+            "/sync/start?ts_domain=ts.publisher.com",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_sync_start(ctx)));
+        assert_eq!(
+            response.status(),
+            StatusCode::FOUND,
+            "should redirect to TS /sync"
+        );
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .expect("should have Location header")
+            .to_str()
+            .unwrap();
+        assert!(
+            location.starts_with("https://ts.publisher.com/sync?"),
+            "should redirect to TS domain"
+        );
+        assert!(
+            location.contains("partner=mocktioneer"),
+            "should include partner=mocktioneer"
+        );
+        assert!(
+            location.contains("uid="),
+            "should include uid= with generated mtkid"
+        );
+        assert!(
+            location.contains("return="),
+            "should include return= callback URL"
+        );
+        // Should set mtkid cookie
+        let cookies = response.headers().get_all("set-cookie");
+        assert!(
+            cookies
+                .iter()
+                .any(|c| c.to_str().unwrap_or_default().starts_with("mtkid=")),
+            "should set mtkid cookie"
+        );
+    }
+
+    #[test]
+    fn handle_sync_start_reuses_existing_mtkid() {
+        let mut builder = request_builder();
+        builder = builder
+            .method(Method::GET)
+            .uri("/sync/start?ts_domain=ts.publisher.com")
+            .header("Cookie", "mtkid=existing-id-123");
+        let request = builder.body(Body::empty()).expect("request");
+        let ctx = RequestContext::new(request, PathParams::default());
+        let response = response_from(block_on(handle_sync_start(ctx)));
+        assert_eq!(response.status(), StatusCode::FOUND);
+        let location = response
+            .headers()
+            .get(header::LOCATION)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert!(
+            location.contains("uid=existing-id-123"),
+            "should use existing mtkid in redirect"
+        );
+        // Should NOT set a new cookie
+        assert!(
+            response.headers().get("set-cookie").is_none(),
+            "should not reset existing cookie"
+        );
+    }
+
+    #[test]
+    fn handle_sync_start_missing_ts_domain() {
+        let ctx = ctx(Method::GET, "/sync/start", Body::empty(), &[]);
+        let response = response_from(block_on(handle_sync_start(ctx)));
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "should reject missing ts_domain"
+        );
+    }
+
+    #[test]
+    fn handle_sync_done_success() {
+        let ctx = ctx(Method::GET, "/sync/done?ts_synced=1", Body::empty(), &[]);
+        let response = response_from(block_on(handle_sync_done(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let ct = response
+            .headers()
+            .get(header::CONTENT_TYPE)
+            .unwrap()
+            .to_str()
+            .unwrap();
+        assert_eq!(ct, "image/gif", "should return a pixel");
+    }
+
+    #[test]
+    fn handle_sync_done_failure() {
+        let ctx = ctx(
+            Method::GET,
+            "/sync/done?ts_synced=0&ts_reason=no_consent",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_sync_done(ctx)));
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "should still return pixel even on sync failure"
+        );
+    }
+
+    #[test]
+    fn handle_sync_done_rejects_invalid_status() {
+        let ctx = ctx(Method::GET, "/sync/done?ts_synced=x", Body::empty(), &[]);
+        let response = response_from(block_on(handle_sync_done(ctx)));
+        assert!(
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+            "should reject ts_synced values other than 0 or 1"
+        );
+    }
+
+    #[test]
+    fn handle_sync_done_rejects_overlong_reason() {
+        let uri = format!("/sync/done?ts_synced=0&ts_reason={}", "x".repeat(257));
+        let ctx = ctx(Method::GET, &uri, Body::empty(), &[]);
+        let response = response_from(block_on(handle_sync_done(ctx)));
+        assert!(
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+            "should reject overlong ts_reason values"
+        );
+    }
+
+    #[test]
+    fn resolve_uid_returns_deterministic_uid() {
+        let ec_id = format!("{}.AbC123", "a".repeat(64));
+        let uid = resolve_uid(&ec_id, "203.0.113.1").expect("uid");
+        assert!(uid.starts_with("mtk-"), "uid should start with mtk-");
+        assert_eq!(uid.len(), 16, "uid should be mtk- + 12 hex chars");
+
+        let uid2 = resolve_uid(&ec_id, "203.0.113.1").expect("uid");
+        assert_eq!(uid2, uid, "should be deterministic");
+    }
+
+    #[test]
+    fn resolve_uid_different_ips_produce_different_uids() {
+        let ec_id = format!("{}.XyZ789", "b".repeat(64));
+        let uid1 = resolve_uid(&ec_id, "203.0.113.1").expect("uid");
+        let uid2 = resolve_uid(&ec_id, "198.51.100.1").expect("uid");
+
+        assert_ne!(uid1, uid2, "different IPs should produce different UIDs");
+    }
+
+    #[test]
+    fn handle_resolve_rejects_invalid_ec_id() {
+        let ctx = ctx(
+            Method::GET,
+            "/resolve?ec_id=tooshort&ip=1.2.3.4",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_resolve(ctx)));
+        assert!(
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+            "should reject invalid ec_id format"
+        );
+    }
+
+    #[test]
+    fn handle_resolve_rejects_invalid_ip() {
+        let ec_id = format!("{}.AbC123", "a".repeat(64));
+        let uri = format!("/resolve?ec_id={}&ip=not-an-ip", ec_id);
+        let ctx = ctx(Method::GET, &uri, Body::empty(), &[]);
+        let response = response_from(block_on(handle_resolve(ctx)));
+        assert!(
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+            "should reject invalid IP address"
+        );
+    }
+
+    #[test]
+    fn validate_ip_address_accepts_ipv4_and_ipv6() {
+        assert!(validate_ip_address("203.0.113.1").is_ok());
+        assert!(validate_ip_address("2001:db8::1").is_ok());
+        assert!(validate_ip_address("not-an-ip").is_err());
+    }
+
+    #[test]
+    fn authorize_pull_token_allows_unset_auth() {
+        assert_eq!(
+            authorize_pull_token(None, None),
+            PullAuthOutcome::Authorized
+        );
+    }
+
+    #[test]
+    fn authorize_pull_token_accepts_correct_bearer_token() {
+        assert_eq!(
+            authorize_pull_token(Some("Bearer correct-token"), Some("correct-token")),
+            PullAuthOutcome::Authorized
+        );
+    }
+
+    #[test]
+    fn authorize_pull_token_rejects_missing_or_wrong_bearer_token() {
+        assert_eq!(
+            authorize_pull_token(None, Some("correct-token")),
+            PullAuthOutcome::Unauthorized
+        );
+        assert_eq!(
+            authorize_pull_token(Some("Bearer wrong-token"), Some("correct-token")),
+            PullAuthOutcome::Unauthorized
+        );
+        assert_eq!(
+            authorize_pull_token(Some("Basic correct-token"), Some("correct-token")),
+            PullAuthOutcome::Unauthorized
+        );
+    }
+
+    #[test]
+    fn authorize_pull_token_rejects_empty_configured_token() {
+        assert_eq!(
+            authorize_pull_token(Some("Bearer "), Some("")),
+            PullAuthOutcome::Misconfigured
+        );
+        assert_eq!(
+            authorize_pull_token(Some("Bearer anything"), Some("   ")),
+            PullAuthOutcome::Misconfigured
+        );
+    }
+
+    #[test]
+    fn urlencoding_encodes_special_chars() {
+        assert_eq!(urlencoding("hello world"), "hello%20world");
+        assert_eq!(urlencoding("a=b&c=d"), "a%3Db%26c%3Dd");
+        assert_eq!(urlencoding("plain"), "plain");
+        assert_eq!(
+            urlencoding("https://example.com/path"),
+            "https%3A%2F%2Fexample.com%2Fpath"
+        );
+    }
+
+    #[test]
+    fn hex_encode_produces_lowercase_hex() {
+        assert_eq!(hex_encode(&[0x00, 0xff, 0xab]), "00ffab");
+        assert_eq!(hex_encode(&[0xde, 0xad, 0xbe, 0xef]), "deadbeef");
+    }
+
+    #[test]
+    fn is_valid_hostname_accepts_valid_domains() {
+        assert!(is_valid_hostname("ts.publisher.com"));
+        assert!(is_valid_hostname("localhost"));
+        assert!(is_valid_hostname("my-server.example.org"));
+    }
+
+    #[test]
+    fn is_valid_hostname_rejects_ip_literals() {
+        assert!(!is_valid_hostname("127.0.0.1"));
+        assert!(!is_valid_hostname("203.0.113.10"));
+        assert!(!is_valid_hostname("::1"));
+        assert!(!is_valid_hostname("2001:db8::1"));
+    }
+
+    #[test]
+    fn sync_start_params_enforces_dns_length_limit() {
+        let valid_domain = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(61)
+        );
+        assert_eq!(valid_domain.len(), 253);
+        let valid_params = SyncStartParams {
+            ts_domain: valid_domain,
+        };
+        assert!(valid_params.validate().is_ok());
+
+        let invalid_domain = format!(
+            "{}.{}.{}.{}",
+            "a".repeat(63),
+            "b".repeat(63),
+            "c".repeat(63),
+            "d".repeat(62)
+        );
+        assert_eq!(invalid_domain.len(), 254);
+        let invalid_params = SyncStartParams {
+            ts_domain: invalid_domain,
+        };
+        assert!(invalid_params.validate().is_err());
+    }
+
+    #[test]
+    fn is_ts_domain_allowed_handles_unset_and_matching_allowlists() {
+        assert!(is_ts_domain_allowed("ts.publisher.com", None));
+        assert!(is_ts_domain_allowed(
+            "ts.publisher.com",
+            Some("other.example, TS.PUBLISHER.COM ")
+        ));
+        assert!(!is_ts_domain_allowed(
+            "evil.example.com",
+            Some("ts.publisher.com,other.example")
+        ));
+        assert!(!is_ts_domain_allowed("ts.publisher.com", Some("")));
+    }
+
+    #[test]
+    fn is_valid_hostname_rejects_path_injection() {
+        assert!(!is_valid_hostname("evil.com/path"));
+        assert!(!is_valid_hostname("user@evil.com"));
+        assert!(!is_valid_hostname("evil.com:8080"));
+        assert!(!is_valid_hostname("evil.com?query"));
+        assert!(!is_valid_hostname("evil.com#fragment"));
+        assert!(!is_valid_hostname("evil.com foo"));
+        assert!(!is_valid_hostname(""));
+    }
+
+    #[test]
+    fn is_valid_hostname_rejects_invalid_labels() {
+        assert!(!is_valid_hostname("bad..example.com"));
+        assert!(!is_valid_hostname("-bad.example.com"));
+        assert!(!is_valid_hostname("bad-.example.com"));
+        assert!(!is_valid_hostname("bad_label.example.com"));
+        assert!(!is_valid_hostname(&format!(
+            "{}.example.com",
+            "a".repeat(64)
+        )));
+    }
+
+    #[test]
+    fn is_local_host_detects_local_addresses() {
+        assert!(is_local_host("localhost"));
+        assert!(is_local_host("localhost:8787"));
+        assert!(is_local_host("127.0.0.1"));
+        assert!(is_local_host("127.0.0.1:7676"));
+        assert!(is_local_host("[::1]"));
+        assert!(is_local_host("[::1]:8787"));
+        assert!(is_local_host("foo.localhost"));
+        assert!(!is_local_host("example.com"));
+        assert!(!is_local_host("notlocalhost.com"));
+    }
+
+    #[test]
+    fn sanitize_for_log_strips_control_chars() {
+        assert_eq!(sanitize_for_log("normal text", 128), "normal text");
+        assert_eq!(sanitize_for_log("has\nnewline", 128), "hasnewline");
+        assert_eq!(sanitize_for_log("has\ttab", 128), "hastab");
+        assert_eq!(sanitize_for_log("a\x00b\x1fc", 128), "abc");
+    }
+
+    #[test]
+    fn sanitize_for_log_truncates() {
+        assert_eq!(sanitize_for_log("abcdefgh", 4), "abcd");
+    }
+
+    #[test]
+    fn constant_time_token_eq_works() {
+        assert!(constant_time_token_eq("secret", "secret"));
+        assert!(!constant_time_token_eq("secret", "wrong"));
+        assert!(!constant_time_token_eq("short", "different-length"));
+        assert!(!constant_time_token_eq("", "notempty"));
+        assert!(constant_time_token_eq("", ""));
+    }
+
+    #[test]
+    fn handle_sync_start_rejects_path_injection() {
+        let ctx = ctx(
+            Method::GET,
+            "/sync/start?ts_domain=evil.com%2Fpath",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_sync_start(ctx)));
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "should reject ts_domain with path component"
+        );
+    }
+
+    #[test]
+    fn handle_sync_start_rejects_auth_injection() {
+        let ctx = ctx(
+            Method::GET,
+            "/sync/start?ts_domain=user%40evil.com",
+            Body::empty(),
+            &[],
+        );
+        let response = response_from(block_on(handle_sync_start(ctx)));
+        assert_eq!(
+            response.status(),
+            StatusCode::BAD_REQUEST,
+            "should reject ts_domain with @ (basic auth syntax)"
+        );
+    }
+
+    #[test]
+    fn handle_resolve_rejects_non_hex_ec_id() {
+        // 64 chars but not hex, plus valid suffix
+        let ec_id = format!("{}.AbC123", "z".repeat(64));
+        let uri = format!("/resolve?ec_id={}&ip=1.2.3.4", ec_id);
+        let ctx = ctx(Method::GET, &uri, Body::empty(), &[]);
+        let response = response_from(block_on(handle_resolve(ctx)));
+        assert!(
+            response.status() == StatusCode::BAD_REQUEST
+                || response.status() == StatusCode::UNPROCESSABLE_ENTITY,
+            "should reject non-hex ec_id"
+        );
+    }
+
+    #[test]
+    fn handle_pixel_produces_host_scoped_deterministic_mtkid() {
+        let ctx1 = ctx(Method::GET, "/pixel?pid=test", Body::empty(), &[]);
+        let response1 = response_from(block_on(handle_pixel(ctx1)));
+        let cookie1 = response1
+            .headers()
+            .get("set-cookie")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        let ctx2 = ctx(Method::GET, "/pixel?pid=test", Body::empty(), &[]);
+        let response2 = response_from(block_on(handle_pixel(ctx2)));
+        let cookie2 = response2
+            .headers()
+            .get("set-cookie")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .to_string();
+
+        assert_eq!(
+            cookie1, cookie2,
+            "same host should produce the same mock/test mtkid"
+        );
     }
 }

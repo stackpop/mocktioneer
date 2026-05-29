@@ -4,7 +4,7 @@
 //! and selects winners based on price (highest price wins).
 
 use crate::openrtb::{Bid as OpenRTBBid, Imp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid};
-use crate::render::{CreativeMetadata, SignatureStatus};
+use crate::render::{extract_ec_info, CreativeMetadata, SignatureStatus};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
@@ -204,6 +204,7 @@ fn build_openrtb_response(
         signature: SignatureStatus::NotPresent {
             reason: "Mediation response".to_string(),
         },
+        edge_cookie: extract_ec_info(&ortb_request),
         request: &ortb_request,
         response: None,
     };
