@@ -14,7 +14,6 @@ default = []
 spin = ["edgezero-adapter-spin/spin"]
 
 [dependencies]
-edgezero-adapter-spin = { workspace = true }
 edgezero-core = { workspace = true }
 mocktioneer-core = { workspace = true }
 
