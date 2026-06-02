@@ -18,6 +18,7 @@ crates/
   mocktioneer-adapter-axum/       # Native Axum HTTP server
   mocktioneer-adapter-cloudflare/ # Cloudflare Workers bridge (wasm32-unknown-unknown)
   mocktioneer-adapter-fastly/     # Fastly Compute bridge (wasm32-wasip1)
+  mocktioneer-adapter-spin/       # Spin / Fermyon bridge (wasm32-wasip1)
 docs/                             # VitePress documentation site (Node.js)
 examples/                         # curl/shell scripts for endpoint demos
 tests/playwright/                 # Playwright e2e tests (creative visibility, sizes)
@@ -51,6 +52,7 @@ cargo run -p mocktioneer-adapter-axum
 # Run via EdgeZero CLI
 edgezero-cli serve --adapter cloudflare   # Cloudflare on :8787
 edgezero-cli serve --adapter fastly       # Fastly on :7676
+edgezero-cli serve --adapter spin         # Spin on :3000
 
 # Playwright e2e tests
 cd tests/playwright && npm test
@@ -64,11 +66,12 @@ faster iteration since nearly all business logic lives there.
 
 ## Compilation Targets
 
-| Adapter    | Target                   | Notes                              |
-| ---------- | ------------------------ | ---------------------------------- |
-| Fastly     | `wasm32-wasip1`          | Requires Viceroy for local testing |
-| Cloudflare | `wasm32-unknown-unknown` | Requires `wrangler` for dev/deploy |
-| Axum       | Native (host triple)     | Standard Tokio runtime             |
+| Adapter    | Target                   | Notes                                                |
+| ---------- | ------------------------ | ---------------------------------------------------- |
+| Fastly     | `wasm32-wasip1`          | Requires Viceroy for local testing                   |
+| Cloudflare | `wasm32-unknown-unknown` | Requires `wrangler` for dev/deploy                   |
+| Spin       | `wasm32-wasip1`          | Requires `spin` for dev/deploy; tests via `wasmtime` |
+| Axum       | Native (host triple)     | Standard Tokio runtime                               |
 
 ## Coding Conventions
 
@@ -290,6 +293,7 @@ Custom commands live in `.claude/commands/`:
 | Axum adapter entry | `crates/mocktioneer-adapter-axum/src/main.rs`      |
 | Cloudflare adapter | `crates/mocktioneer-adapter-cloudflare/src/lib.rs` |
 | Fastly adapter     | `crates/mocktioneer-adapter-fastly/src/main.rs`    |
+| Spin adapter       | `crates/mocktioneer-adapter-spin/src/lib.rs`       |
 | Playwright tests   | `tests/playwright/`                                |
 | Example scripts    | `examples/`                                        |
 | CI tests           | `.github/workflows/test.yml`                       |

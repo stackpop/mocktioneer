@@ -136,11 +136,20 @@ jobs:
         if: matrix.adapter == 'fastly'
         run: cargo install viceroy --version "${{ steps.viceroy-version.outputs.version }}" --locked --force
 
+      - name: Resolve Wasmtime version
+        if: matrix.adapter == 'spin'
+        id: wasmtime-version
+        shell: bash
+        run: echo "version=$(grep '^wasmtime ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      # Pinned to `.tool-versions` so local dev and CI share a single source of
+      # truth; `-v` makes the installer fetch a specific tagged release rather
+      # than the latest moving target.
       - name: Setup Wasmtime
         if: matrix.adapter == 'spin'
         run: |
           if ! command -v wasmtime &>/dev/null; then
-            curl https://wasmtime.dev/install.sh -sSf | bash
+            curl https://wasmtime.dev/install.sh -sSf | bash -s -- -v "v${{ steps.wasmtime-version.outputs.version }}"
             echo "$HOME/.wasmtime/bin" >> "$GITHUB_PATH"
           fi
 

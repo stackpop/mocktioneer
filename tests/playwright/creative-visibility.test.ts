@@ -12,24 +12,37 @@ interface AdSize {
   height: number;
 }
 
-// Fetched from /_/sizes endpoint before tests run
-let AD_SIZES: AdSize[] = [];
-
-test.beforeAll(async ({ request }) => {
-  const response = await request.get('/_/sizes');
-  expect(response.ok()).toBe(true);
-  const data = await response.json();
-  AD_SIZES = data.sizes;
-  expect(AD_SIZES.length).toBeGreaterThan(0);
-});
+// Static IAB sizes registered with mocktioneer. Mirrors `STANDARD_SIZES` in
+// `crates/mocktioneer-core/src/auction.rs`. Kept in sync via the
+// `sizes endpoint matches static AD_SIZES list` assertion below — Playwright
+// registers tests synchronously at module load, so we can't iterate over a
+// list populated in `beforeAll`.
+const AD_SIZES: AdSize[] = [
+  { width: 160, height: 600 },
+  { width: 300, height: 50 },
+  { width: 300, height: 250 },
+  { width: 300, height: 600 },
+  { width: 320, height: 50 },
+  { width: 320, height: 100 },
+  { width: 320, height: 480 },
+  { width: 336, height: 280 },
+  { width: 468, height: 60 },
+  { width: 480, height: 320 },
+  { width: 728, height: 90 },
+  { width: 970, height: 90 },
+  { width: 970, height: 250 },
+];
 
 test.describe('Creative visibility tests', () => {
-  test('sizes endpoint returns valid data', async ({ request }) => {
+  test('sizes endpoint matches static AD_SIZES list', async ({ request }) => {
     const response = await request.get('/_/sizes');
     expect(response.ok()).toBe(true);
     const data = await response.json();
     expect(data.sizes).toBeInstanceOf(Array);
-    expect(data.sizes.length).toBe(13);
+    expect(data.sizes.length).toBe(AD_SIZES.length);
+    const serverSizes = (data.sizes as AdSize[]).map((s) => `${s.width}x${s.height}`).sort();
+    const expected = AD_SIZES.map((s) => `${s.width}x${s.height}`).sort();
+    expect(serverSizes).toEqual(expected);
     for (const size of data.sizes) {
       expect(typeof size.width).toBe('number');
       expect(typeof size.height).toBe('number');
