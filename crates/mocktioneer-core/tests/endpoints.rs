@@ -236,29 +236,73 @@ mod tests {
     }
 
     #[test]
-    fn options_includes_allow_and_cors_headers() {
+    fn ec_sync_endpoints_are_routed() {
         let app = app();
-        let response = dispatch(
+
+        let sync_start = dispatch(
             &app,
-            make_request(Method::OPTIONS, "/openrtb2/auction", Body::empty()),
+            make_request(
+                Method::GET,
+                "/sync/start?ts_domain=evil.com%2Fpath",
+                Body::empty(),
+            ),
         );
-        assert_eq!(response.status(), StatusCode::NO_CONTENT);
-        let allow = response
-            .headers()
-            .get(header::ALLOW)
-            .unwrap()
-            .to_str()
-            .unwrap();
-        assert!(allow.contains("POST"));
-        assert!(allow.contains("OPTIONS"));
+        assert_ne!(sync_start.status(), StatusCode::NOT_FOUND);
+        assert_eq!(sync_start.status(), StatusCode::BAD_REQUEST);
+
+        let sync_done = dispatch(
+            &app,
+            make_request(Method::GET, "/sync/done?ts_synced=1", Body::empty()),
+        );
+        assert_eq!(sync_done.status(), StatusCode::OK);
         assert_eq!(
-            response
+            sync_done
                 .headers()
-                .get("access-control-allow-methods")
+                .get(header::CONTENT_TYPE)
                 .unwrap()
                 .to_str()
                 .unwrap(),
-            "GET, POST, OPTIONS"
+            "image/gif"
         );
+
+        let resolve = dispatch(
+            &app,
+            make_request(
+                Method::GET,
+                "/resolve?ec_id=tooshort&ip=1.2.3.4",
+                Body::empty(),
+            ),
+        );
+        assert_ne!(resolve.status(), StatusCode::NOT_FOUND);
+        assert!(matches!(
+            resolve.status(),
+            StatusCode::BAD_REQUEST | StatusCode::UNPROCESSABLE_ENTITY
+        ));
+    }
+
+    #[test]
+    fn options_includes_allow_and_cors_headers() {
+        let app = app();
+        for path in ["/openrtb2/auction", "/sync/start", "/sync/done", "/resolve"] {
+            let response = dispatch(&app, make_request(Method::OPTIONS, path, Body::empty()));
+            assert_eq!(response.status(), StatusCode::NO_CONTENT, "{path}");
+            let allow = response
+                .headers()
+                .get(header::ALLOW)
+                .unwrap()
+                .to_str()
+                .unwrap();
+            assert!(allow.contains("OPTIONS"), "{path}");
+            assert_eq!(
+                response
+                    .headers()
+                    .get("access-control-allow-methods")
+                    .unwrap()
+                    .to_str()
+                    .unwrap(),
+                "GET, POST, OPTIONS",
+                "{path}"
+            );
+        }
     }
 }

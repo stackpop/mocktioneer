@@ -3,11 +3,12 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use crate::openrtb::OpenRTBRequest;
+use crate::openrtb::{Eid, OpenRTBRequest};
 
 const CREATIVE_HTML_TMPL: &str = include_str!("../static/templates/creative.html.hbs");
 const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html.hbs");
 const INFO_TMPL: &str = include_str!("../static/templates/info.html.hbs");
+const MOCKTIONEER_SOURCE_DOMAIN: &str = "mocktioneer.dev";
 const SVG_TMPL: &str = include_str!("../static/templates/image.svg.hbs");
 
 /// Signature verification status for creative metadata.
@@ -25,11 +26,38 @@ pub enum SignatureStatus {
 /// Metadata to embed in creative HTML comments.
 #[derive(Debug, Clone, Serialize)]
 pub struct CreativeMetadata<'req> {
+    /// Edge Cookie identity pipeline state extracted from the bid request.
+    pub edge_cookie: EdgeCookieInfo,
     pub request: &'req OpenRTBRequest,
     /// The `OpenRTB` response with `adm` fields stripped (to avoid recursion).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub response: Option<JsonValue>,
     pub signature: SignatureStatus,
+}
+
+/// Edge Cookie identity information extracted from an `OpenRTB` bid request.
+///
+/// Populated from `user.id` (the EC value), `user.eids` (synced partner IDs),
+/// `user.consent` (TCF string), and `user.buyeruid`. When trusted-server
+/// decorates bid requests with EC data (§12 of the EC spec), this struct
+/// captures that identity pipeline state for embedding in creative metadata.
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgeCookieInfo {
+    /// The buyer UID from `user.buyeruid` or matched from `user.eids`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buyer_uid: Option<String>,
+    /// TCF consent string from `user.consent`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consent: Option<String>,
+    /// The full EC identifier from `user.id` (format: `{64-hex}.{6-alnum}`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ec_id: Option<String>,
+    /// Full EIDs array for inspection.
+    pub eids: Vec<Eid>,
+    /// Number of EID sources in the bid request.
+    pub eids_count: usize,
+    /// Whether mocktioneer's own UID appeared in `user.eids`.
+    pub mocktioneer_matched: bool,
 }
 
 impl SignatureStatus {
@@ -67,6 +95,75 @@ pub fn creative_html(
         "W": width,
     });
     render_template_str(CREATIVE_HTML_TMPL, &data)
+}
+
+/// Extract the stable 64-char hex prefix from a full EC value.
+///
+/// Returns `None` if the value is not in `{64-hex}.{6-alnum}` format.
+#[inline]
+#[must_use]
+pub fn extract_ec_hash(ec_value: &str) -> Option<&str> {
+    let (prefix, suffix) = ec_value.split_once('.')?;
+    if prefix.len() != 64
+        || !prefix.chars().all(|ch| ch.is_ascii_hexdigit())
+        || suffix.len() != 6
+        || !suffix.chars().all(|ch| ch.is_ascii_alphanumeric())
+    {
+        return None;
+    }
+    Some(prefix)
+}
+
+/// Build `EdgeCookieInfo` from an `OpenRTB` request's user object.
+///
+/// Checks both `user.eids` (`OpenRTB` 2.6 top-level) and `user.ext.eids`
+/// (Prebid Server / `OpenRTB` 2.5 convention). The top-level field takes
+/// priority; `ext.eids` is used as a fallback when the top-level is empty.
+#[inline]
+#[must_use]
+pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
+    let user = req.user.as_ref();
+
+    let ec_id = user.and_then(|usr| usr.id.clone());
+
+    // Try top-level user.eids (OpenRTB 2.6), fall back to user.ext.eids (Prebid/2.5).
+    let eids = user
+        .map(|usr| {
+            if usr.eids.is_empty() {
+                usr.ext
+                    .as_ref()
+                    .and_then(|ext| ext.get("eids"))
+                    .and_then(|val| serde_json::from_value::<Vec<Eid>>(val.clone()).ok())
+                    .unwrap_or_default()
+            } else {
+                usr.eids.clone()
+            }
+        })
+        .unwrap_or_default();
+
+    let mocktioneer_eid_uid = eids.iter().find_map(|eid| {
+        if eid.source == MOCKTIONEER_SOURCE_DOMAIN {
+            eid.uids.first().map(|uid| uid.id.clone())
+        } else {
+            None
+        }
+    });
+
+    let mocktioneer_matched = mocktioneer_eid_uid.is_some();
+
+    // Prefer buyeruid, fall back to matched EID.
+    let buyer_uid = user
+        .and_then(|usr| usr.buyeruid.clone())
+        .or(mocktioneer_eid_uid);
+
+    EdgeCookieInfo {
+        buyer_uid,
+        consent: user.and_then(|usr| usr.consent.clone()),
+        ec_id,
+        eids_count: eids.len(),
+        eids,
+        mocktioneer_matched,
+    }
 }
 
 /// Render iframe HTML with embedded metadata as an HTML comment.
@@ -197,6 +294,7 @@ mod tests {
         ));
 
         let metadata = CreativeMetadata {
+            edge_cookie: extract_ec_info(req),
             request: req,
             response: None,
             signature,
@@ -252,6 +350,7 @@ mod tests {
         .unwrap();
 
         let metadata = CreativeMetadata {
+            edge_cookie: extract_ec_info(&req),
             request: &req,
             response: None,
             signature: SignatureStatus::Verified {
@@ -290,6 +389,7 @@ mod tests {
         .unwrap();
 
         let metadata = CreativeMetadata {
+            edge_cookie: extract_ec_info(&req),
             request: &req,
             response: None,
             signature: SignatureStatus::Failed {
@@ -329,6 +429,7 @@ mod tests {
         .unwrap();
 
         let metadata = CreativeMetadata {
+            edge_cookie: extract_ec_info(&req),
             request: &req,
             response: None,
             signature: SignatureStatus::NotPresent {
@@ -370,6 +471,7 @@ mod tests {
         });
 
         let metadata = CreativeMetadata {
+            edge_cookie: extract_ec_info(&req),
             request: &req,
             response: Some(response),
             signature: SignatureStatus::Verified {
@@ -393,5 +495,226 @@ mod tests {
         assert!(html.contains("var sig = validSig[sigParam] ? sigParam : \"not_present\";"));
         assert!(html.contains("badge.style.display = \"block\";"));
         assert!(html.contains("No signature present"));
+    }
+
+    #[test]
+    fn extract_ec_hash_valid() {
+        let ec = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123";
+        assert_eq!(
+            extract_ec_hash(ec),
+            Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2")
+        );
+    }
+
+    #[test]
+    fn extract_ec_hash_invalid_formats() {
+        assert_eq!(extract_ec_hash("too-short.abc123"), None);
+        assert_eq!(extract_ec_hash("not-hex-at-all"), None);
+        assert_eq!(
+            extract_ec_hash("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.ab"),
+            None
+        ); // suffix too short
+        assert_eq!(
+            extract_ec_hash("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"),
+            None
+        ); // no dot
+    }
+
+    #[test]
+    fn extract_ec_info_with_ec_user() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "ec-req",
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
+            "user": {
+                "id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123",
+                "buyeruid": "mtk-abc123",
+                "consent": "CPtest123",
+                "eids": [
+                    {
+                        "source": "mocktioneer.dev",
+                        "uids": [{"id": "mtk-abc123", "atype": 3_u8}]
+                    },
+                    {
+                        "source": "liveramp.com",
+                        "uids": [{"id": "LR_xyz", "atype": 3_u8}]
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(
+            info.ec_id.as_deref(),
+            Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123")
+        );
+        assert_eq!(info.buyer_uid.as_deref(), Some("mtk-abc123"));
+        assert_eq!(info.consent.as_deref(), Some("CPtest123"));
+        assert_eq!(info.eids_count, 2);
+        assert!(
+            info.mocktioneer_matched,
+            "should match mocktioneer.dev source"
+        );
+    }
+
+    #[test]
+    fn extract_ec_info_no_user() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "no-user-req",
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}]
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert!(info.ec_id.is_none());
+        assert!(info.buyer_uid.is_none());
+        assert!(info.consent.is_none());
+        assert_eq!(info.eids_count, 0);
+        assert!(!info.mocktioneer_matched);
+    }
+
+    #[test]
+    fn extract_ec_info_eids_without_mocktioneer() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "other-eids-req",
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
+            "user": {
+                "eids": [
+                    {
+                        "source": "liveramp.com",
+                        "uids": [{"id": "LR_xyz", "atype": 3_u8}]
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.eids_count, 1);
+        assert!(!info.mocktioneer_matched);
+        assert!(info.buyer_uid.is_none());
+    }
+
+    #[test]
+    fn iframe_html_includes_ec_metadata() {
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "ec-metadata-req",
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
+            "user": {
+                "id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123",
+                "eids": [
+                    {
+                        "source": "mocktioneer.dev",
+                        "uids": [{"id": "mtk-abc123", "atype": 3_u8}]
+                    }
+                ]
+            }
+        }))
+        .unwrap();
+
+        let metadata = CreativeMetadata {
+            edge_cookie: extract_ec_info(&req),
+            request: &req,
+            response: None,
+            signature: SignatureStatus::NotPresent {
+                reason: "test".to_owned(),
+            },
+        };
+
+        let adm = iframe_html("host.test", "crid123", 300, 250, None, &metadata);
+        assert!(
+            adm.contains("\"edge_cookie\":"),
+            "should contain edge_cookie section"
+        );
+        assert!(adm.contains("\"mocktioneer_matched\": true"));
+        assert!(adm.contains("\"eids_count\": 1"));
+    }
+
+    #[test]
+    fn extract_ec_info_from_ext_eids_prebid_style() {
+        // Prebid Server puts eids under user.ext.eids (OpenRTB 2.5 convention)
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "prebid-eids-req",
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
+            "user": {
+                "id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123",
+                "ext": {
+                    "eids": [
+                        {
+                            "source": "mocktioneer.dev",
+                            "uids": [{"id": "mtk-476b99ce5ff5", "atype": 3_u8}]
+                        },
+                        {
+                            "source": "liveramp.com",
+                            "uids": [{"id": "LR_xyz", "atype": 3_u8}]
+                        }
+                    ]
+                }
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.eids_count, 2, "should find eids from user.ext.eids");
+        assert!(
+            info.mocktioneer_matched,
+            "should match mocktioneer.dev in ext.eids"
+        );
+        assert_eq!(
+            info.buyer_uid.as_deref(),
+            Some("mtk-476b99ce5ff5"),
+            "should extract buyer_uid from ext.eids"
+        );
+        assert_eq!(
+            info.ec_id.as_deref(),
+            Some("a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123")
+        );
+    }
+
+    #[test]
+    fn extract_ec_info_top_level_eids_takes_priority_over_ext() {
+        // When both user.eids and user.ext.eids are present, top-level wins
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "both-eids-req",
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
+            "user": {
+                "eids": [
+                    {"source": "top-level.com", "uids": [{"id": "top-uid", "atype": 3_u8}]}
+                ],
+                "ext": {
+                    "eids": [
+                        {"source": "mocktioneer.dev", "uids": [{"id": "ext-uid", "atype": 3_u8}]}
+                    ]
+                }
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.eids_count, 1, "should use top-level eids");
+        assert_eq!(info.eids[0].source, "top-level.com");
+        assert!(
+            !info.mocktioneer_matched,
+            "ext.eids should be ignored when top-level is present"
+        );
+    }
+
+    #[test]
+    fn extract_ec_info_ext_eids_malformed_ignored() {
+        // Malformed ext.eids should not crash — just produce empty eids
+        let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
+            "id": "bad-ext-req",
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
+            "user": {
+                "ext": {
+                    "eids": "not-an-array"
+                }
+            }
+        }))
+        .unwrap();
+
+        let info = extract_ec_info(&req);
+        assert_eq!(info.eids_count, 0);
+        assert!(!info.mocktioneer_matched);
     }
 }
