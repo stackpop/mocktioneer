@@ -43,8 +43,8 @@ jobs:
         with:
           toolchain: ${{ steps.rust-version.outputs.rust-version }}
 
-      - name: Add wasm32-wasi target
-        run: rustup target add wasm32-wasip1
+      - name: Add WASM targets
+        run: rustup target add wasm32-wasip1 wasm32-wasip2
 
       - name: Setup Viceroy
         run: cargo install viceroy --version 0.17.0 --locked
@@ -57,6 +57,9 @@ jobs:
 
       - name: Check feature compilation
         run: cargo check --workspace --all-targets --features "fastly cloudflare spin"
+
+      - name: Check Spin WASM target
+        run: cargo check --target wasm32-wasip2 -p mocktioneer-adapter-spin --features spin
 
   playwright:
     name: playwright tests
