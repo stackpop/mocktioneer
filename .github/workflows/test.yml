@@ -143,15 +143,15 @@ jobs:
         run: echo "version=$(grep '^wasmtime ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
       # Pinned to `.tool-versions` so local dev and CI share a single source
-      # of truth. The installer's `--version` flag fetches a specific tagged
-      # release rather than tracking the latest moving target.
+      # of truth. Always install the pinned version: a preinstalled wasmtime
+      # of a different version on the runner image would otherwise silently
+      # bypass the pin. `~/.wasmtime/bin/` is prepended to PATH so this
+      # install shadows any system-wide wasmtime for the rest of the job.
       - name: Setup Wasmtime
         if: matrix.adapter == 'spin'
         run: |
-          if ! command -v wasmtime &>/dev/null; then
-            curl https://wasmtime.dev/install.sh -sSf | bash -s -- --version "v${{ steps.wasmtime-version.outputs.version }}"
-            echo "$HOME/.wasmtime/bin" >> "$GITHUB_PATH"
-          fi
+          curl https://wasmtime.dev/install.sh -sSf | bash -s -- --version "v${{ steps.wasmtime-version.outputs.version }}"
+          echo "$HOME/.wasmtime/bin" >> "$GITHUB_PATH"
 
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
