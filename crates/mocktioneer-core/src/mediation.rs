@@ -1,113 +1,117 @@
-//! Mock Ad Server Mediation
+//! Mock Ad Server Mediation.
 //!
 //! Provides a simple mediation endpoint that accepts bids from multiple bidders
 //! and selects winners based on price (highest price wins).
 
 use crate::openrtb::{Bid as OpenRTBBid, Imp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid};
-use crate::render::{extract_ec_info, CreativeMetadata, SignatureStatus};
+use crate::render::{extract_ec_info, iframe_html, CreativeMetadata, SignatureStatus};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use uuid::Uuid;
 use validator::Validate;
 
-fn new_id() -> String {
-    Uuid::now_v7().simple().to_string()
-}
-
-/// Mediation request containing impression definitions and bidder responses
+/// Mediation request containing impression definitions and bidder responses.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationRequest {
-    /// Auction ID
-    #[validate(length(min = 1))]
-    pub id: String,
-
-    /// Impression definitions (from original auction request)
-    #[validate(length(min = 1))]
-    pub imp: Vec<Imp>,
-
-    /// Mediation-specific extensions
+    /// Mediation-specific extensions.
     #[validate(nested)]
     pub ext: MediationExt,
+
+    /// Auction ID.
+    #[validate(length(min = 1_u64))]
+    pub id: String,
+
+    /// Impression definitions (from original auction request).
+    #[validate(length(min = 1_u64))]
+    pub imp: Vec<Imp>,
 }
 
-/// Extensions for mediation request
+/// Extensions for mediation request.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationExt {
-    /// Responses from all bidders
-    #[validate(length(min = 1))]
+    /// Responses from all bidders.
+    #[validate(length(min = 1_u64))]
     #[validate(nested)]
     pub bidder_responses: Vec<BidderResponse>,
 
-    /// Optional mediation configuration
+    /// Optional mediation configuration.
     #[serde(skip_serializing_if = "Option::is_none")]
     #[validate(nested)]
     pub config: Option<MediationConfig>,
 }
 
-/// Response from a single bidder
+/// Response from a single bidder.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct BidderResponse {
-    /// Bidder name/identifier (e.g., "amazon-aps", "prebid")
-    #[validate(length(min = 1))]
+    /// Bidder name/identifier (e.g., "amazon-aps", "prebid").
+    #[validate(length(min = 1_u64))]
     pub bidder: String,
 
-    /// Bids from this bidder
+    /// Bids from this bidder.
     #[validate(nested)]
     pub bids: Vec<MediationBid>,
 }
 
-/// A single bid from a bidder
+/// A single bid from a bidder.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationBid {
-    /// Impression ID this bid is for
-    #[validate(length(min = 1))]
-    pub imp_id: String,
-
-    /// Bid price (CPM)
-    #[validate(range(min = 0.0))]
-    pub price: f64,
-
-    /// Creative markup (HTML)
-    /// Optional - if not provided, mediation will generate an iframe creative
+    /// Creative markup (HTML).
+    /// Optional - if not provided, mediation will generate an iframe creative.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adm: Option<String>,
 
-    /// Creative width
-    #[validate(range(min = 1))]
-    pub w: i64,
+    /// Advertiser domains.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub adomain: Option<Vec<String>>,
 
-    /// Creative height
-    #[validate(range(min = 1))]
-    pub h: i64,
-
-    /// Creative ID
+    /// Creative ID.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub crid: Option<String>,
 
-    /// Advertiser domains
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub adomain: Option<Vec<String>>,
+    /// Creative height.
+    #[serde(rename = "h")]
+    #[validate(range(min = 1_i64))]
+    pub height: i64,
+
+    /// Impression ID this bid is for.
+    #[validate(length(min = 1_u64))]
+    pub imp_id: String,
+
+    /// Bid price (CPM).
+    #[validate(range(min = 0.0_f64))]
+    pub price: f64,
+
+    /// Creative width.
+    #[serde(rename = "w")]
+    #[validate(range(min = 1_i64))]
+    pub width: i64,
 }
 
-/// Mediation configuration
+/// Mediation configuration.
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct MediationConfig {
-    /// Minimum acceptable bid price (CPM)
-    /// Bids below this floor will be rejected
+    /// Minimum acceptable bid price (CPM).
+    /// Bids below this floor will be rejected.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[validate(range(min = 0.0))]
+    #[validate(range(min = 0.0_f64))]
     pub price_floor: Option<f64>,
 }
 
-/// Run mediation algorithm and return winning bids
+fn new_id() -> String {
+    Uuid::now_v7().simple().to_string()
+}
+
+/// Run mediation algorithm and return winning bids.
 ///
 /// Algorithm:
 /// 1. Collect all bids grouped by impression ID
 /// 2. For each impression, select highest price bid (above floor if set)
 /// 3. On price tie, first bidder in array wins
 /// 4. Generate creatives for winning bids that don't have adm
-/// 5. Return OpenRTB response with winning bids grouped by seat
+/// 5. Return `OpenRTB` response with winning bids grouped by seat
+#[inline]
+#[must_use]
 pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBResponse {
     log::info!(
         "Mediation: processing {} impressions with {} bidder responses",
@@ -116,7 +120,7 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
     );
 
     // Step 1: Collect all bids grouped by impression ID
-    let mut bids_by_imp: HashMap<String, Vec<(String, MediationBid)>> = HashMap::new();
+    let mut bids_by_imp: BTreeMap<String, Vec<(String, MediationBid)>> = BTreeMap::new();
 
     for bidder_response in request.ext.bidder_responses {
         for bid in bidder_response.bids {
@@ -133,12 +137,12 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
     );
 
     // Step 2: Select winner per impression (highest price)
-    let mut winning_bids: HashMap<String, (String, MediationBid)> = HashMap::new();
+    let mut winning_bids: BTreeMap<String, (String, MediationBid)> = BTreeMap::new();
     let price_floor = request
         .ext
         .config
-        .and_then(|c| c.price_floor)
-        .unwrap_or(0.0);
+        .and_then(|cfg| cfg.price_floor)
+        .unwrap_or(0.0_f64);
 
     for (imp_id, mut bids) in bids_by_imp {
         log::debug!(
@@ -150,26 +154,20 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
         // Filter by price floor
         bids.retain(|(_, bid)| bid.price >= price_floor);
 
-        if bids.is_empty() {
+        // Select highest price (first bidder wins on tie). `reduce` yields
+        // `None` only if the post-floor vector is empty, which lets the
+        // `else` arm log and skip this impression without panicking.
+        let Some(winner) = bids.into_iter().reduce(|acc, current| {
+            match current.1.price.partial_cmp(&acc.1.price) {
+                Some(Ordering::Greater) => current,
+                _ => acc, // Keep first on tie or equal
+            }
+        }) else {
             log::debug!(
-                "Mediation: no bids above floor (${:.2}) for impression '{}'",
-                price_floor,
-                imp_id
+                "Mediation: no bids above floor (${price_floor:.2}) for impression '{imp_id}'"
             );
             continue;
-        }
-
-        // Select highest price (first bidder wins on tie)
-        // Use fold to ensure first bidder wins on price tie
-        let winner = bids
-            .into_iter()
-            .reduce(|acc, current| {
-                match current.1.price.partial_cmp(&acc.1.price) {
-                    Some(Ordering::Greater) => current,
-                    _ => acc, // Keep first on tie or equal
-                }
-            })
-            .unwrap(); // Safe: we checked bids is not empty
+        };
 
         log::info!(
             "Mediation: '{}' wins impression '{}' at ${:.2}",
@@ -185,11 +183,11 @@ pub fn mediate_auction(request: MediationRequest, base_host: &str) -> OpenRTBRes
     build_openrtb_response(request.id, request.imp, winning_bids, base_host)
 }
 
-/// Build OpenRTB response from winning bids
+/// Build `OpenRTB` response from winning bids.
 fn build_openrtb_response(
     id: String,
     imps: Vec<Imp>,
-    winning_bids: HashMap<String, (String, MediationBid)>,
+    winning_bids: BTreeMap<String, (String, MediationBid)>,
     base_host: &str,
 ) -> OpenRTBResponse {
     // Build a minimal OpenRTBRequest for metadata
@@ -202,7 +200,7 @@ fn build_openrtb_response(
     // Create metadata with NotPresent signature status for mediation
     let metadata = CreativeMetadata {
         signature: SignatureStatus::NotPresent {
-            reason: "Mediation response".to_string(),
+            reason: "Mediation response".to_owned(),
         },
         edge_cookie: extract_ec_info(&ortb_request),
         request: &ortb_request,
@@ -210,7 +208,7 @@ fn build_openrtb_response(
     };
 
     // Group winning bids by seat/bidder
-    let mut seats: HashMap<String, Vec<OpenRTBBid>> = HashMap::new();
+    let mut seats: BTreeMap<String, Vec<OpenRTBBid>> = BTreeMap::new();
 
     for (imp_id, (bidder, bid)) in winning_bids {
         // Generate creative if missing (e.g., for APS bids)
@@ -220,7 +218,7 @@ fn build_openrtb_response(
             // Generate iframe creative using same logic as OpenRTB endpoint
             let crid = bid.crid.as_deref().unwrap_or(&imp_id);
             let bid_price = Some(bid.price);
-            crate::render::iframe_html(base_host, crid, bid.w, bid.h, bid_price, &metadata)
+            iframe_html(base_host, crid, bid.width, bid.height, bid_price, &metadata)
         };
 
         let ortb_bid = OpenRTBBid {
@@ -228,8 +226,8 @@ fn build_openrtb_response(
             impid: imp_id,
             price: bid.price,
             adm: Some(adm),
-            w: Some(bid.w),
-            h: Some(bid.h),
+            width: Some(bid.width),
+            height: Some(bid.height),
             crid: bid.crid,
             adomain: bid.adomain,
             mtype: Some(MediaType::Banner),
@@ -258,7 +256,7 @@ fn build_openrtb_response(
     OpenRTBResponse {
         id,
         seatbid,
-        cur: Some("USD".to_string()),
+        cur: Some("USD".to_owned()),
         ..Default::default()
     }
 }
@@ -267,25 +265,32 @@ fn build_openrtb_response(
 mod tests {
     use super::*;
 
+    fn approx_eq(left: f64, right: f64) -> bool {
+        // All test prices are exact binary fractions (e.g. 2.5, 3.0) so a
+        // bitwise comparison via `total_cmp` is exact without triggering
+        // `float_cmp` or `float_arithmetic`.
+        left.total_cmp(&right) == Ordering::Equal
+    }
+
     #[test]
-    fn test_mediate_single_bidder_single_impression() {
+    fn mediate_single_bidder_single_impression() {
         let request = MediationRequest {
-            id: "test-auction-1".to_string(),
+            id: "test-auction-1".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "bidder-a".to_string(),
+                    bidder: "bidder-a".to_owned(),
                     bids: vec![MediationBid {
-                        imp_id: "imp1".to_string(),
-                        price: 2.50,
-                        adm: Some("<div>Ad A</div>".to_string()),
-                        w: 300,
-                        h: 250,
-                        crid: Some("creative-a".to_string()),
-                        adomain: Some(vec!["example.com".to_string()]),
+                        imp_id: "imp1".to_owned(),
+                        price: 2.50_f64,
+                        adm: Some("<div>Ad A</div>".to_owned()),
+                        width: 300_i64,
+                        height: 250_i64,
+                        crid: Some("creative-a".to_owned()),
+                        adomain: Some(vec!["example.com".to_owned()]),
                     }],
                 }],
                 config: None,
@@ -296,46 +301,46 @@ mod tests {
 
         assert_eq!(response.id, "test-auction-1");
         assert_eq!(response.seatbid.len(), 1);
-        assert_eq!(response.seatbid[0].seat, Some("bidder-a".to_string()));
+        assert_eq!(response.seatbid[0].seat, Some("bidder-a".to_owned()));
         assert_eq!(response.seatbid[0].bid.len(), 1);
 
         let bid = &response.seatbid[0].bid[0];
         assert_eq!(bid.impid, "imp1");
-        assert_eq!(bid.price, 2.50);
-        assert_eq!(bid.w, Some(300));
-        assert_eq!(bid.h, Some(250));
+        assert!(approx_eq(bid.price, 2.50_f64));
+        assert_eq!(bid.width, Some(300_i64));
+        assert_eq!(bid.height, Some(250_i64));
     }
 
     #[test]
-    fn test_mediate_multiple_bidders_highest_price_wins() {
+    fn mediate_multiple_bidders_highest_price_wins() {
         let request = MediationRequest {
-            id: "test-auction-2".to_string(),
+            id: "test-auction-2".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![
                     BidderResponse {
-                        bidder: "bidder-a".to_string(),
+                        bidder: "bidder-a".to_owned(),
                         bids: vec![MediationBid {
-                            imp_id: "imp1".to_string(),
-                            price: 2.50,
-                            adm: Some("<div>Ad A</div>".to_string()),
-                            w: 300,
-                            h: 250,
+                            imp_id: "imp1".to_owned(),
+                            price: 2.50_f64,
+                            adm: Some("<div>Ad A</div>".to_owned()),
+                            width: 300_i64,
+                            height: 250_i64,
                             crid: None,
                             adomain: None,
                         }],
                     },
                     BidderResponse {
-                        bidder: "bidder-b".to_string(),
+                        bidder: "bidder-b".to_owned(),
                         bids: vec![MediationBid {
-                            imp_id: "imp1".to_string(),
-                            price: 3.50,
-                            adm: Some("<div>Ad B</div>".to_string()),
-                            w: 300,
-                            h: 250,
+                            imp_id: "imp1".to_owned(),
+                            price: 3.50_f64,
+                            adm: Some("<div>Ad B</div>".to_owned()),
+                            width: 300_i64,
+                            height: 250_i64,
                             crid: None,
                             adomain: None,
                         }],
@@ -348,40 +353,40 @@ mod tests {
         let response = mediate_auction(request, "test.host");
 
         assert_eq!(response.seatbid.len(), 1);
-        assert_eq!(response.seatbid[0].seat, Some("bidder-b".to_string()));
-        assert_eq!(response.seatbid[0].bid[0].price, 3.50);
+        assert_eq!(response.seatbid[0].seat, Some("bidder-b".to_owned()));
+        assert!(approx_eq(response.seatbid[0].bid[0].price, 3.50_f64));
     }
 
     #[test]
-    fn test_mediate_price_tie_first_bidder_wins() {
+    fn mediate_price_tie_first_bidder_wins() {
         let request = MediationRequest {
-            id: "test-auction-3".to_string(),
+            id: "test-auction-3".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![
                     BidderResponse {
-                        bidder: "bidder-a".to_string(),
+                        bidder: "bidder-a".to_owned(),
                         bids: vec![MediationBid {
-                            imp_id: "imp1".to_string(),
-                            price: 2.50,
-                            adm: Some("<div>Ad A</div>".to_string()),
-                            w: 300,
-                            h: 250,
+                            imp_id: "imp1".to_owned(),
+                            price: 2.50_f64,
+                            adm: Some("<div>Ad A</div>".to_owned()),
+                            width: 300_i64,
+                            height: 250_i64,
                             crid: None,
                             adomain: None,
                         }],
                     },
                     BidderResponse {
-                        bidder: "bidder-b".to_string(),
+                        bidder: "bidder-b".to_owned(),
                         bids: vec![MediationBid {
-                            imp_id: "imp1".to_string(),
-                            price: 2.50,
-                            adm: Some("<div>Ad B</div>".to_string()),
-                            w: 300,
-                            h: 250,
+                            imp_id: "imp1".to_owned(),
+                            price: 2.50_f64,
+                            adm: Some("<div>Ad B</div>".to_owned()),
+                            width: 300_i64,
+                            height: 250_i64,
                             crid: None,
                             adomain: None,
                         }],
@@ -395,46 +400,46 @@ mod tests {
 
         // First bidder should win on tie
         assert_eq!(response.seatbid.len(), 1);
-        assert_eq!(response.seatbid[0].seat, Some("bidder-a".to_string()));
+        assert_eq!(response.seatbid[0].seat, Some("bidder-a".to_owned()));
     }
 
     #[test]
-    fn test_mediate_with_price_floor() {
+    fn mediate_with_price_floor() {
         let request = MediationRequest {
-            id: "test-auction-4".to_string(),
+            id: "test-auction-4".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![
                     BidderResponse {
-                        bidder: "bidder-a".to_string(),
+                        bidder: "bidder-a".to_owned(),
                         bids: vec![MediationBid {
-                            imp_id: "imp1".to_string(),
-                            price: 0.50, // Below floor
-                            adm: Some("<div>Ad A</div>".to_string()),
-                            w: 300,
-                            h: 250,
+                            imp_id: "imp1".to_owned(),
+                            price: 0.50_f64, // Below floor
+                            adm: Some("<div>Ad A</div>".to_owned()),
+                            width: 300_i64,
+                            height: 250_i64,
                             crid: None,
                             adomain: None,
                         }],
                     },
                     BidderResponse {
-                        bidder: "bidder-b".to_string(),
+                        bidder: "bidder-b".to_owned(),
                         bids: vec![MediationBid {
-                            imp_id: "imp1".to_string(),
-                            price: 2.00, // Above floor
-                            adm: Some("<div>Ad B</div>".to_string()),
-                            w: 300,
-                            h: 250,
+                            imp_id: "imp1".to_owned(),
+                            price: 2.00_f64, // Above floor
+                            adm: Some("<div>Ad B</div>".to_owned()),
+                            width: 300_i64,
+                            height: 250_i64,
                             crid: None,
                             adomain: None,
                         }],
                     },
                 ],
                 config: Some(MediationConfig {
-                    price_floor: Some(1.00),
+                    price_floor: Some(1.00_f64),
                 }),
             },
         };
@@ -443,33 +448,33 @@ mod tests {
 
         // Only bidder-b should win (above floor)
         assert_eq!(response.seatbid.len(), 1);
-        assert_eq!(response.seatbid[0].seat, Some("bidder-b".to_string()));
-        assert_eq!(response.seatbid[0].bid[0].price, 2.00);
+        assert_eq!(response.seatbid[0].seat, Some("bidder-b".to_owned()));
+        assert!(approx_eq(response.seatbid[0].bid[0].price, 2.00_f64));
     }
 
     #[test]
-    fn test_mediate_all_bids_below_floor() {
+    fn mediate_all_bids_below_floor() {
         let request = MediationRequest {
-            id: "test-auction-5".to_string(),
+            id: "test-auction-5".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "bidder-a".to_string(),
+                    bidder: "bidder-a".to_owned(),
                     bids: vec![MediationBid {
-                        imp_id: "imp1".to_string(),
-                        price: 0.50,
-                        adm: Some("<div>Ad A</div>".to_string()),
-                        w: 300,
-                        h: 250,
+                        imp_id: "imp1".to_owned(),
+                        price: 0.50_f64,
+                        adm: Some("<div>Ad A</div>".to_owned()),
+                        width: 300_i64,
+                        height: 250_i64,
                         crid: None,
                         adomain: None,
                     }],
                 }],
                 config: Some(MediationConfig {
-                    price_floor: Some(1.00),
+                    price_floor: Some(1.00_f64),
                 }),
             },
         };
@@ -481,62 +486,62 @@ mod tests {
     }
 
     #[test]
-    fn test_mediate_multiple_impressions() {
+    fn mediate_multiple_impressions() {
         let request = MediationRequest {
-            id: "test-auction-6".to_string(),
+            id: "test-auction-6".to_owned(),
             imp: vec![
                 Imp {
-                    id: "imp1".to_string(),
+                    id: "imp1".to_owned(),
                     ..Default::default()
                 },
                 Imp {
-                    id: "imp2".to_string(),
+                    id: "imp2".to_owned(),
                     ..Default::default()
                 },
             ],
             ext: MediationExt {
                 bidder_responses: vec![
                     BidderResponse {
-                        bidder: "bidder-a".to_string(),
+                        bidder: "bidder-a".to_owned(),
                         bids: vec![
                             MediationBid {
-                                imp_id: "imp1".to_string(),
-                                price: 2.50,
-                                adm: Some("<div>Ad A1</div>".to_string()),
-                                w: 300,
-                                h: 250,
+                                imp_id: "imp1".to_owned(),
+                                price: 2.50_f64,
+                                adm: Some("<div>Ad A1</div>".to_owned()),
+                                width: 300_i64,
+                                height: 250_i64,
                                 crid: None,
                                 adomain: None,
                             },
                             MediationBid {
-                                imp_id: "imp2".to_string(),
-                                price: 3.00,
-                                adm: Some("<div>Ad A2</div>".to_string()),
-                                w: 728,
-                                h: 90,
+                                imp_id: "imp2".to_owned(),
+                                price: 3.00_f64,
+                                adm: Some("<div>Ad A2</div>".to_owned()),
+                                width: 728_i64,
+                                height: 90_i64,
                                 crid: None,
                                 adomain: None,
                             },
                         ],
                     },
                     BidderResponse {
-                        bidder: "bidder-b".to_string(),
+                        bidder: "bidder-b".to_owned(),
                         bids: vec![
                             MediationBid {
-                                imp_id: "imp1".to_string(),
-                                price: 3.50, // Higher for imp1
-                                adm: Some("<div>Ad B1</div>".to_string()),
-                                w: 300,
-                                h: 250,
+                                imp_id: "imp1".to_owned(),
+                                price: 3.50_f64, // Higher for imp1
+                                adm: Some("<div>Ad B1</div>".to_owned()),
+                                width: 300_i64,
+                                height: 250_i64,
                                 crid: None,
                                 adomain: None,
                             },
                             MediationBid {
-                                imp_id: "imp2".to_string(),
-                                price: 2.00, // Lower for imp2
-                                adm: Some("<div>Ad B2</div>".to_string()),
-                                w: 728,
-                                h: 90,
+                                imp_id: "imp2".to_owned(),
+                                price: 2.00_f64, // Lower for imp2
+                                adm: Some("<div>Ad B2</div>".to_owned()),
+                                width: 728_i64,
+                                height: 90_i64,
                                 crid: None,
                                 adomain: None,
                             },
@@ -553,32 +558,32 @@ mod tests {
         assert_eq!(response.seatbid.len(), 2);
 
         // Find bidder-b's seatbid (should have imp1)
-        let bidder_b_seat = response
+        let beta_seat = response
             .seatbid
             .iter()
-            .find(|s| s.seat == Some("bidder-b".to_string()))
-            .unwrap();
-        assert_eq!(bidder_b_seat.bid.len(), 1);
-        assert_eq!(bidder_b_seat.bid[0].impid, "imp1");
-        assert_eq!(bidder_b_seat.bid[0].price, 3.50);
+            .find(|seat| seat.seat == Some("bidder-b".to_owned()))
+            .expect("bidder-b seatbid present");
+        assert_eq!(beta_seat.bid.len(), 1);
+        assert_eq!(beta_seat.bid[0].impid, "imp1");
+        assert!(approx_eq(beta_seat.bid[0].price, 3.50_f64));
 
         // Find bidder-a's seatbid (should have imp2)
-        let bidder_a_seat = response
+        let alpha_seat = response
             .seatbid
             .iter()
-            .find(|s| s.seat == Some("bidder-a".to_string()))
-            .unwrap();
-        assert_eq!(bidder_a_seat.bid.len(), 1);
-        assert_eq!(bidder_a_seat.bid[0].impid, "imp2");
-        assert_eq!(bidder_a_seat.bid[0].price, 3.00);
+            .find(|seat| seat.seat == Some("bidder-a".to_owned()))
+            .expect("bidder-a seatbid present");
+        assert_eq!(alpha_seat.bid.len(), 1);
+        assert_eq!(alpha_seat.bid[0].impid, "imp2");
+        assert!(approx_eq(alpha_seat.bid[0].price, 3.00_f64));
     }
 
     #[test]
-    fn test_mediate_no_bidder_responses() {
+    fn mediate_no_bidder_responses() {
         let request = MediationRequest {
-            id: "test-auction-7".to_string(),
+            id: "test-auction-7".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
@@ -594,24 +599,24 @@ mod tests {
     }
 
     #[test]
-    fn test_mediate_missing_adm_generates_creative() {
+    fn mediate_missing_adm_generates_creative() {
         // Test APS-style bid without creative markup
         let request = MediationRequest {
-            id: "test-auction-8".to_string(),
+            id: "test-auction-8".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "amazon-aps".to_string(),
+                    bidder: "amazon-aps".to_owned(),
                     bids: vec![MediationBid {
-                        imp_id: "imp1".to_string(),
-                        price: 3.00,
+                        imp_id: "imp1".to_owned(),
+                        price: 3.00_f64,
                         adm: None, // No creative provided (like APS)
-                        w: 300,
-                        h: 250,
-                        crid: Some("aps-creative-123".to_string()),
+                        width: 300_i64,
+                        height: 250_i64,
+                        crid: Some("aps-creative-123".to_owned()),
                         adomain: None,
                     }],
                 }],
@@ -623,18 +628,18 @@ mod tests {
 
         // Should have one winning bid
         assert_eq!(response.seatbid.len(), 1);
-        assert_eq!(response.seatbid[0].seat, Some("amazon-aps".to_string()));
+        assert_eq!(response.seatbid[0].seat, Some("amazon-aps".to_owned()));
         assert_eq!(response.seatbid[0].bid.len(), 1);
 
         let bid = &response.seatbid[0].bid[0];
         assert_eq!(bid.impid, "imp1");
-        assert_eq!(bid.price, 3.00);
-        assert_eq!(bid.w, Some(300));
-        assert_eq!(bid.h, Some(250));
+        assert!(approx_eq(bid.price, 3.00_f64));
+        assert_eq!(bid.width, Some(300_i64));
+        assert_eq!(bid.height, Some(250_i64));
 
         // Should have generated creative
         assert!(bid.adm.is_some());
-        let adm = bid.adm.as_ref().unwrap();
+        let adm = bid.adm.as_ref().expect("adm generated");
 
         // Check that generated creative is an iframe
         assert!(adm.contains("<iframe"));
@@ -644,63 +649,63 @@ mod tests {
     }
 
     #[test]
-    fn test_mediate_mixed_bids_with_and_without_adm() {
+    fn mediate_mixed_bids_with_and_without_adm() {
         // Test mediation with both traditional bids (with adm) and APS-style bids (without adm)
         let request = MediationRequest {
-            id: "test-auction-9".to_string(),
+            id: "test-auction-9".to_owned(),
             imp: vec![
                 Imp {
-                    id: "imp1".to_string(),
+                    id: "imp1".to_owned(),
                     ..Default::default()
                 },
                 Imp {
-                    id: "imp2".to_string(),
+                    id: "imp2".to_owned(),
                     ..Default::default()
                 },
             ],
             ext: MediationExt {
                 bidder_responses: vec![
                     BidderResponse {
-                        bidder: "amazon-aps".to_string(),
+                        bidder: "amazon-aps".to_owned(),
                         bids: vec![
                             MediationBid {
-                                imp_id: "imp1".to_string(),
-                                price: 3.50, // APS wins imp1
-                                adm: None,   // No creative
-                                w: 300,
-                                h: 250,
-                                crid: Some("aps-1".to_string()),
+                                imp_id: "imp1".to_owned(),
+                                price: 3.50_f64, // APS wins imp1
+                                adm: None,       // No creative
+                                width: 300_i64,
+                                height: 250_i64,
+                                crid: Some("aps-1".to_owned()),
                                 adomain: None,
                             },
                             MediationBid {
-                                imp_id: "imp2".to_string(),
-                                price: 2.00, // APS loses imp2
+                                imp_id: "imp2".to_owned(),
+                                price: 2.00_f64, // APS loses imp2
                                 adm: None,
-                                w: 728,
-                                h: 90,
-                                crid: Some("aps-2".to_string()),
+                                width: 728_i64,
+                                height: 90_i64,
+                                crid: Some("aps-2".to_owned()),
                                 adomain: None,
                             },
                         ],
                     },
                     BidderResponse {
-                        bidder: "prebid".to_string(),
+                        bidder: "prebid".to_owned(),
                         bids: vec![
                             MediationBid {
-                                imp_id: "imp1".to_string(),
-                                price: 2.50, // Prebid loses imp1
-                                adm: Some("<div>Prebid Ad 1</div>".to_string()),
-                                w: 300,
-                                h: 250,
+                                imp_id: "imp1".to_owned(),
+                                price: 2.50_f64, // Prebid loses imp1
+                                adm: Some("<div>Prebid Ad 1</div>".to_owned()),
+                                width: 300_i64,
+                                height: 250_i64,
                                 crid: None,
                                 adomain: None,
                             },
                             MediationBid {
-                                imp_id: "imp2".to_string(),
-                                price: 3.00, // Prebid wins imp2
-                                adm: Some("<div>Prebid Ad 2</div>".to_string()),
-                                w: 728,
-                                h: 90,
+                                imp_id: "imp2".to_owned(),
+                                price: 3.00_f64, // Prebid wins imp2
+                                adm: Some("<div>Prebid Ad 2</div>".to_owned()),
+                                width: 728_i64,
+                                height: 90_i64,
                                 crid: None,
                                 adomain: None,
                             },
@@ -720,14 +725,14 @@ mod tests {
         let aps_seat = response
             .seatbid
             .iter()
-            .find(|s| s.seat == Some("amazon-aps".to_string()))
-            .unwrap();
+            .find(|seat| seat.seat == Some("amazon-aps".to_owned()))
+            .expect("amazon-aps seatbid present");
         assert_eq!(aps_seat.bid.len(), 1);
         assert_eq!(aps_seat.bid[0].impid, "imp1");
-        assert_eq!(aps_seat.bid[0].price, 3.50);
+        assert!(approx_eq(aps_seat.bid[0].price, 3.50_f64));
 
         // APS bid should have generated creative
-        let aps_adm = aps_seat.bid[0].adm.as_ref().unwrap();
+        let aps_adm = aps_seat.bid[0].adm.as_ref().expect("aps adm generated");
         assert!(aps_adm.contains("<iframe"));
         assert!(aps_adm.contains("//test.example.com/static/creatives/300x250.html"));
         assert!(aps_adm.contains("crid=aps-1"));
@@ -736,34 +741,34 @@ mod tests {
         let prebid_seat = response
             .seatbid
             .iter()
-            .find(|s| s.seat == Some("prebid".to_string()))
-            .unwrap();
+            .find(|seat| seat.seat == Some("prebid".to_owned()))
+            .expect("prebid seatbid present");
         assert_eq!(prebid_seat.bid.len(), 1);
         assert_eq!(prebid_seat.bid[0].impid, "imp2");
-        assert_eq!(prebid_seat.bid[0].price, 3.00);
+        assert!(approx_eq(prebid_seat.bid[0].price, 3.00_f64));
 
         // Prebid bid should have original creative
-        let prebid_adm = prebid_seat.bid[0].adm.as_ref().unwrap();
+        let prebid_adm = prebid_seat.bid[0].adm.as_ref().expect("prebid adm present");
         assert_eq!(prebid_adm, "<div>Prebid Ad 2</div>");
     }
 
     #[test]
-    fn test_validation_empty_auction_id() {
+    fn validation_empty_auction_id() {
         let request = MediationRequest {
-            id: "".to_string(), // Empty ID should fail
+            id: String::new(), // Empty ID should fail
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "bidder-a".to_string(),
+                    bidder: "bidder-a".to_owned(),
                     bids: vec![MediationBid {
-                        imp_id: "imp1".to_string(),
-                        price: 2.50,
-                        adm: Some("<div>Ad</div>".to_string()),
-                        w: 300,
-                        h: 250,
+                        imp_id: "imp1".to_owned(),
+                        price: 2.50_f64,
+                        adm: Some("<div>Ad</div>".to_owned()),
+                        width: 300_i64,
+                        height: 250_i64,
                         crid: None,
                         adomain: None,
                     }],
@@ -776,13 +781,13 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_empty_impressions() {
+    fn validation_empty_impressions() {
         let request = MediationRequest {
-            id: "test-auction".to_string(),
+            id: "test-auction".to_owned(),
             imp: vec![], // Empty impressions should fail
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "bidder-a".to_string(),
+                    bidder: "bidder-a".to_owned(),
                     bids: vec![],
                 }],
                 config: None,
@@ -793,11 +798,11 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_empty_bidder_responses() {
+    fn validation_empty_bidder_responses() {
         let request = MediationRequest {
-            id: "test-auction".to_string(),
+            id: "test-auction".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
@@ -810,22 +815,22 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_negative_price() {
+    fn validation_negative_price() {
         let request = MediationRequest {
-            id: "test-auction".to_string(),
+            id: "test-auction".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "bidder-a".to_string(),
+                    bidder: "bidder-a".to_owned(),
                     bids: vec![MediationBid {
-                        imp_id: "imp1".to_string(),
-                        price: -1.0, // Negative price should fail
-                        adm: Some("<div>Ad</div>".to_string()),
-                        w: 300,
-                        h: 250,
+                        imp_id: "imp1".to_owned(),
+                        price: -1.0_f64, // Negative price should fail
+                        adm: Some("<div>Ad</div>".to_owned()),
+                        width: 300_i64,
+                        height: 250_i64,
                         crid: None,
                         adomain: None,
                     }],
@@ -838,28 +843,28 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_negative_price_floor() {
+    fn validation_negative_price_floor() {
         let request = MediationRequest {
-            id: "test-auction".to_string(),
+            id: "test-auction".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "bidder-a".to_string(),
+                    bidder: "bidder-a".to_owned(),
                     bids: vec![MediationBid {
-                        imp_id: "imp1".to_string(),
-                        price: 2.50,
-                        adm: Some("<div>Ad</div>".to_string()),
-                        w: 300,
-                        h: 250,
+                        imp_id: "imp1".to_owned(),
+                        price: 2.50_f64,
+                        adm: Some("<div>Ad</div>".to_owned()),
+                        width: 300_i64,
+                        height: 250_i64,
                         crid: None,
                         adomain: None,
                     }],
                 }],
                 config: Some(MediationConfig {
-                    price_floor: Some(-1.0), // Negative floor should fail
+                    price_floor: Some(-1.0_f64), // Negative floor should fail
                 }),
             },
         };
@@ -868,22 +873,22 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_invalid_dimensions() {
+    fn validation_invalid_dimensions() {
         let request = MediationRequest {
-            id: "test-auction".to_string(),
+            id: "test-auction".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "bidder-a".to_string(),
+                    bidder: "bidder-a".to_owned(),
                     bids: vec![MediationBid {
-                        imp_id: "imp1".to_string(),
-                        price: 2.50,
-                        adm: Some("<div>Ad</div>".to_string()),
-                        w: 0, // Zero width should fail
-                        h: 250,
+                        imp_id: "imp1".to_owned(),
+                        price: 2.50_f64,
+                        adm: Some("<div>Ad</div>".to_owned()),
+                        width: 0_i64, // Zero width should fail
+                        height: 250_i64,
                         crid: None,
                         adomain: None,
                     }],
@@ -896,32 +901,32 @@ mod tests {
     }
 
     #[test]
-    fn test_validation_valid_request() {
+    fn validation_valid_request() {
         let request = MediationRequest {
-            id: "test-auction".to_string(),
+            id: "test-auction".to_owned(),
             imp: vec![Imp {
-                id: "imp1".to_string(),
+                id: "imp1".to_owned(),
                 ..Default::default()
             }],
             ext: MediationExt {
                 bidder_responses: vec![BidderResponse {
-                    bidder: "bidder-a".to_string(),
+                    bidder: "bidder-a".to_owned(),
                     bids: vec![MediationBid {
-                        imp_id: "imp1".to_string(),
-                        price: 2.50,
-                        adm: Some("<div>Ad</div>".to_string()),
-                        w: 300,
-                        h: 250,
+                        imp_id: "imp1".to_owned(),
+                        price: 2.50_f64,
+                        adm: Some("<div>Ad</div>".to_owned()),
+                        width: 300_i64,
+                        height: 250_i64,
                         crid: None,
                         adomain: None,
                     }],
                 }],
                 config: Some(MediationConfig {
-                    price_floor: Some(1.0),
+                    price_floor: Some(1.0_f64),
                 }),
             },
         };
 
-        assert!(request.validate().is_ok());
+        request.validate().expect("valid request");
     }
 }

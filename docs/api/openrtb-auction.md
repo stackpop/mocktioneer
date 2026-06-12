@@ -104,7 +104,7 @@ Size is determined in this order:
           "id": "019abc123",
           "impid": "imp-1",
           "price": 0.2,
-          "adm": "<iframe src=\"//localhost:8787/static/creatives/300x250.html?crid=mocktioneer-imp-1\" width=\"300\" height=\"250\" frameborder=\"0\" scrolling=\"no\"></iframe>",
+          "adm": "<iframe src=\"//localhost:8787/static/creatives/300x250.html?crid=mocktioneer-imp-1&sig=not_present\" width=\"300\" height=\"250\" frameborder=\"0\" scrolling=\"no\"></iframe>",
           "adomain": ["example.com"],
           "crid": "mocktioneer-imp-1",
           "w": 300,

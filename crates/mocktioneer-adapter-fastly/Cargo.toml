@@ -22,3 +22,6 @@ mocktioneer-core = { workspace = true }
 edgezero-adapter-fastly = { workspace = true, features = ["fastly"] }
 edgezero-core = { workspace = true }
 fastly = { workspace = true }
+
+[lints]
+workspace = true

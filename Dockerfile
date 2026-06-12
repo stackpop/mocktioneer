@@ -1,4 +1,4 @@
-ARG RUST_VERSION=1.91.1
+ARG RUST_VERSION=1.95.0
 FROM rust:${RUST_VERSION}-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -24,7 +24,7 @@ COPY edgezero.toml ./edgezero.toml
 RUN cargo fetch --locked
 RUN cargo build --locked --release -p mocktioneer-adapter-axum
 
-FROM debian:bookworm-slim AS runtime
+FROM debian:stable-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \

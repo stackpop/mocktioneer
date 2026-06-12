@@ -19,3 +19,6 @@ mocktioneer-core = { workspace = true }
 simple_logger = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 tracing = { workspace = true }
+
+[lints]
+workspace = true
