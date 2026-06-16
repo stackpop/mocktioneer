@@ -18,24 +18,24 @@
 
 ## File Structure
 
-| File | Responsibility | Action |
-| --- | --- | --- |
-| `docs/.prettierignore`, `docs/.vitepress/config.*` | Keep internal specs/plans out of the docs format gate + published site | Modify |
-| `Cargo.toml` | Workspace dep pins (`feature/extensible-cli`), `spin-sdk ~6.0`, add `clap`; add `mocktioneer-cli` member | Modify |
-| `crates/mocktioneer-core/Cargo.toml` | Add `anyhow` dep | Modify |
-| `crates/mocktioneer-adapter-{axum,cloudflare,fastly}/src/*` | Drop `include_str!(manifest)` arg | Modify |
-| `crates/mocktioneer-adapter-spin/{src/lib.rs,src/main.rs,Cargo.toml,spin.toml,tests/contract.rs,runtime-config.toml}` | Spin SDK 6 / wasip2 migration + KV config backing | Modify/Create |
-| `edgezero.toml` | `[stores.config]`, spin `target = wasip2`, spin commands `--runtime-config-file` | Modify |
-| `crates/mocktioneer-core/src/config.rs` | `MocktioneerConfig` typed config | Create |
-| `crates/mocktioneer-core/src/lib.rs` | `pub mod config;` | Modify |
-| `crates/mocktioneer-core/src/auction.rs` | Thread `cpm: f64` into bid builders | Modify |
-| `crates/mocktioneer-core/src/routes.rs` | `resolve_bid_cpm` + `cpm_from_lookup` helpers; wire both handlers | Modify |
-| `mocktioneer.toml` | Typed config values (default `bid_cpm = 0.20`) | Create |
-| `crates/mocktioneer-cli/{Cargo.toml,src/main.rs}` | Custom CLI mirroring edgezero `<name>-cli` | Create |
-| `Dockerfile` | Pre-copy `mocktioneer-cli` manifest before `cargo fetch` | Modify |
-| `.gitignore` | Ignore `.edgezero/` | Modify |
-| `docs/**`, `CLAUDE.md`, `.claude/...`, `README.md`, `tests/playwright/**` | wasip2 + pricing + CLI-story docs | Modify |
-| `.github/workflows/test.yml` | Spin wasip2 matrix + config-validate gate | Modify |
+| File                                                                                                                  | Responsibility                                                                                           | Action        |
+| --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- | ------------- |
+| `docs/.prettierignore`, `docs/.vitepress/config.*`                                                                    | Keep internal specs/plans out of the docs format gate + published site                                   | Modify        |
+| `Cargo.toml`                                                                                                          | Workspace dep pins (`feature/extensible-cli`), `spin-sdk ~6.0`, add `clap`; add `mocktioneer-cli` member | Modify        |
+| `crates/mocktioneer-core/Cargo.toml`                                                                                  | Add `anyhow` dep                                                                                         | Modify        |
+| `crates/mocktioneer-adapter-{axum,cloudflare,fastly}/src/*`                                                           | Drop `include_str!(manifest)` arg                                                                        | Modify        |
+| `crates/mocktioneer-adapter-spin/{src/lib.rs,src/main.rs,Cargo.toml,spin.toml,tests/contract.rs,runtime-config.toml}` | Spin SDK 6 / wasip2 migration + KV config backing                                                        | Modify/Create |
+| `edgezero.toml`                                                                                                       | `[stores.config]`, spin `target = wasip2`, spin commands `--runtime-config-file`                         | Modify        |
+| `crates/mocktioneer-core/src/config.rs`                                                                               | `MocktioneerConfig` typed config                                                                         | Create        |
+| `crates/mocktioneer-core/src/lib.rs`                                                                                  | `pub mod config;`                                                                                        | Modify        |
+| `crates/mocktioneer-core/src/auction.rs`                                                                              | Thread `cpm: f64` into bid builders                                                                      | Modify        |
+| `crates/mocktioneer-core/src/routes.rs`                                                                               | `resolve_bid_cpm` + `cpm_from_lookup` helpers; wire both handlers                                        | Modify        |
+| `mocktioneer.toml`                                                                                                    | Typed config values (default `bid_cpm = 0.20`)                                                           | Create        |
+| `crates/mocktioneer-cli/{Cargo.toml,src/main.rs}`                                                                     | Custom CLI mirroring edgezero `<name>-cli`                                                               | Create        |
+| `Dockerfile`                                                                                                          | Pre-copy `mocktioneer-cli` manifest before `cargo fetch`                                                 | Modify        |
+| `.gitignore`                                                                                                          | Ignore `.edgezero/`                                                                                      | Modify        |
+| `docs/**`, `CLAUDE.md`, `.claude/...`, `README.md`, `tests/playwright/**`                                             | wasip2 + pricing + CLI-story docs                                                                        | Modify        |
+| `.github/workflows/test.yml`                                                                                          | Spin wasip2 matrix + config-validate gate                                                                | Modify        |
 
 ---
 
@@ -44,6 +44,7 @@
 **Why first:** the format CI job runs `prettier --check .` inside `docs/`, which fails on the spec/plan markdown; VitePress also builds them into the published site. Do this before anything else so the spec and this plan don't break CI.
 
 **Files:**
+
 - Modify: `docs/.prettierignore`
 - Modify: `docs/.vitepress/config.mts` (or `.ts`/`.js` — whichever exists)
 - Test: `cd docs && npm run format`
@@ -88,6 +89,7 @@ git commit -m "docs: exclude superpowers specs/plans from prettier + vitepress"
 ## Task 1: Pin deps to `feature/extensible-cli` + workspace deps
 
 **Files:**
+
 - Modify: `Cargo.toml` (`[workspace.dependencies]`)
 - Modify: `crates/mocktioneer-core/Cargo.toml`
 
@@ -132,6 +134,7 @@ git commit -m "build: pin edgezero deps to feature/extensible-cli, bump spin-sdk
 ## Task 2: Fix axum/cloudflare/fastly entrypoints (drop manifest arg)
 
 **Files:**
+
 - Modify: `crates/mocktioneer-adapter-axum/src/main.rs:7`
 - Modify: `crates/mocktioneer-adapter-cloudflare/src/lib.rs:11-17`
 - Modify: `crates/mocktioneer-adapter-fastly/src/main.rs:16`
@@ -195,6 +198,7 @@ git commit -m "feat: drop run_app manifest arg for axum/cloudflare/fastly (edgez
 ## Task 3: Migrate the Spin adapter to spin-sdk 6 / wasm32-wasip2
 
 **Files:**
+
 - Modify: `crates/mocktioneer-adapter-spin/src/lib.rs`
 - Modify: `crates/mocktioneer-adapter-spin/spin.toml`
 - Create: `crates/mocktioneer-adapter-spin/runtime-config.toml`
@@ -271,7 +275,7 @@ fn main() {
 
 - [ ] **Step 5: Update the contract-test comment to wasip2**
 
-In `crates/mocktioneer-adapter-spin/tests/contract.rs`, change the doc-comment line `end-to-end under \`wasm32-wasip1\` via the \`wasmtime\` runner` to `wasm32-wasip2`. The `#![cfg(all(feature = "spin", target_arch = "wasm32"))]` gate is unchanged (covers wasip2).
+In `crates/mocktioneer-adapter-spin/tests/contract.rs`, change the doc-comment line `end-to-end under \`wasm32-wasip1\` via the \`wasmtime\` runner`to`wasm32-wasip2`. The `#![cfg(all(feature = "spin", target_arch = "wasm32"))]` gate is unchanged (covers wasip2).
 
 - [ ] **Step 6: Verify the Spin wasm build + native workspace check**
 
@@ -293,6 +297,7 @@ git commit -m "feat: migrate spin adapter to spin-sdk 6 / wasm32-wasip2 (edgezer
 ## Task 4: Manifest — declare config store, spin wasip2 target, runtime-config
 
 **Files:**
+
 - Modify: `edgezero.toml`
 
 - [ ] **Step 1: Declare the config store**
@@ -339,6 +344,7 @@ git commit -m "feat: declare [stores.config] + spin wasip2/runtime-config in man
 ## Task 5: `MocktioneerConfig` typed config struct
 
 **Files:**
+
 - Create: `crates/mocktioneer-core/src/config.rs`
 - Modify: `crates/mocktioneer-core/src/lib.rs`
 
@@ -417,6 +423,7 @@ git commit -m "feat: add MocktioneerConfig typed config (bid_cpm, validated)"
 ## Task 6: Thread `cpm` through the bid builders + runtime resolution
 
 **Files:**
+
 - Modify: `crates/mocktioneer-core/src/auction.rs` (`build_openrtb_response`, `build_aps_response`, tests)
 - Modify: `crates/mocktioneer-core/src/routes.rs` (`handle_openrtb_auction`, `handle_aps_bid`, new helpers, imports)
 
@@ -571,6 +578,7 @@ Replace `let price = FIXED_BID_CPM;` (≈line 259) with `let price = cpm;`.
 - [ ] **Step 7: Update existing auction.rs call sites in tests**
 
 The two existing tests that build responses now need the `cpm` arg. Update:
+
 - `bid_id_is_hex_like_uuid` and `ext_bid_override_is_ignored`: `build_openrtb_response(&req, "host.test", test_signature(), FIXED_BID_CPM)`.
 - `build_aps_response_price_encoding_is_base64`: `build_aps_response(&req, "mock.test", FIXED_BID_CPM)`.
 
@@ -624,6 +632,7 @@ git commit -m "feat: resolve bid_cpm from config store at runtime (OpenRTB + APS
 ## Task 7: `mocktioneer.toml` typed config file
 
 **Files:**
+
 - Create: `mocktioneer.toml` (repo root, next to `edgezero.toml`)
 
 - [ ] **Step 1: Create the config file**
@@ -649,6 +658,7 @@ git commit -m "feat: add mocktioneer.toml typed config (bid_cpm default 0.20)"
 ## Task 8: `mocktioneer-cli` crate
 
 **Files:**
+
 - Create: `crates/mocktioneer-cli/Cargo.toml`
 - Create: `crates/mocktioneer-cli/src/main.rs`
 - Modify: `Cargo.toml` (`[workspace].members`)
@@ -787,6 +797,7 @@ git commit -m "feat: add mocktioneer-cli with typed config validate/push"
 ## Task 9: Dockerfile — pre-copy the new crate manifest
 
 **Files:**
+
 - Modify: `Dockerfile`
 
 - [ ] **Step 1: Add the manifest COPY**
@@ -814,6 +825,7 @@ git commit -m "build: copy mocktioneer-cli manifest before cargo fetch in Docker
 ## Task 10: Ignore `.edgezero/`
 
 **Files:**
+
 - Modify: `.gitignore`
 
 - [ ] **Step 1: Add the ignore entry**
@@ -841,6 +853,7 @@ git commit -m "chore: gitignore .edgezero/ (local config/kv state)"
 ## Task 11: Docs, agents, CI-command docs
 
 **Files:**
+
 - Modify (Spin wasip1→wasip2): `CLAUDE.md`, `docs/guide/getting-started.md`, `docs/guide/configuration.md`, `.claude/agents/code-architect.md`, `.claude/agents/build-validator.md`, `.claude/agents/verify-app.md`, `.cargo/config.toml` (comment only)
 - Modify (pricing default): `docs/guide/what-is-mocktioneer.md`, `docs/guide/architecture.md`, `docs/integrations/prebidjs.md`, `docs/integrations/prebid-server.md`, `docs/integrations/index.md`, `docs/api/openrtb-auction.md`, `docs/api/aps-bid.md`, `docs/api/index.md`
 - Modify (CLI story): `README.md`, `docs/guide/adapters/index.md`, `tests/playwright/README.md`, `tests/playwright/playwright.config.ts`
@@ -897,6 +910,7 @@ git commit -m "docs: spin wasip2, bid_cpm-default pricing, edgezero-cli vs mockt
 ## Task 12: CI — Spin wasip2 matrix + config-validate gate
 
 **Files:**
+
 - Modify: `.github/workflows/test.yml`
 
 - [ ] **Step 1: Inspect the current Spin matrix entry**
@@ -913,13 +927,13 @@ For the Spin entry only (leave the Fastly entry on wasip1): change `target: wasm
 Add a step (in the existing native test job, after `cargo test`):
 
 ```yaml
-      - name: Validate typed app config
-        run: cargo run -p mocktioneer-cli -- config validate --strict
+- name: Validate typed app config
+  run: cargo run -p mocktioneer-cli -- config validate --strict
 
-      - name: Seed + read-back local config (axum)
-        run: |
-          cargo run -p mocktioneer-cli -- config push --adapter axum
-          test -f .edgezero/local-config-mocktioneer_config.json
+- name: Seed + read-back local config (axum)
+  run: |
+    cargo run -p mocktioneer-cli -- config push --adapter axum
+    test -f .edgezero/local-config-mocktioneer_config.json
 ```
 
 - [ ] **Step 4: Lint the workflow locally (if `act`/`actionlint` available) or eyeball YAML**
