@@ -14,6 +14,9 @@ middleware = [
   "edgezero_core::middleware::RequestLogger",
   "mocktioneer_core::routes::Cors"
 ]
+
+[stores.config]
+ids = ["mocktioneer_config"]
 ```
 
 ## App Section
@@ -26,6 +29,22 @@ The `[app]` section defines the core application:
 | `entry`      | Path to the core crate                    |
 | `middleware` | List of middleware to apply to all routes |
 
+## Config Store
+
+The `[stores.config]` section declares the logical config store(s) backing the
+typed app config (`mocktioneer.toml`):
+
+```toml
+[stores.config]
+ids = ["mocktioneer_config"]
+```
+
+The `mocktioneer_config` store holds `bid_cpm` (see the typed `MocktioneerConfig`
+struct). Seed it per adapter with `mocktioneer-cli config push --adapter <name>`;
+handlers read it at runtime via `ctx.config_store_default()`, falling back to the
+compile-time `FIXED_BID_CPM` default when no store is bound. See
+[`mocktioneer.toml`](#typed-app-config) below.
+
 ## HTTP Triggers
 
 Routes are defined as `[[triggers.http]]` blocks:
@@ -36,7 +55,7 @@ id = "openrtb_auction"
 path = "/openrtb2/auction"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_openrtb_auction"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 ```
 
 | Field      | Description                                |
@@ -136,6 +155,50 @@ deploy = "wrangler publish --config crates/mocktioneer-adapter-cloudflare/wrangl
 level = "info"
 echo_stdout = true
 ```
+
+### Spin Adapter
+
+Spin targets `wasm32-wasip2` (spin-sdk 6). Its config store is KV-backed, so the
+`serve`/`deploy` commands pass a `--runtime-config-file` declaring the KV label:
+
+```toml
+[adapters.spin.adapter]
+crate = "crates/mocktioneer-adapter-spin"
+manifest = "crates/mocktioneer-adapter-spin/spin.toml"
+
+[adapters.spin.build]
+target = "wasm32-wasip2"
+profile = "release"
+features = ["spin"]
+
+[adapters.spin.commands]
+build = "spin build --from crates/mocktioneer-adapter-spin/spin.toml"
+serve = "spin up --from crates/mocktioneer-adapter-spin/spin.toml --runtime-config-file crates/mocktioneer-adapter-spin/runtime-config.toml"
+deploy = "spin deploy --from crates/mocktioneer-adapter-spin/spin.toml --runtime-config-file crates/mocktioneer-adapter-spin/runtime-config.toml"
+
+[adapters.spin.logging]
+level = "info"
+echo_stdout = true
+```
+
+## Typed App Config
+
+`mocktioneer.toml` (repo root) maps 1:1 onto the `MocktioneerConfig` struct —
+there is no `[config]` wrapper:
+
+```toml
+bid_cpm = 0.20
+```
+
+Validate it against the typed contract and push it to an adapter's config store:
+
+```bash
+cargo run -p mocktioneer-cli -- config validate --strict
+cargo run -p mocktioneer-cli -- config push --adapter axum
+```
+
+Any key can be overridden at runtime via the `MOCKTIONEER__<KEY>` env overlay
+(e.g. `MOCKTIONEER__BID_CPM=0.35`).
 
 ## Logging Configuration
 

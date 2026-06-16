@@ -55,6 +55,7 @@ cargo run -p mocktioneer-cli -- serve --adapter fastly     # Fastly on :7676
 
 # Typed app config (validate / push bid_cpm):
 cargo run -p mocktioneer-cli -- config validate --strict
+cargo run -p mocktioneer-cli -- config push --adapter axum
 ```
 
 ## License

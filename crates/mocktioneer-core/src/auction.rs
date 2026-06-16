@@ -83,7 +83,8 @@ pub fn standard_or_default((width, height): (i64, i64)) -> (i64, i64) {
 /// Build an `OpenRTB` bid response for the given request.
 ///
 /// - Enforces standard ad sizes (non-standard sizes default to 300x250)
-/// - Uses a fixed CPM price ($0.20)
+/// - Prices every bid at the supplied `cpm` (callers pass the resolved config
+///   value, defaulting to `FIXED_BID_CPM`)
 /// - Embeds signature verification status, the original request, and a preview
 ///   of the response as HTML comments in each creative
 /// - The signature badge is rendered inside the creative via the `sig` query param
@@ -221,7 +222,7 @@ pub fn decode_aps_price(encoded: &str) -> Option<f64> {
 /// Build APS TAM response from an APS bid request matching real Amazon API format.
 ///
 /// This function generates mock bids for all slots with standard sizes:
-/// - Fixed bid price of $0.20 CPM
+/// - Prices every slot at the supplied `cpm` (defaulting to `FIXED_BID_CPM`)
 /// - 100% fill rate for standard sizes
 /// - Returns contextual format matching real Amazon APS API
 /// - No creative HTML (APS doesn't return adm field)

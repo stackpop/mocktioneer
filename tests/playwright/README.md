@@ -43,9 +43,9 @@ npx playwright show-report
 
 The `ADAPTER` environment variable controls which adapter is tested:
 
-| Value            | Command                                   | Description               |
-| ---------------- | ----------------------------------------- | ------------------------- |
-| `axum` (default) | `cargo run -p mocktioneer-adapter-axum`   | Native Axum server        |
-| `cloudflare`     | `edgezero-cli serve --adapter cloudflare` | Cloudflare Workers (WASM) |
+| Value            | Command                                                | Description               |
+| ---------------- | ------------------------------------------------------ | ------------------------- |
+| `axum` (default) | `cargo run -p mocktioneer-adapter-axum`                | Native Axum server        |
+| `cloudflare`     | `cargo run -p mocktioneer-cli -- serve --adapter cloudflare` | Cloudflare Workers (WASM) |
 
 Both adapters run on `http://127.0.0.1:8787`.
