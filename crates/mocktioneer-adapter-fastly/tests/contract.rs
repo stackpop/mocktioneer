@@ -1,10 +1,6 @@
 #![cfg(all(feature = "fastly", target_arch = "wasm32"))]
-#![expect(
-    deprecated,
-    reason = "exercise the low-level dispatch path while it remains public"
-)]
 
-use edgezero_adapter_fastly::request::dispatch;
+use edgezero_adapter_fastly::request::FastlyService;
 use fastly::http::{Method as FastlyMethod, StatusCode as FastlyStatus};
 use fastly::Request as FastlyRequest;
 use mocktioneer_core::build_app;
@@ -20,7 +16,7 @@ fn root_dispatches_through_fastly_adapter() {
     let app = build_app();
     let req = fastly_request(FastlyMethod::GET, "/");
 
-    let mut response = dispatch(&app, req).expect("fastly response");
+    let mut response = FastlyService::new(&app).dispatch(req).expect("fastly response");
 
     assert_eq!(response.get_status(), FastlyStatus::OK);
     let body = response.take_body_bytes();
@@ -37,7 +33,7 @@ fn pixel_returns_gif_through_fastly_adapter() {
     let app = build_app();
     let req = fastly_request(FastlyMethod::GET, "/pixel?pid=fastly-contract");
 
-    let response = dispatch(&app, req).expect("fastly response");
+    let response = FastlyService::new(&app).dispatch(req).expect("fastly response");
 
     assert_eq!(response.get_status(), FastlyStatus::OK);
     let content_type = response

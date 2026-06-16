@@ -1,10 +1,6 @@
 #![cfg(all(feature = "cloudflare", target_arch = "wasm32"))]
-#![expect(
-    deprecated,
-    reason = "exercise the low-level dispatch path while it remains public"
-)]
 
-use edgezero_adapter_cloudflare::request::dispatch;
+use edgezero_adapter_cloudflare::request::CloudflareService;
 use mocktioneer_core::build_app;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
 use worker::wasm_bindgen::JsCast as _;
@@ -41,7 +37,10 @@ async fn root_dispatches_through_cloudflare_adapter() {
     let req = cf_request(CfMethod::Get, "/");
     let (env, ctx) = test_env_ctx();
 
-    let mut response = dispatch(&app, req, env, ctx).await.expect("cf response");
+    let mut response = CloudflareService::new(&app)
+        .dispatch(req, env, ctx)
+        .await
+        .expect("cf response");
 
     assert_eq!(response.status_code(), 200);
     let body = response.bytes().await.expect("body bytes");
@@ -59,7 +58,10 @@ async fn pixel_returns_gif_through_cloudflare_adapter() {
     let req = cf_request(CfMethod::Get, "/pixel?pid=cloudflare-contract");
     let (env, ctx) = test_env_ctx();
 
-    let response = dispatch(&app, req, env, ctx).await.expect("cf response");
+    let response = CloudflareService::new(&app)
+        .dispatch(req, env, ctx)
+        .await
+        .expect("cf response");
 
     assert_eq!(response.status_code(), 200);
     let content_type = response
