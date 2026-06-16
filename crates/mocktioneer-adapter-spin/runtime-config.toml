@@ -1,0 +1,5 @@
+# Spin runtime config: declares the KV labels the component may open.
+# The `mocktioneer_config` label backs the EdgeZero `[stores.config]`
+# store; the default SQLite backend persists to `.spin/sqlite_key_value.db`.
+[key_value_store.mocktioneer_config]
+type = "spin"

@@ -1,10 +1,10 @@
 //! Spin adapter contract tests.
 //!
-//! Spin's `IncomingRequest` is a WASI handle that can only be constructed by
+//! Spin's `Request` is a WASI handle that can only be constructed by
 //! the Spin runtime, so we cannot exercise the full `dispatch(req)` path the
 //! way the Fastly and Cloudflare contract tests do. Instead, these tests
 //! prove that `MocktioneerApp::build_app()` and `router().oneshot(...)` work
-//! end-to-end under `wasm32-wasip1` via the `wasmtime` runner — the same
+//! end-to-end under `wasm32-wasip2` via the `wasmtime` runner — the same
 //! integration surface the Spin adapter's `run_app` calls into.
 
 #![cfg(all(feature = "spin", target_arch = "wasm32"))]
