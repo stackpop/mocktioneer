@@ -1,5 +1,6 @@
 pub mod aps;
 pub mod auction;
+pub mod config;
 pub mod mediation;
 pub mod openrtb;
 pub mod render;
