@@ -6,84 +6,82 @@ use validator::{Validate, ValidationError, ValidationErrors};
 #[repr(i32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize_repr, Deserialize_repr)]
 pub enum MediaType {
-    Banner = 1,
-    Video = 2,
     Audio = 3,
+    Banner = 1,
     Native = 4,
+    Video = 2,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, Validate)]
 pub struct OpenRTBRequest {
-    #[validate(length(min = 1))]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub allimps: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub app: Option<App>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub badv: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bcat: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bseat: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cur: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device: Option<Device>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
+    #[validate(length(min = 1_u64))]
     pub id: String,
-    #[validate(length(min = 1))]
+    #[validate(length(min = 1_u64))]
     #[validate(nested)]
     pub imp: Vec<Imp>,
-    // Common optional request fields
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub regs: Option<Regs>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub site: Option<Site>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<Source>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub test: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tmax: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub at: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cur: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bcat: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub badv: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub bseat: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wseat: Option<Vec<String>>,
+    pub user: Option<User>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wlang: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub allimps: Option<i64>,
-    // Contextual objects
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub site: Option<Site>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub app: Option<App>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub device: Option<Device>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub user: Option<User>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub source: Option<Source>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub regs: Option<Regs>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub wseat: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Imp {
-    pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub banner: Option<Banner>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub video: Option<Video>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio: Option<Audio>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub native: Option<Native>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pmp: Option<Pmp>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub tagid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub instl: Option<i64>,
+    pub banner: Option<Banner>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bidfloor: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bidfloorcur: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub secure: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub exp: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<ImpExt>,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub instl: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub native: Option<Native>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pmp: Option<Pmp>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub secure: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tagid: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video: Option<Video>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -101,42 +99,45 @@ pub struct ExtMocktioneer {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Banner {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub w: Option<i64>,
+    pub api: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub h: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<Vec<Format>>,
+    pub battr: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub btype: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub battr: Option<Vec<i64>>,
+    pub expdir: Option<Vec<i64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<Vec<Format>>,
+    #[serde(rename = "h", skip_serializing_if = "Option::is_none")]
+    pub height: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pos: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub topframe: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub expdir: Option<Vec<i64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api: Option<Vec<i64>>,
+    #[serde(rename = "w", skip_serializing_if = "Option::is_none")]
+    pub width: Option<i64>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize, Validate)]
 pub struct Format {
-    #[validate(range(min = 1))]
-    pub w: i64,
-    #[validate(range(min = 1))]
-    pub h: i64,
+    #[serde(rename = "h")]
+    #[validate(range(min = 1_i64))]
+    pub height: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub wratio: Option<i64>,
+    pub hmin: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub hratio: Option<i64>,
+    #[serde(rename = "w")]
+    #[validate(range(min = 1_i64))]
+    pub width: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wmin: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub hmin: Option<i64>,
+    pub wratio: Option<i64>,
 }
 
 impl Validate for Imp {
+    #[inline]
     fn validate(&self) -> Result<(), ValidationErrors> {
         let mut errors = ValidationErrors::new();
 
@@ -168,82 +169,82 @@ impl Validate for Imp {
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct OpenRTBResponse {
-    pub id: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cur: Option<String>,
-    pub seatbid: Vec<SeatBid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bidid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub cur: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub customdata: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub nbr: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<serde_json::Value>,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nbr: Option<i64>,
+    pub seatbid: Vec<SeatBid>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct SeatBid {
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub seat: Option<String>,
     pub bid: Vec<Bid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub group: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub seat: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Bid {
-    pub id: String,
-    pub impid: String,
-    pub price: f64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub nurl: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub burl: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lurl: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub adm: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub crid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub w: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub h: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub mtype: Option<MediaType>,
+    pub adm: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub adomain: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub bundle: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub iurl: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cid: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cat: Option<Vec<String>>,
+    pub api: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attr: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tactic: Option<String>,
+    pub bundle: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub api: Option<i64>,
+    pub burl: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub protocol: Option<i64>,
+    pub cat: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub qagmediarating: Option<i64>,
+    pub cid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
+    pub crid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub dealid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub exp: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<serde_json::Value>,
+    #[serde(rename = "h", skip_serializing_if = "Option::is_none")]
+    pub height: Option<i64>,
+    pub id: String,
+    pub impid: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub iurl: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lurl: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mtype: Option<MediaType>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nurl: Option<String>,
+    pub price: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub protocol: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qagmediarating: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tactic: Option<String>,
+    #[serde(rename = "w", skip_serializing_if = "Option::is_none")]
+    pub width: Option<i64>,
 }
 
 // ---------- Additional OpenRTB Objects ----------
@@ -251,111 +252,127 @@ pub struct Bid {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Site {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub domain: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub cat: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub page: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ref_: Option<String>,
-    #[serde(rename = "ref", skip_serializing_if = "Option::is_none")]
-    pub _ref: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub publisher: Option<Publisher>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Content>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub keywords: Option<String>,
+    pub domain: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keywords: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<Publisher>,
+    /// `OpenRTB` spec `Site.ref` — the page referrer URL. Raw identifier
+    /// `r#ref` serializes to the JSON key `ref`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#ref: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct App {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub bundle: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub storeurl: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cat: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub publisher: Option<Publisher>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub content: Option<Content>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keywords: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub publisher: Option<Publisher>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storeurl: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Publisher {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Content {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub series: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub season: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub genre: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub contentrating: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub episode: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub livestream: Option<i64>,
+    pub episode: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub len: Option<i64>,
+    pub ext: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub qagmediarating: Option<i64>,
+    pub genre: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub keywords: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub language: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub len: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub livestream: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qagmediarating: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub season: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub series: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Device {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ua: Option<String>,
+    pub devicetype: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub didsha1: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dnt: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dpidsha1: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geo: Option<Geo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geofetch: Option<i64>,
+    #[serde(rename = "h", skip_serializing_if = "Option::is_none")]
+    pub height: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ifa: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ip: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ipv6: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub language: Option<String>,
+    pub js: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub dnt: Option<i64>,
+    pub language: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lmt: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub devicetype: Option<i64>,
+    pub macsha1: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub make: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -365,103 +382,89 @@ pub struct Device {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub osv: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub h: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub w: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub pxratio: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub js: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub geofetch: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ifa: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub didsha1: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dpidsha1: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub macsha1: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub geo: Option<Geo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub ua: Option<String>,
+    #[serde(rename = "w", skip_serializing_if = "Option::is_none")]
+    pub width: Option<i64>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Geo {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub accuracy: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub city: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub country: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ipservice: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub lastfix: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub lat: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lon: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub country: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub region: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub city: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub zip: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub _type: Option<i64>,
+    /// `OpenRTB` spec `Geo.type` — source of the location data
+    /// (1 = GPS, 2 = IP, 3 = user-provided). The Rust field is named
+    /// `type2` because `type` is a Rust keyword; `#[serde(rename)]`
+    /// preserves the spec JSON key.
     #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
     pub type2: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub accuracy: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub lastfix: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ipservice: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub zip: Option<String>,
 }
 
-/// OpenRTB 2.6 Extended Identifier (EID) — a user identity from an external source.
+/// `OpenRTB` 2.6 Extended Identifier (EID) — a user identity from an external source.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Eid {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
     /// Identity source domain (e.g., "liveramp.com", "uidapi.com").
     pub source: String,
     /// One or more UIDs from this source.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub uids: Vec<EidUid>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
 }
 
 /// A single UID within an EID entry.
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct EidUid {
-    /// The identifier value.
-    pub id: String,
-    /// Agent type — see OpenRTB 2.6 `atype` enum.
+    /// Agent type — see `OpenRTB` 2.6 `atype` enum.
     /// 3 = partner-defined (typical for EC-derived IDs).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub atype: Option<u8>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<serde_json::Value>,
+    /// The identifier value.
+    pub id: String,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct User {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub id: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub buyeruid: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub yob: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub gender: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub keywords: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub geo: Option<Geo>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub consent: Option<String>,
-    /// OpenRTB 2.6 Extended Identifiers — synced partner IDs from the identity graph.
+    /// `OpenRTB` 2.6 Extended Identifiers — synced partner IDs from the identity graph.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub eids: Vec<Eid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gender: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub geo: Option<Geo>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub keywords: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub yob: Option<i64>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -475,13 +478,13 @@ pub struct Regs {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Source {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub fd: Option<i64>,
+    pub ext: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub tid: Option<String>,
+    pub fd: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pchain: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub tid: Option<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -497,103 +500,225 @@ pub struct Metric {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Pmp {
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub private_auction: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub deals: Option<Vec<Deal>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ext: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub private_auction: Option<i64>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Deal {
-    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub at: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bidfloor: Option<f64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bidfloorcur: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub at: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub wseat: Option<Vec<String>>,
+    pub ext: Option<serde_json::Value>,
+    pub id: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub wadomain: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub wseat: Option<Vec<String>>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Video {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub api: Option<Vec<i64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub battr: Option<Vec<i64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub companionad: Option<Vec<Banner>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<Vec<i64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
+    #[serde(rename = "h", skip_serializing_if = "Option::is_none")]
+    pub height: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub linearity: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maxduration: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mimes: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub minduration: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub maxduration: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub protocols: Option<Vec<i64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub w: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub h: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub startdelay: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub placement: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub linearity: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skip: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skipmin: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skipafter: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub playbackmethod: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub delivery: Option<Vec<i64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub pos: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub companionad: Option<Vec<Banner>>,
+    pub protocols: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub battr: Option<Vec<i64>>,
+    pub skip: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub api: Option<Vec<i64>>,
+    pub skipafter: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+    pub skipmin: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub startdelay: Option<i64>,
+    #[serde(rename = "w", skip_serializing_if = "Option::is_none")]
+    pub width: Option<i64>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Audio {
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub api: Option<Vec<i64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub battr: Option<Vec<i64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub maxduration: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub mimes: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub minduration: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub maxduration: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub protocols: Option<Vec<i64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub startdelay: Option<i64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub battr: Option<Vec<i64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api: Option<Vec<i64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct Native {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub api: Option<Vec<i64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub battr: Option<Vec<i64>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ext: Option<serde_json::Value>,
     // In practice this can be a JSON object or a string; use Value for flexibility.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub request: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub ver: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub api: Option<Vec<i64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub battr: Option<Vec<i64>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ext: Option<serde_json::Value>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn json(value: &impl Serialize) -> serde_json::Value {
+        serde_json::to_value(value).expect("serialize")
+    }
+
+    #[test]
+    fn banner_round_trip_uses_w_h_json_keys() {
+        let banner = Banner {
+            height: Some(250_i64),
+            width: Some(300_i64),
+            ..Default::default()
+        };
+        let value = json(&banner);
+        assert_eq!(value["w"], 300_i32);
+        assert_eq!(value["h"], 250_i32);
+        assert!(value.get("width").is_none());
+        assert!(value.get("height").is_none());
+
+        let parsed: Banner =
+            serde_json::from_value(serde_json::json!({"w": 300_i32, "h": 250_i32}))
+                .expect("deserialize");
+        assert_eq!(parsed.width, Some(300_i64));
+        assert_eq!(parsed.height, Some(250_i64));
+    }
+
+    #[test]
+    fn format_round_trip_uses_w_h_json_keys() {
+        let format = Format {
+            height: 90_i64,
+            width: 728_i64,
+            ..Default::default()
+        };
+        let value = json(&format);
+        assert_eq!(value["w"], 728_i32);
+        assert_eq!(value["h"], 90_i32);
+
+        let parsed: Format = serde_json::from_value(serde_json::json!({"w": 728_i32, "h": 90_i32}))
+            .expect("deserialize");
+        assert_eq!(parsed.width, 728_i64);
+        assert_eq!(parsed.height, 90_i64);
+    }
+
+    #[test]
+    fn bid_round_trip_uses_w_h_json_keys() {
+        let bid = Bid {
+            id: "b1".to_owned(),
+            impid: "i1".to_owned(),
+            price: 1.0_f64,
+            height: Some(600_i64),
+            width: Some(160_i64),
+            ..Default::default()
+        };
+        let value = json(&bid);
+        assert_eq!(value["w"], 160_i32);
+        assert_eq!(value["h"], 600_i32);
+
+        let parsed: Bid = serde_json::from_value(serde_json::json!({
+            "id": "b1", "impid": "i1", "price": 1.0_f64, "w": 160_i32, "h": 600_i32
+        }))
+        .expect("deserialize");
+        assert_eq!(parsed.width, Some(160_i64));
+        assert_eq!(parsed.height, Some(600_i64));
+    }
+
+    #[test]
+    fn device_round_trip_uses_w_h_json_keys() {
+        let device = Device {
+            height: Some(800_i64),
+            width: Some(1200_i64),
+            ..Default::default()
+        };
+        let value = json(&device);
+        assert_eq!(value["w"], 1200_i32);
+        assert_eq!(value["h"], 800_i32);
+    }
+
+    #[test]
+    fn video_round_trip_uses_w_h_json_keys() {
+        let video = Video {
+            height: Some(480_i64),
+            width: Some(640_i64),
+            ..Default::default()
+        };
+        let value = json(&video);
+        assert_eq!(value["w"], 640_i32);
+        assert_eq!(value["h"], 480_i32);
+    }
+
+    #[test]
+    fn site_round_trip_maps_r_ref_to_ref_json_key() {
+        let site = Site {
+            r#ref: Some("https://referrer.example".to_owned()),
+            ..Default::default()
+        };
+        let value = json(&site);
+        assert_eq!(value["ref"], "https://referrer.example");
+
+        let parsed: Site =
+            serde_json::from_value(serde_json::json!({"ref": "https://referrer.example"}))
+                .expect("deserialize");
+        assert_eq!(parsed.r#ref.as_deref(), Some("https://referrer.example"));
+    }
+
+    #[test]
+    fn geo_round_trip_maps_type2_to_type_json_key() {
+        let geo = Geo {
+            type2: Some(2_i64),
+            ..Default::default()
+        };
+        let value = json(&geo);
+        assert_eq!(value["type"], 2_i32);
+        assert!(value.get("type2").is_none());
+
+        let parsed: Geo =
+            serde_json::from_value(serde_json::json!({"type": 2_i32})).expect("deserialize");
+        assert_eq!(parsed.type2, Some(2_i64));
+    }
 }

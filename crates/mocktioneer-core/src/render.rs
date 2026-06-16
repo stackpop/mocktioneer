@@ -5,21 +5,66 @@ use uuid::Uuid;
 
 use crate::openrtb::{Eid, OpenRTBRequest};
 
-/// Signature verification status for creative metadata
+const CREATIVE_HTML_TMPL: &str = include_str!("../static/templates/creative.html.hbs");
+const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html.hbs");
+const INFO_TMPL: &str = include_str!("../static/templates/info.html.hbs");
+const MOCKTIONEER_SOURCE_DOMAIN: &str = "mocktioneer.dev";
+const SVG_TMPL: &str = include_str!("../static/templates/image.svg.hbs");
+
+/// Signature verification status for creative metadata.
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "status", content = "details")]
 pub enum SignatureStatus {
-    /// Signature was present and successfully verified
-    Verified { kid: String },
-    /// Signature verification failed
+    /// Signature verification failed.
     Failed { reason: String },
-    /// No signature was present in the request
+    /// No signature was present in the request.
     NotPresent { reason: String },
+    /// Signature was present and successfully verified.
+    Verified { kid: String },
+}
+
+/// Metadata to embed in creative HTML comments.
+#[derive(Debug, Clone, Serialize)]
+pub struct CreativeMetadata<'req> {
+    /// Edge Cookie identity pipeline state extracted from the bid request.
+    pub edge_cookie: EdgeCookieInfo,
+    pub request: &'req OpenRTBRequest,
+    /// The `OpenRTB` response with `adm` fields stripped (to avoid recursion).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub response: Option<JsonValue>,
+    pub signature: SignatureStatus,
+}
+
+/// Edge Cookie identity information extracted from an `OpenRTB` bid request.
+///
+/// Populated from `user.id` (the EC value), `user.eids` (synced partner IDs),
+/// `user.consent` (TCF string), and `user.buyeruid`. When trusted-server
+/// decorates bid requests with EC data (§12 of the EC spec), this struct
+/// captures that identity pipeline state for embedding in creative metadata.
+#[derive(Debug, Clone, Serialize)]
+pub struct EdgeCookieInfo {
+    /// The buyer UID from `user.buyeruid` or matched from `user.eids`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub buyer_uid: Option<String>,
+    /// TCF consent string from `user.consent`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub consent: Option<String>,
+    /// The full EC identifier from `user.id` (format: `{64-hex}.{6-alnum}`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ec_id: Option<String>,
+    /// Full EIDs array for inspection.
+    pub eids: Vec<Eid>,
+    /// Number of EID sources in the bid request.
+    pub eids_count: usize,
+    /// Whether mocktioneer's own UID appeared in `user.eids`.
+    pub mocktioneer_matched: bool,
 }
 
 impl SignatureStatus {
     /// Return the URL parameter value for this signature status.
     /// Used to pass signature status to the creative template via query param.
+    #[inline]
+    #[must_use]
     pub fn url_param(&self) -> &'static str {
         match self {
             SignatureStatus::Verified { .. } => "verified",
@@ -29,76 +74,76 @@ impl SignatureStatus {
     }
 }
 
-/// Edge Cookie identity information extracted from an OpenRTB bid request.
-///
-/// Populated from `user.id` (the EC value), `user.eids` (synced partner IDs),
-/// `user.consent` (TCF string), and `user.buyeruid`. When trusted-server
-/// decorates bid requests with EC data (§12 of the EC spec), this struct
-/// captures that identity pipeline state for embedding in creative metadata.
-#[derive(Debug, Clone, Serialize)]
-pub struct EdgeCookieInfo {
-    /// The full EC identifier from `user.id` (format: `{64-hex}.{6-alnum}`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub ec_id: Option<String>,
-    /// The buyer UID from `user.buyeruid` or matched from `user.eids`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub buyer_uid: Option<String>,
-    /// TCF consent string from `user.consent`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub consent: Option<String>,
-    /// Number of EID sources in the bid request.
-    pub eids_count: usize,
-    /// Full EIDs array for inspection.
-    pub eids: Vec<Eid>,
-    /// Whether mocktioneer's own UID appeared in `user.eids`.
-    pub mocktioneer_matched: bool,
+#[inline]
+#[must_use]
+pub fn creative_html(
+    width: i64,
+    height: i64,
+    pixel_html: bool,
+    pixel_js: bool,
+    host: &str,
+) -> String {
+    let html_pid = Uuid::now_v7().as_simple().to_string();
+    let js_pid = Uuid::now_v7().as_simple().to_string();
+    let data = serde_json::json!({
+        "H": height,
+        "HOST": host,
+        "PID_HTML": html_pid,
+        "PID_JS": js_pid,
+        "PIXEL_HTML": pixel_html,
+        "PIXEL_JS": pixel_js,
+        "W": width,
+    });
+    render_template_str(CREATIVE_HTML_TMPL, &data)
 }
 
 /// Extract the stable 64-char hex prefix from a full EC value.
 ///
 /// Returns `None` if the value is not in `{64-hex}.{6-alnum}` format.
+#[inline]
+#[must_use]
 pub fn extract_ec_hash(ec_value: &str) -> Option<&str> {
     let (prefix, suffix) = ec_value.split_once('.')?;
     if prefix.len() != 64
-        || !prefix.chars().all(|c| c.is_ascii_hexdigit())
+        || !prefix.chars().all(|ch| ch.is_ascii_hexdigit())
         || suffix.len() != 6
-        || !suffix.chars().all(|c| c.is_ascii_alphanumeric())
+        || !suffix.chars().all(|ch| ch.is_ascii_alphanumeric())
     {
         return None;
     }
     Some(prefix)
 }
 
-const MOCKTIONEER_SOURCE_DOMAIN: &str = "mocktioneer.dev";
-
-/// Build `EdgeCookieInfo` from an OpenRTB request's user object.
+/// Build `EdgeCookieInfo` from an `OpenRTB` request's user object.
 ///
-/// Checks both `user.eids` (OpenRTB 2.6 top-level) and `user.ext.eids`
-/// (Prebid Server / OpenRTB 2.5 convention). The top-level field takes
+/// Checks both `user.eids` (`OpenRTB` 2.6 top-level) and `user.ext.eids`
+/// (Prebid Server / `OpenRTB` 2.5 convention). The top-level field takes
 /// priority; `ext.eids` is used as a fallback when the top-level is empty.
+#[inline]
+#[must_use]
 pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
     let user = req.user.as_ref();
 
-    let ec_id = user.and_then(|u| u.id.clone());
+    let ec_id = user.and_then(|usr| usr.id.clone());
 
-    // Try top-level user.eids (OpenRTB 2.6), fall back to user.ext.eids (Prebid/2.5)
+    // Try top-level user.eids (OpenRTB 2.6), fall back to user.ext.eids (Prebid/2.5).
     let eids = user
-        .map(|u| {
-            if !u.eids.is_empty() {
-                u.eids.clone()
-            } else {
-                u.ext
+        .map(|usr| {
+            if usr.eids.is_empty() {
+                usr.ext
                     .as_ref()
                     .and_then(|ext| ext.get("eids"))
-                    .and_then(|v| serde_json::from_value::<Vec<Eid>>(v.clone()).ok())
+                    .and_then(|val| serde_json::from_value::<Vec<Eid>>(val.clone()).ok())
                     .unwrap_or_default()
+            } else {
+                usr.eids.clone()
             }
         })
         .unwrap_or_default();
 
     let mocktioneer_eid_uid = eids.iter().find_map(|eid| {
         if eid.source == MOCKTIONEER_SOURCE_DOMAIN {
-            eid.uids.first().map(|u| u.id.clone())
+            eid.uids.first().map(|uid| uid.id.clone())
         } else {
             None
         }
@@ -106,39 +151,20 @@ pub fn extract_ec_info(req: &OpenRTBRequest) -> EdgeCookieInfo {
 
     let mocktioneer_matched = mocktioneer_eid_uid.is_some();
 
-    // Prefer buyeruid, fall back to matched EID
+    // Prefer buyeruid, fall back to matched EID.
     let buyer_uid = user
-        .and_then(|u| u.buyeruid.clone())
+        .and_then(|usr| usr.buyeruid.clone())
         .or(mocktioneer_eid_uid);
 
     EdgeCookieInfo {
-        ec_id,
         buyer_uid,
-        consent: user.and_then(|u| u.consent.clone()),
+        consent: user.and_then(|usr| usr.consent.clone()),
+        ec_id,
         eids_count: eids.len(),
         eids,
         mocktioneer_matched,
     }
 }
-
-/// Metadata to embed in creative HTML comments
-#[derive(Debug, Clone, Serialize)]
-pub struct CreativeMetadata<'a> {
-    pub signature: SignatureStatus,
-    pub edge_cookie: EdgeCookieInfo,
-    pub request: &'a OpenRTBRequest,
-    /// The OpenRTB response with `adm` fields stripped (to avoid recursion)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub response: Option<JsonValue>,
-}
-pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
-    let mut reg = Handlebars::new();
-    // We want HTML escaping on by default (to protect attribute injection)
-    reg.register_template_string("t", tmpl).ok();
-    reg.render("t", data).unwrap_or_default()
-}
-
-const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html.hbs");
 
 /// Render iframe HTML with embedded metadata as an HTML comment.
 ///
@@ -146,80 +172,46 @@ const IFRAME_HTML_TMPL: &str = include_str!("../static/templates/iframe.html.hbs
 /// Any `--` sequences in the JSON are escaped to prevent breaking the HTML comment
 /// syntax. The iframe is wrapped in a positioned container. The signature verification
 /// badge is rendered inside the creative template (not in the wrapper).
+#[inline]
+#[must_use]
 pub fn iframe_html(
     base_host: &str,
     crid: &str,
-    w: i64,
-    h: i64,
+    width: i64,
+    height: i64,
     bid: Option<f64>,
     metadata: &CreativeMetadata,
 ) -> String {
-    // Get signature status URL param for the creative to render the badge
     let sig_param = metadata.signature.url_param();
 
-    // Serialize metadata as pretty JSON
     let meta_json = serde_json::to_string_pretty(metadata)
-        .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize metadata: {}\"}}", e));
+        .unwrap_or_else(|err| format!("{{\"error\": \"Failed to serialize metadata: {err}\"}}"));
 
-    // Escape -- sequences to prevent breaking HTML comment syntax
     let safe_json = meta_json.replace("--", "- -");
 
-    let bid_str = bid.map(|b| format!("{:.2}", b)).unwrap_or_default();
+    let bid_str = bid.map(|price| format!("{price:.2}")).unwrap_or_default();
 
     let data = serde_json::json!({
         "BID": bid_str,
         "CRID": crid,
-        "H": h,
+        "H": height,
         "HOST": base_host,
         "METADATA_JSON": safe_json,
         "SIG": sig_param,
-        "W": w,
+        "W": width,
     });
     render_template_str(IFRAME_HTML_TMPL, &data)
 }
 
-pub fn render_svg(w: i64, h: i64, bid: Option<f64>) -> String {
-    const SVG_TMPL: &str = include_str!("../static/templates/image.svg.hbs");
-    // Font size: fit "WxH" text (~7 chars) within width, also limit by height
-    let font = (w as f64 / 5.0).min(h as f64 / 2.0).round().max(12.0) as i64;
-    // Caption positioned below main title
-    let cap_y = h / 2 + (font as f64 * 0.7).round() as i64;
-    let bid_label = bid.map(|b| format!(" — ${:.2}", b)).unwrap_or_default();
-    let data = serde_json::json!({
-        "BIDLBL": bid_label,
-        "CAPFONT": ((w.min(h) as f64) * 0.06).clamp(10.0, 16.0).round() as i64,
-        "CAPY": cap_y,
-        "FONT": font,
-        "H": h,
-        "W": w,
-    });
-    render_template_str(SVG_TMPL, &data)
-}
-
-const CREATIVE_HTML_TMPL: &str = include_str!("../static/templates/creative.html.hbs");
-pub fn creative_html(w: i64, h: i64, pixel_html: bool, pixel_js: bool, host: &str) -> String {
-    let html_pid = Uuid::now_v7().as_simple().to_string();
-    let js_pid = Uuid::now_v7().as_simple().to_string();
-    let data = serde_json::json!({
-        "H": h,
-        "HOST": host,
-        "PID_HTML": html_pid,
-        "PID_JS": js_pid,
-        "PIXEL_HTML": pixel_html,
-        "PIXEL_JS": pixel_js,
-        "W": w,
-    });
-    render_template_str(CREATIVE_HTML_TMPL, &data)
-}
-
-const INFO_TMPL: &str = include_str!("../static/templates/info.html.hbs");
+#[inline]
+#[must_use]
 pub fn info_html(host: &str) -> String {
     use std::env;
-    let service_id = env::var("FASTLY_SERVICE_ID").unwrap_or_else(|_| "".to_string());
-    let service_version = env::var("FASTLY_SERVICE_VERSION").unwrap_or_else(|_| "".to_string());
+    let service_id = env::var("FASTLY_SERVICE_ID").unwrap_or_else(|_| String::new());
+    let service_version = env::var("FASTLY_SERVICE_VERSION").unwrap_or_else(|_| String::new());
     let datacenter = env::var("FASTLY_DATACENTER")
         .or_else(|_| env::var("FASTLY_REGION"))
-        .unwrap_or_else(|_| "".to_string());
+        .unwrap_or_else(|_| String::new());
     let pkg_version = env!("CARGO_PKG_VERSION");
     let data = serde_json::json!({
         "DATACENTER": datacenter,
@@ -232,34 +224,88 @@ pub fn info_html(host: &str) -> String {
     render_template_str(INFO_TMPL, &data)
 }
 
+#[inline]
+#[must_use]
+pub fn render_svg(width: i64, height: i64, bid: Option<f64>) -> String {
+    let (font, cap_y, cap_font) = svg_layout(width, height);
+    let bid_label = bid
+        .map(|price| format!(" \u{2014} ${price:.2}"))
+        .unwrap_or_default();
+    let data = serde_json::json!({
+        "BIDLBL": bid_label,
+        "CAPFONT": cap_font,
+        "CAPY": cap_y,
+        "FONT": font,
+        "H": height,
+        "W": width,
+    });
+    render_template_str(SVG_TMPL, &data)
+}
+
+#[inline]
+#[must_use]
+pub fn render_template_str(tmpl: &str, data: &JsonValue) -> String {
+    let mut reg = Handlebars::new();
+    if reg.register_template_string("t", tmpl).is_err() {
+        return String::new();
+    }
+    reg.render("t", data).unwrap_or_default()
+}
+
+/// Compute SVG font size, caption y-offset, and caption font size from creative
+/// dimensions. Banner dimensions are small positive integers (always well within
+/// `f64` precision) so the lossy `as` casts and integer division here are
+/// intentional layout math.
+#[expect(
+    clippy::as_conversions,
+    clippy::cast_possible_truncation,
+    clippy::cast_precision_loss,
+    clippy::float_arithmetic,
+    clippy::integer_division,
+    clippy::integer_division_remainder_used,
+    clippy::arithmetic_side_effects,
+    reason = "layout math on banner dimensions that always fit in f64 precision"
+)]
+fn svg_layout(width: i64, height: i64) -> (i64, i64, i64) {
+    let font = (width as f64 / 5.0)
+        .min(height as f64 / 2.0)
+        .round()
+        .max(12.0) as i64;
+    let cap_y = height / 2 + (font as f64 * 0.7).round() as i64;
+    let cap_font = ((width.min(height) as f64) * 0.06)
+        .clamp(10.0, 16.0)
+        .round() as i64;
+    (font, cap_y, cap_font)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::openrtb::OpenRTBRequest;
 
-    fn test_metadata(signature: SignatureStatus) -> (OpenRTBRequest, CreativeMetadata<'static>) {
+    fn metadata_fixture(signature: SignatureStatus) -> (OpenRTBRequest, CreativeMetadata<'static>) {
         // Use a leaked request to get a 'static lifetime for tests
         let req: &'static OpenRTBRequest = Box::leak(Box::new(
             serde_json::from_value(serde_json::json!({
                 "id": "test-req",
-                "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+                "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}]
             }))
             .unwrap(),
         ));
 
         let metadata = CreativeMetadata {
-            signature,
             edge_cookie: extract_ec_info(req),
             request: req,
             response: None,
+            signature,
         };
         (req.clone(), metadata)
     }
 
     #[test]
-    fn test_banner_adm_iframe_contains_expected_src_and_escapes() {
-        let (_, metadata) = test_metadata(SignatureStatus::NotPresent {
-            reason: "test".to_string(),
+    fn banner_adm_iframe_contains_expected_src_and_escapes() {
+        let (_, metadata) = metadata_fixture(SignatureStatus::NotPresent {
+            reason: "test".to_owned(),
         });
         let adm = iframe_html("host.test", "abc&def\"", 300, 250, None, &metadata);
         assert!(adm.contains("//host.test/static/creatives/300x250.html?crid=abc&amp;def&quot;"));
@@ -268,27 +314,27 @@ mod tests {
     }
 
     #[test]
-    fn test_render_svg_includes_bid_label_when_present() {
-        let svg = render_svg(300, 250, Some(2.5));
+    fn render_svg_includes_bid_label_when_present() {
+        let svg = render_svg(300, 250, Some(2.5_f64));
         assert!(svg.contains("$2.50"));
         let svg2 = render_svg(300, 250, None);
-        assert!(!svg2.contains("$"));
+        assert!(!svg2.contains('$'));
     }
 
     #[test]
-    fn test_banner_adm_iframe_includes_bid_param_when_present() {
-        let (_, metadata) = test_metadata(SignatureStatus::NotPresent {
-            reason: "test".to_string(),
+    fn banner_adm_iframe_includes_bid_param_when_present() {
+        let (_, metadata) = metadata_fixture(SignatureStatus::NotPresent {
+            reason: "test".to_owned(),
         });
-        let adm = iframe_html("host.test", "crid123", 320, 50, Some(3.75), &metadata);
+        let adm = iframe_html("host.test", "crid123", 320, 50, Some(3.75_f64), &metadata);
         assert!(adm.contains("//host.test/static/creatives/320x50.html"));
         assert!(adm.contains("bid=3.75"));
     }
 
     #[test]
-    fn test_banner_adm_iframe_omits_bid_param_when_absent() {
-        let (_, metadata) = test_metadata(SignatureStatus::Verified {
-            kid: "key-001".to_string(),
+    fn banner_adm_iframe_omits_bid_param_when_absent() {
+        let (_, metadata) = metadata_fixture(SignatureStatus::Verified {
+            kid: "key-001".to_owned(),
         });
         let adm = iframe_html("host.test", "crid123", 320, 50, None, &metadata);
         assert!(adm.contains("//host.test/static/creatives/320x50.html?crid=crid123&sig=verified"));
@@ -296,23 +342,23 @@ mod tests {
     }
 
     #[test]
-    fn test_iframe_html_includes_metadata_comment() {
+    fn iframe_html_includes_metadata_comment() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "test-req-123",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}]
         }))
         .unwrap();
 
         let metadata = CreativeMetadata {
-            signature: SignatureStatus::Verified {
-                kid: "key-001".to_string(),
-            },
             edge_cookie: extract_ec_info(&req),
             request: &req,
             response: None,
+            signature: SignatureStatus::Verified {
+                kid: "key-001".to_owned(),
+            },
         };
 
-        let adm = iframe_html("host.test", "crid123", 300, 250, Some(1.23), &metadata);
+        let adm = iframe_html("host.test", "crid123", 300, 250, Some(1.23_f64), &metadata);
 
         // Check the comment structure
         assert!(adm.starts_with("<!-- MOCKTIONEER_METADATA"));
@@ -335,20 +381,20 @@ mod tests {
     }
 
     #[test]
-    fn test_iframe_html_escapes_dashes() {
+    fn iframe_html_escapes_dashes() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "test--with--dashes",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}]
         }))
         .unwrap();
 
         let metadata = CreativeMetadata {
-            signature: SignatureStatus::Failed {
-                reason: "Test--failure--reason".to_string(),
-            },
             edge_cookie: extract_ec_info(&req),
             request: &req,
             response: None,
+            signature: SignatureStatus::Failed {
+                reason: "Test--failure--reason".to_owned(),
+            },
         };
 
         let adm = iframe_html("host.test", "crid123", 300, 250, None, &metadata);
@@ -367,8 +413,7 @@ mod tests {
             .unwrap();
         assert!(
             !metadata_content.contains("--"),
-            "Metadata should not contain -- sequence: {}",
-            metadata_content
+            "Metadata should not contain -- sequence: {metadata_content}"
         );
 
         // Check the sig param is passed to iframe for badge rendering in creative
@@ -376,20 +421,20 @@ mod tests {
     }
 
     #[test]
-    fn test_iframe_html_signature_not_present() {
+    fn iframe_html_signature_not_present() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "no-sig-req",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}]
         }))
         .unwrap();
 
         let metadata = CreativeMetadata {
-            signature: SignatureStatus::NotPresent {
-                reason: "No site.domain present".to_string(),
-            },
             edge_cookie: extract_ec_info(&req),
             request: &req,
             response: None,
+            signature: SignatureStatus::NotPresent {
+                reason: "No site.domain present".to_owned(),
+            },
         };
 
         let adm = iframe_html("host.test", "crid123", 300, 250, None, &metadata);
@@ -402,10 +447,10 @@ mod tests {
     }
 
     #[test]
-    fn test_iframe_html_includes_response() {
+    fn iframe_html_includes_response() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "req-with-response",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}]
         }))
         .unwrap();
 
@@ -417,21 +462,21 @@ mod tests {
                 "bid": [{
                     "id": "bid-1",
                     "impid": "1",
-                    "price": 1.23,
+                    "price": 1.23_f64,
                     "crid": "mocktioneer-1",
-                    "w": 300,
-                    "h": 250
+                    "w": 300_i32,
+                    "h": 250_i32
                 }]
             }]
         });
 
         let metadata = CreativeMetadata {
-            signature: SignatureStatus::Verified {
-                kid: "key-001".to_string(),
-            },
             edge_cookie: extract_ec_info(&req),
             request: &req,
             response: Some(response),
+            signature: SignatureStatus::Verified {
+                kid: "key-001".to_owned(),
+            },
         };
 
         let adm = iframe_html("host.test", "crid123", 300, 250, None, &metadata);
@@ -444,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn test_creative_html_always_shows_debug_badge() {
+    fn creative_html_always_shows_debug_badge() {
         let html = creative_html(728, 90, true, false, "host.test");
 
         assert!(html.contains("var sig = validSig[sigParam] ? sigParam : \"not_present\";"));
@@ -453,7 +498,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ec_hash_valid() {
+    fn extract_ec_hash_valid() {
         let ec = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123";
         assert_eq!(
             extract_ec_hash(ec),
@@ -462,7 +507,7 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ec_hash_invalid_formats() {
+    fn extract_ec_hash_invalid_formats() {
         assert_eq!(extract_ec_hash("too-short.abc123"), None);
         assert_eq!(extract_ec_hash("not-hex-at-all"), None);
         assert_eq!(
@@ -476,10 +521,10 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ec_info_with_ec_user() {
+    fn extract_ec_info_with_ec_user() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "ec-req",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
             "user": {
                 "id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123",
                 "buyeruid": "mtk-abc123",
@@ -487,11 +532,11 @@ mod tests {
                 "eids": [
                     {
                         "source": "mocktioneer.dev",
-                        "uids": [{"id": "mtk-abc123", "atype": 3}]
+                        "uids": [{"id": "mtk-abc123", "atype": 3_u8}]
                     },
                     {
                         "source": "liveramp.com",
-                        "uids": [{"id": "LR_xyz", "atype": 3}]
+                        "uids": [{"id": "LR_xyz", "atype": 3_u8}]
                     }
                 ]
             }
@@ -513,10 +558,10 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ec_info_no_user() {
+    fn extract_ec_info_no_user() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "no-user-req",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}]
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}]
         }))
         .unwrap();
 
@@ -529,15 +574,15 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ec_info_eids_without_mocktioneer() {
+    fn extract_ec_info_eids_without_mocktioneer() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "other-eids-req",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
             "user": {
                 "eids": [
                     {
                         "source": "liveramp.com",
-                        "uids": [{"id": "LR_xyz", "atype": 3}]
+                        "uids": [{"id": "LR_xyz", "atype": 3_u8}]
                     }
                 ]
             }
@@ -551,16 +596,16 @@ mod tests {
     }
 
     #[test]
-    fn test_iframe_html_includes_ec_metadata() {
+    fn iframe_html_includes_ec_metadata() {
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "ec-metadata-req",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
             "user": {
                 "id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123",
                 "eids": [
                     {
                         "source": "mocktioneer.dev",
-                        "uids": [{"id": "mtk-abc123", "atype": 3}]
+                        "uids": [{"id": "mtk-abc123", "atype": 3_u8}]
                     }
                 ]
             }
@@ -568,12 +613,12 @@ mod tests {
         .unwrap();
 
         let metadata = CreativeMetadata {
-            signature: SignatureStatus::NotPresent {
-                reason: "test".to_string(),
-            },
             edge_cookie: extract_ec_info(&req),
             request: &req,
             response: None,
+            signature: SignatureStatus::NotPresent {
+                reason: "test".to_owned(),
+            },
         };
 
         let adm = iframe_html("host.test", "crid123", 300, 250, None, &metadata);
@@ -586,22 +631,22 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ec_info_from_ext_eids_prebid_style() {
+    fn extract_ec_info_from_ext_eids_prebid_style() {
         // Prebid Server puts eids under user.ext.eids (OpenRTB 2.5 convention)
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "prebid-eids-req",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
             "user": {
                 "id": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2.AbC123",
                 "ext": {
                     "eids": [
                         {
                             "source": "mocktioneer.dev",
-                            "uids": [{"id": "mtk-476b99ce5ff5", "atype": 3}]
+                            "uids": [{"id": "mtk-476b99ce5ff5", "atype": 3_u8}]
                         },
                         {
                             "source": "liveramp.com",
-                            "uids": [{"id": "LR_xyz", "atype": 3}]
+                            "uids": [{"id": "LR_xyz", "atype": 3_u8}]
                         }
                     ]
                 }
@@ -627,18 +672,18 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ec_info_top_level_eids_takes_priority_over_ext() {
+    fn extract_ec_info_top_level_eids_takes_priority_over_ext() {
         // When both user.eids and user.ext.eids are present, top-level wins
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "both-eids-req",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
             "user": {
                 "eids": [
-                    {"source": "top-level.com", "uids": [{"id": "top-uid", "atype": 3}]}
+                    {"source": "top-level.com", "uids": [{"id": "top-uid", "atype": 3_u8}]}
                 ],
                 "ext": {
                     "eids": [
-                        {"source": "mocktioneer.dev", "uids": [{"id": "ext-uid", "atype": 3}]}
+                        {"source": "mocktioneer.dev", "uids": [{"id": "ext-uid", "atype": 3_u8}]}
                     ]
                 }
             }
@@ -655,11 +700,11 @@ mod tests {
     }
 
     #[test]
-    fn test_extract_ec_info_ext_eids_malformed_ignored() {
+    fn extract_ec_info_ext_eids_malformed_ignored() {
         // Malformed ext.eids should not crash — just produce empty eids
         let req: OpenRTBRequest = serde_json::from_value(serde_json::json!({
             "id": "bad-ext-req",
-            "imp": [{"id": "1", "banner": {"w": 300, "h": 250}}],
+            "imp": [{"id": "1", "banner": {"w": 300_i32, "h": 250_i32}}],
             "user": {
                 "ext": {
                     "eids": "not-an-array"

@@ -1,17 +1,17 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};
 use edgezero_core::body::Body;
 use edgezero_core::context::RequestContext;
 use edgezero_core::http::{Method, StatusCode, Uri};
 use edgezero_core::proxy::ProxyRequest;
-use futures_util::StreamExt;
+use futures_util::StreamExt as _;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 use url::Host;
 
-const JWKS_CACHE_TTL: Duration = Duration::from_secs(10 * 60);
+const JWKS_CACHE_TTL: Duration = Duration::from_mins(10);
 const SIGNING_VERSION: &str = "1.1";
 
 /// Maximum allowed clock skew for timestamp freshness check (5 minutes in milliseconds).
@@ -20,8 +20,17 @@ const TS_FRESHNESS_WINDOW_MS: u64 = 5 * 60 * 1000;
 /// Maximum JWKS response body size (64 KiB).
 const MAX_JWKS_BODY_BYTES: usize = 64 * 1024;
 
+static JWKS_CACHE: LazyLock<Mutex<HashMap<String, JwksCache>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 #[derive(Debug, Clone, Deserialize)]
-struct TrustedServerResponse {
+struct JwkKey {
+    kid: String,
+    x: String, // Base64url-encoded Ed25519 public key
+}
+
+struct JwksCache {
+    fetched_at: Instant,
     jwks: JwksResponse,
 }
 
@@ -31,48 +40,42 @@ struct JwksResponse {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-struct JwkKey {
-    kid: String,
-    x: String, // Base64url-encoded Ed25519 public key
-}
-
-struct JwksCache {
+struct TrustedServerResponse {
     jwks: JwksResponse,
-    fetched_at: Instant,
 }
 
 // IMPORTANT: Field order defines the canonical signing payload.
 // `serde_json::to_string` serializes struct fields in declaration order.
 // Reordering fields will silently break signature verification.
 #[derive(Serialize)]
-struct SigningPayload<'a> {
-    version: &'a str,
-    kid: &'a str,
-    host: &'a str,
-    scheme: &'a str,
-    id: &'a str,
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "field order is the canonical Trusted Server v1.1 signing payload"
+)]
+struct SigningPayload<'payload> {
+    version: &'payload str,
+    kid: &'payload str,
+    host: &'payload str,
+    scheme: &'payload str,
+    id: &'payload str,
     ts: u64,
 }
 
-static JWKS_CACHE: LazyLock<Mutex<HashMap<String, JwksCache>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
-
 #[derive(Debug, thiserror::Error)]
 pub enum VerificationError {
-    #[error("Key not found: {0}")]
-    KeyNotFound(String),
-    #[error("Invalid signature: {0}")]
-    InvalidSignature(String),
-    #[error("Signature verification failed")]
-    SignatureVerificationFailed,
     #[error("HTTP error: {0}")]
     HttpError(String),
+    #[error("Invalid signature: {0}")]
+    InvalidSignature(String),
+    #[error("Key not found: {0}")]
+    KeyNotFound(String),
+    #[error("Signature verification failed")]
+    SignatureVerificationFailed,
 }
 
 fn jwks_body_too_large_error() -> VerificationError {
     VerificationError::HttpError(format!(
-        "JWKS response body exceeds {} byte limit",
-        MAX_JWKS_BODY_BYTES
+        "JWKS response body exceeds {MAX_JWKS_BODY_BYTES} byte limit"
     ))
 }
 
@@ -86,9 +89,9 @@ async fn collect_jwks_body(body: Body) -> Result<Vec<u8>, VerificationError> {
         }
         Body::Stream(mut stream) => {
             let mut collected = Vec::new();
-            while let Some(chunk) = stream.next().await {
-                let chunk = chunk.map_err(|e| {
-                    VerificationError::HttpError(format!("Stream read failed: {}", e))
+            while let Some(next_chunk) = stream.next().await {
+                let chunk = next_chunk.map_err(|err| {
+                    VerificationError::HttpError(format!("Stream read failed: {err}"))
                 })?;
                 if collected.len().saturating_add(chunk.len()) > MAX_JWKS_BODY_BYTES {
                     return Err(jwks_body_too_large_error());
@@ -103,23 +106,23 @@ async fn collect_jwks_body(body: Body) -> Result<Vec<u8>, VerificationError> {
 
 async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
     let host = validate_jwks_host(domain)?;
-    let jwks_url = format!("https://{}/.well-known/trusted-server.json", host);
+    let jwks_url = format!("https://{host}/.well-known/trusted-server.json");
 
-    log::debug!("Fetching JWKS from {}", jwks_url);
+    log::debug!("Fetching JWKS from {jwks_url}");
 
     let uri = jwks_url
         .parse::<Uri>()
-        .map_err(|e| VerificationError::HttpError(format!("Invalid JWKS URL: {}", e)))?;
+        .map_err(|err| VerificationError::HttpError(format!("Invalid JWKS URL: {err}")))?;
 
     let proxy_request = ProxyRequest::new(Method::GET, uri);
     let proxy_handle = ctx
         .proxy_handle()
-        .ok_or_else(|| VerificationError::HttpError("Proxy not available".to_string()))?;
+        .ok_or_else(|| VerificationError::HttpError("Proxy not available".to_owned()))?;
 
     let resp = proxy_handle
         .forward(proxy_request)
         .await
-        .map_err(|e| VerificationError::HttpError(format!("JWKS fetch failed: {}", e)))?;
+        .map_err(|err| VerificationError::HttpError(format!("JWKS fetch failed: {err}")))?;
 
     if resp.status() != StatusCode::OK {
         return Err(VerificationError::HttpError(format!(
@@ -130,7 +133,7 @@ async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, 
 
     let body_bytes = collect_jwks_body(resp.into_body()).await?;
     let response: TrustedServerResponse = serde_json::from_slice(&body_bytes)
-        .map_err(|e| VerificationError::HttpError(format!("JWKS parse failed: {}", e)))?;
+        .map_err(|err| VerificationError::HttpError(format!("JWKS parse failed: {err}")))?;
     Ok(response.jwks)
 }
 
@@ -138,36 +141,31 @@ async fn get_cached_jwks(
     ctx: &RequestContext,
     domain: &str,
 ) -> Result<JwksResponse, VerificationError> {
-    let cache_key = domain.to_string();
+    let cache_key = domain.to_owned();
 
     {
         let cache = JWKS_CACHE
             .lock()
-            .map_err(|_| VerificationError::HttpError("Cache lock poisoned".to_string()))?;
+            .map_err(|err| VerificationError::HttpError(format!("Cache lock poisoned: {err}")))?;
 
         if let Some(cached) = cache.get(&cache_key) {
             let cache_age = cached.fetched_at.elapsed();
             if cache_age < JWKS_CACHE_TTL {
-                log::debug!("JWKS cache hit for {} (age: {:?})", cache_key, cache_age);
+                log::debug!("JWKS cache hit for {cache_key} (age: {cache_age:?})");
                 return Ok(cached.jwks.clone());
             }
-
-            log::debug!(
-                "JWKS cache expired for {} (age: {:?})",
-                cache_key,
-                cache_age
-            );
+            log::debug!("JWKS cache expired for {cache_key} (age: {cache_age:?})");
         } else {
-            log::debug!("JWKS cache empty for {} (first fetch)", cache_key);
+            log::debug!("JWKS cache empty for {cache_key} (first fetch)");
         }
     }
 
-    log::debug!("Fetching fresh JWKS for {}", cache_key);
+    log::debug!("Fetching fresh JWKS for {cache_key}");
     let jwks = fetch_jwks(ctx, domain).await?;
 
     let mut cache = JWKS_CACHE
         .lock()
-        .map_err(|_| VerificationError::HttpError("Cache lock poisoned".to_string()))?;
+        .map_err(|err| VerificationError::HttpError(format!("Cache lock poisoned: {err}")))?;
 
     cache.insert(
         cache_key,
@@ -180,12 +178,15 @@ async fn get_cached_jwks(
     Ok(jwks)
 }
 
-fn find_public_key<'a>(jwks: &'a JwksResponse, kid: &str) -> Result<&'a str, VerificationError> {
+fn find_public_key<'jwks>(
+    jwks: &'jwks JwksResponse,
+    kid: &str,
+) -> Result<&'jwks str, VerificationError> {
     jwks.keys
         .iter()
-        .find(|k| k.kid == kid)
-        .map(|k| k.x.as_str())
-        .ok_or_else(|| VerificationError::KeyNotFound(format!("Key {} not found in JWKS", kid)))
+        .find(|key| key.kid == kid)
+        .map(|key| key.x.as_str())
+        .ok_or_else(|| VerificationError::KeyNotFound(format!("Key {kid} not found in JWKS")))
 }
 
 fn verify_ed25519_signature(
@@ -193,8 +194,8 @@ fn verify_ed25519_signature(
     signature_b64: &str,
     message: &str,
 ) -> Result<(), VerificationError> {
-    let public_key_bytes = URL_SAFE_NO_PAD.decode(public_key_b64).map_err(|e| {
-        VerificationError::InvalidSignature(format!("Invalid public key encoding: {}", e))
+    let public_key_bytes = URL_SAFE_NO_PAD.decode(public_key_b64).map_err(|err| {
+        VerificationError::InvalidSignature(format!("Invalid public key encoding: {err}"))
     })?;
 
     if public_key_bytes.len() != 32 {
@@ -204,14 +205,14 @@ fn verify_ed25519_signature(
         )));
     }
 
-    let mut key_array = [0u8; 32];
+    let mut key_array = [0_u8; 32];
     key_array.copy_from_slice(&public_key_bytes);
 
     let verifying_key = VerifyingKey::from_bytes(&key_array)
-        .map_err(|e| VerificationError::InvalidSignature(format!("Invalid public key: {}", e)))?;
+        .map_err(|err| VerificationError::InvalidSignature(format!("Invalid public key: {err}")))?;
 
-    let signature_bytes = URL_SAFE_NO_PAD.decode(signature_b64).map_err(|e| {
-        VerificationError::InvalidSignature(format!("Invalid signature encoding: {}", e))
+    let signature_bytes = URL_SAFE_NO_PAD.decode(signature_b64).map_err(|err| {
+        VerificationError::InvalidSignature(format!("Invalid signature encoding: {err}"))
     })?;
 
     if signature_bytes.len() != 64 {
@@ -221,14 +222,14 @@ fn verify_ed25519_signature(
         )));
     }
 
-    let mut sig_array = [0u8; 64];
+    let mut sig_array = [0_u8; 64];
     sig_array.copy_from_slice(&signature_bytes);
 
     let signature = Signature::from_bytes(&sig_array);
 
     verifying_key
         .verify(message.as_bytes(), &signature)
-        .map_err(|_| VerificationError::SignatureVerificationFailed)?;
+        .map_err(|_err| VerificationError::SignatureVerificationFailed)?;
 
     Ok(())
 }
@@ -243,8 +244,7 @@ fn build_signing_payload(
 ) -> Result<String, VerificationError> {
     if version != SIGNING_VERSION {
         return Err(VerificationError::InvalidSignature(format!(
-            "Unsupported ext.trusted_server.version '{}'; expected '{}'",
-            version, SIGNING_VERSION
+            "Unsupported ext.trusted_server.version '{version}'; expected '{SIGNING_VERSION}'"
         )));
     }
 
@@ -257,16 +257,103 @@ fn build_signing_payload(
         ts: timestamp,
     };
 
-    serde_json::to_string(&payload).map_err(|e| {
-        VerificationError::InvalidSignature(format!("Failed to serialize signing payload: {}", e))
+    serde_json::to_string(&payload).map_err(|err| {
+        VerificationError::InvalidSignature(format!("Failed to serialize signing payload: {err}"))
     })
 }
 
-fn required_ext_str<'a>(
-    ext_obj: &'a serde_json::Value,
+/// Strip default ports (:443 for https, :80 for http) and lowercase the host
+/// so that `example.com:443` matches `example.com` from the signer.
+fn canonicalize_host(host: &str) -> String {
+    let trimmed = host.trim();
+    trimmed
+        .strip_suffix(":443")
+        .or_else(|| trimmed.strip_suffix(":80"))
+        .unwrap_or(trimmed)
+        .to_lowercase()
+}
+
+fn check_timestamp_freshness(timestamp_ms: u64) -> Result<(), VerificationError> {
+    let now_ms = current_time_ms()?;
+    let diff = now_ms.abs_diff(timestamp_ms);
+
+    if diff > TS_FRESHNESS_WINDOW_MS {
+        let direction = if timestamp_ms > now_ms {
+            "future-dated"
+        } else {
+            "stale"
+        };
+
+        return Err(VerificationError::InvalidSignature(format!(
+            "ext.trusted_server.ts is {direction}: {diff}ms drift exceeds {TS_FRESHNESS_WINDOW_MS}ms window"
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
+fn current_time_ms() -> Result<u64, VerificationError> {
+    let now_ms = js_sys::Date::now();
+    if now_ms.is_finite() && now_ms >= 0.0 {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            clippy::as_conversions,
+            reason = "JS epoch milliseconds fit in u64; finiteness and sign are checked above"
+        )]
+        Ok(now_ms as u64)
+    } else {
+        Err(VerificationError::InvalidSignature(
+            "System clock error".to_owned(),
+        ))
+    }
+}
+
+#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
+fn current_time_ms() -> Result<u64, VerificationError> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::as_conversions,
+                reason = "epoch milliseconds fit in u64 for any realistic system clock"
+            )]
+            {
+                elapsed.as_millis() as u64
+            }
+        })
+        .map_err(|_err| VerificationError::InvalidSignature("System clock error".to_owned()))
+}
+
+fn invalid_site_domain(domain: &str) -> VerificationError {
+    VerificationError::InvalidSignature(format!("Invalid site.domain host: {domain:?}"))
+}
+
+fn is_valid_public_dns_hostname(host: &str) -> bool {
+    if host.is_empty() || host.len() > 253 || host == "localhost" || !host.contains('.') {
+        return false;
+    }
+
+    host.split('.').all(|label| {
+        !label.is_empty()
+            && label.len() <= 63
+            && !label.starts_with('-')
+            && !label.ends_with('-')
+            && label
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+    })
+}
+
+fn required_ext_str<'ext>(
+    ext_obj: &'ext serde_json::Value,
     field: &str,
     missing_error: impl FnOnce() -> VerificationError,
-) -> Result<&'a str, VerificationError> {
+) -> Result<&'ext str, VerificationError> {
     ext_obj
         .get(field)
         .and_then(serde_json::Value::as_str)
@@ -284,42 +371,22 @@ fn required_ext_u64(
         .ok_or_else(missing_error)
 }
 
-fn invalid_site_domain(domain: &str) -> VerificationError {
-    VerificationError::InvalidSignature(format!("Invalid site.domain host: {:?}", domain))
-}
-
-fn is_valid_public_dns_hostname(host: &str) -> bool {
-    if host.is_empty() || host.len() > 253 || host == "localhost" || !host.contains('.') {
-        return false;
-    }
-
-    host.split('.').all(|label| {
-        !label.is_empty()
-            && label.len() <= 63
-            && !label.starts_with('-')
-            && !label.ends_with('-')
-            && label
-                .bytes()
-                .all(|b| b.is_ascii_alphanumeric() || b == b'-')
-    })
-}
-
 fn validate_jwks_host(domain: &str) -> Result<String, VerificationError> {
     let host = domain.trim();
     if host.is_empty() {
         return Err(VerificationError::InvalidSignature(
-            "Invalid site.domain: empty host".to_string(),
+            "Invalid site.domain: empty host".to_owned(),
         ));
     }
 
     if host
         .bytes()
-        .any(|b| matches!(b, b'/' | b'\\' | b'@' | b'?' | b'#'))
+        .any(|byte| matches!(byte, b'/' | b'\\' | b'@' | b'?' | b'#'))
     {
         return Err(invalid_site_domain(domain));
     }
 
-    match Host::parse(host).map_err(|_| invalid_site_domain(domain))? {
+    match Host::parse(host).map_err(|_err| invalid_site_domain(domain))? {
         Host::Domain(parsed) => {
             let canonical = parsed.trim_end_matches('.').to_ascii_lowercase();
             if is_valid_public_dns_hostname(&canonical) {
@@ -332,88 +399,48 @@ fn validate_jwks_host(domain: &str) -> Result<String, VerificationError> {
     }
 }
 
-#[cfg(all(target_arch = "wasm32", target_os = "unknown"))]
-fn current_time_ms() -> Result<u64, VerificationError> {
-    let now_ms = js_sys::Date::now();
-    if now_ms.is_finite() && now_ms >= 0.0 {
-        Ok(now_ms as u64)
-    } else {
-        Err(VerificationError::InvalidSignature(
-            "System clock error".to_string(),
-        ))
-    }
-}
-
-#[cfg(not(all(target_arch = "wasm32", target_os = "unknown")))]
-fn current_time_ms() -> Result<u64, VerificationError> {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .map_err(|_| VerificationError::InvalidSignature("System clock error".to_string()))
-}
-
-/// Strip default ports (:443 for https, :80 for http) and lowercase the host
-/// so that `example.com:443` matches `example.com` from the signer.
-fn canonicalize_host(host: &str) -> String {
-    let h = host.trim();
-    h.strip_suffix(":443")
-        .or_else(|| h.strip_suffix(":80"))
-        .unwrap_or(h)
-        .to_lowercase()
-}
-
-fn check_timestamp_freshness(timestamp_ms: u64) -> Result<(), VerificationError> {
-    let now_ms = current_time_ms()?;
-    let diff = now_ms.abs_diff(timestamp_ms);
-
-    if diff > TS_FRESHNESS_WINDOW_MS {
-        let direction = if timestamp_ms > now_ms {
-            "future-dated"
-        } else {
-            "stale"
-        };
-
-        return Err(VerificationError::InvalidSignature(format!(
-            "ext.trusted_server.ts is {}: {}ms drift exceeds {}ms window",
-            direction, diff, TS_FRESHNESS_WINDOW_MS
-        )));
-    }
-
-    Ok(())
-}
-
+/// Verifies the Ed25519 signature attached to an `OpenRTB` request ID.
+///
+/// # Errors
+///
+/// Returns [`VerificationError`] when the `ext.trusted_server` object is
+/// missing or malformed, when the JWKS document cannot be fetched, when the
+/// referenced key is absent, or when the signature does not match.
+#[inline]
 pub async fn verify_request_id_signature(
     ctx: &RequestContext,
     request_id: &str,
     ext: Option<&serde_json::Value>,
     site_domain: &str,
 ) -> Result<String, VerificationError> {
-    let ext_obj = ext.and_then(|e| e.get("trusted_server")).ok_or_else(|| {
-        VerificationError::InvalidSignature("Missing ext.trusted_server".to_string())
-    })?;
+    let ext_obj = ext
+        .and_then(|value| value.get("trusted_server"))
+        .ok_or_else(|| {
+            VerificationError::InvalidSignature("Missing ext.trusted_server".to_owned())
+        })?;
 
     let signature = required_ext_str(ext_obj, "signature", || {
-        VerificationError::InvalidSignature("Missing ext.trusted_server.signature".to_string())
+        VerificationError::InvalidSignature("Missing ext.trusted_server.signature".to_owned())
     })?;
 
     let key_id = required_ext_str(ext_obj, "kid", || {
-        VerificationError::InvalidSignature("Missing ext.trusted_server.kid".to_string())
+        VerificationError::InvalidSignature("Missing ext.trusted_server.kid".to_owned())
     })?;
 
     let version = required_ext_str(ext_obj, "version", || {
-        VerificationError::InvalidSignature("Missing ext.trusted_server.version".to_string())
+        VerificationError::InvalidSignature("Missing ext.trusted_server.version".to_owned())
     })?;
 
     let request_host = required_ext_str(ext_obj, "request_host", || {
-        VerificationError::InvalidSignature("Missing ext.trusted_server.request_host".to_string())
+        VerificationError::InvalidSignature("Missing ext.trusted_server.request_host".to_owned())
     })?;
 
     let request_scheme = required_ext_str(ext_obj, "request_scheme", || {
-        VerificationError::InvalidSignature("Missing ext.trusted_server.request_scheme".to_string())
+        VerificationError::InvalidSignature("Missing ext.trusted_server.request_scheme".to_owned())
     })?;
 
     let timestamp = required_ext_u64(ext_obj, "ts", || {
-        VerificationError::InvalidSignature("Missing ext.trusted_server.ts".to_string())
+        VerificationError::InvalidSignature("Missing ext.trusted_server.ts".to_owned())
     })?;
 
     // Cross-check: the signer's claimed host must match the publisher's
@@ -424,8 +451,7 @@ pub async fn verify_request_id_signature(
     let canon_site_domain = canonicalize_host(site_domain);
     if canon_ext_host != canon_site_domain {
         return Err(VerificationError::InvalidSignature(format!(
-            "ext.trusted_server.request_host '{}' does not match site.domain '{}'",
-            request_host, site_domain
+            "ext.trusted_server.request_host '{request_host}' does not match site.domain '{site_domain}'"
         )));
     }
 
@@ -433,7 +459,7 @@ pub async fn verify_request_id_signature(
     // cryptographically. No separate cross-check is needed since site.domain
     // does not carry scheme information.
 
-    // Enforce timestamp freshness to prevent replay attacks
+    // Enforce timestamp freshness to prevent replay attacks.
     check_timestamp_freshness(timestamp)?;
 
     let payload = build_signing_payload(
@@ -446,19 +472,14 @@ pub async fn verify_request_id_signature(
     )?;
 
     log::info!(
-        "Signature verification requested: id={}, kid={}, domain={:?}, version={}, ts={}",
-        request_id,
-        key_id,
-        site_domain,
-        version,
-        timestamp
+        "Signature verification requested: id={request_id}, kid={key_id}, domain={site_domain:?}, version={version}, ts={timestamp}"
     );
 
     let jwks = get_cached_jwks(ctx, site_domain).await?;
     let public_key = find_public_key(&jwks, key_id)?;
     verify_ed25519_signature(public_key, signature, &payload)?;
 
-    Ok(key_id.to_string())
+    Ok(key_id.to_owned())
 }
 
 #[cfg(test)]
@@ -677,7 +698,7 @@ mod tests {
             "kid-abc",
             "publisher.example",
             "https",
-            1706900000000,
+            1_706_900_000_000,
             "1.1",
         )
         .expect("payload");
@@ -695,7 +716,7 @@ mod tests {
             "kid-abc",
             "publisher.example",
             "https",
-            1706900000000,
+            1_706_900_000_000,
             "1.0",
         );
 
@@ -709,8 +730,8 @@ mod tests {
     fn find_public_key_found() {
         let jwks = JwksResponse {
             keys: vec![JwkKey {
-                kid: "key-001".to_string(),
-                x: "test-key-base64url".to_string(),
+                kid: "key-001".to_owned(),
+                x: "test-key-base64url".to_owned(),
             }],
         };
 
@@ -830,44 +851,43 @@ mod tests {
     #[test]
     fn check_timestamp_freshness_within_window() {
         let now_ms = current_time_ms().unwrap();
-        // Current time should pass
-        assert!(check_timestamp_freshness(now_ms).is_ok());
-        // 1 minute ago should pass
-        assert!(check_timestamp_freshness(now_ms - 60_000).is_ok());
-        // 1 minute in the future should pass
-        assert!(check_timestamp_freshness(now_ms + 60_000).is_ok());
+        // Current time should pass.
+        check_timestamp_freshness(now_ms).unwrap();
+        // 1 minute ago should pass.
+        check_timestamp_freshness(now_ms - 60_000).unwrap();
+        // 1 minute in the future should pass.
+        check_timestamp_freshness(now_ms + 60_000).unwrap();
     }
 
     #[test]
     fn verify_ed25519_roundtrip_with_known_keypair() {
-        use ed25519_dalek::SigningKey;
+        use ed25519_dalek::{Signer as _, SigningKey};
 
-        // Deterministic seed for reproducible test
-        let seed: [u8; 32] = [42u8; 32];
+        // Deterministic seed for reproducible test.
+        let seed: [u8; 32] = [42_u8; 32];
         let signing_key = SigningKey::from_bytes(&seed);
         let verifying_key = signing_key.verifying_key();
 
-        // Encode keys as base64url (no padding)
+        // Encode keys as base64url (no padding).
         let public_key_b64 = URL_SAFE_NO_PAD.encode(verifying_key.as_bytes());
 
-        // Build a canonical signing payload
+        // Build a canonical signing payload.
         let payload = build_signing_payload(
             "req-roundtrip",
             "kid-test",
             "publisher.example",
             "https",
-            1706900000000,
+            1_706_900_000_000,
             "1.1",
         )
         .expect("payload");
 
-        // Sign the payload
-        use ed25519_dalek::Signer;
+        // Sign the payload.
         let signature = signing_key.sign(payload.as_bytes());
         let signature_b64 = URL_SAFE_NO_PAD.encode(signature.to_bytes());
 
-        // Verify should succeed
-        assert!(verify_ed25519_signature(&public_key_b64, &signature_b64, &payload).is_ok());
+        // Verify should succeed.
+        verify_ed25519_signature(&public_key_b64, &signature_b64, &payload).unwrap();
 
         // Verify with tampered payload should fail
         let tampered = payload.replace("req-roundtrip", "req-tampered");
@@ -879,9 +899,9 @@ mod tests {
 
     #[test]
     fn verify_request_id_signature_success_path() {
-        use ed25519_dalek::{Signer, SigningKey};
+        use ed25519_dalek::{Signer as _, SigningKey};
 
-        let seed = [42u8; 32];
+        let seed = [42_u8; 32];
         let signing_key = SigningKey::from_bytes(&seed);
         let public_key_b64 = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().as_bytes());
 
@@ -903,12 +923,12 @@ mod tests {
         {
             let mut cache = JWKS_CACHE.lock().unwrap();
             cache.remove(domain);
-            cache.insert(
-                domain.to_string(),
+            let _previous = cache.insert(
+                domain.to_owned(),
                 JwksCache {
                     jwks: JwksResponse {
                         keys: vec![JwkKey {
-                            kid: key_id.to_string(),
+                            kid: key_id.to_owned(),
                             x: public_key_b64,
                         }],
                     },

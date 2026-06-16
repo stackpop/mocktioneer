@@ -5,10 +5,10 @@
 Mocktioneer is a deterministic OpenRTB banner bidder for edge platforms. It lets
 you test client integrations (Prebid.js, Prebid Server, custom SDKs) without
 depending on third-party bidders or origin backends. Write once, deploy to
-Fastly Compute, Cloudflare Workers, Fermyon Spin, or native Axum servers. The
-codebase is a Cargo workspace with 5 crates under `crates/`, a VitePress
-documentation site under `docs/`, Playwright e2e tests under
-`tests/playwright/`, and CI workflows under `.github/workflows/`.
+Fastly Compute, Cloudflare Workers, or native Axum servers. The codebase is a
+Cargo workspace with 4 crates under `crates/`, a VitePress documentation site
+under `docs/`, Playwright e2e tests under `tests/playwright/`, and CI workflows
+under `.github/workflows/`.
 
 ## Workspace Layout
 
@@ -18,7 +18,7 @@ crates/
   mocktioneer-adapter-axum/       # Native Axum HTTP server
   mocktioneer-adapter-cloudflare/ # Cloudflare Workers bridge (wasm32-unknown-unknown)
   mocktioneer-adapter-fastly/     # Fastly Compute bridge (wasm32-wasip1)
-  mocktioneer-adapter-spin/       # Fermyon Spin bridge (wasm32-wasip2)
+  mocktioneer-adapter-spin/       # Spin / Fermyon bridge (wasm32-wasip1)
 docs/                             # VitePress documentation site (Node.js)
 examples/                         # curl/shell scripts for endpoint demos
 tests/playwright/                 # Playwright e2e tests (creative visibility, sizes)
@@ -26,7 +26,7 @@ tests/playwright/                 # Playwright e2e tests (creative visibility, s
 
 ## Toolchain & Versions
 
-- **Rust**: 1.91.1 (from `.tool-versions`)
+- **Rust**: 1.95.0 (from `.tool-versions`)
 - **Node.js**: 24.12.0 (for docs site and Playwright tests)
 - **Fastly CLI**: v13.0.0
 - **Edition**: 2021
@@ -52,6 +52,7 @@ cargo run -p mocktioneer-adapter-axum
 # Run via EdgeZero CLI
 edgezero-cli serve --adapter cloudflare   # Cloudflare on :8787
 edgezero-cli serve --adapter fastly       # Fastly on :7676
+edgezero-cli serve --adapter spin         # Spin on :3000
 
 # Playwright e2e tests
 cd tests/playwright && npm test
@@ -65,12 +66,12 @@ faster iteration since nearly all business logic lives there.
 
 ## Compilation Targets
 
-| Adapter    | Target                   | Notes                                 |
-| ---------- | ------------------------ | ------------------------------------- |
-| Fastly     | `wasm32-wasip1`          | Requires Viceroy for local testing    |
-| Cloudflare | `wasm32-unknown-unknown` | Requires `wrangler` for dev/deploy    |
-| Spin       | `wasm32-wasip2`          | Requires `spin` CLI for local/deploy  |
-| Axum       | Native (host triple)     | Standard Tokio runtime                |
+| Adapter    | Target                   | Notes                                                |
+| ---------- | ------------------------ | ---------------------------------------------------- |
+| Fastly     | `wasm32-wasip1`          | Requires Viceroy for local testing                   |
+| Cloudflare | `wasm32-unknown-unknown` | Requires `wrangler` for dev/deploy                   |
+| Spin       | `wasm32-wasip1`          | Requires `spin` for dev/deploy; tests via `wasmtime` |
+| Axum       | Native (host triple)     | Standard Tokio runtime                               |
 
 ## Coding Conventions
 
@@ -163,7 +164,7 @@ Every PR must pass:
 1. `cargo fmt --all -- --check`
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 3. `cargo test --workspace --all-targets`
-4. `cargo check --workspace --all-targets --features "fastly cloudflare spin"`
+4. `cargo check --workspace --all-targets --features "fastly cloudflare"`
 5. Playwright e2e tests (`tests/playwright/`)
 6. ESLint + Prettier on `docs/`
 

@@ -18,10 +18,10 @@ jobs:
     name: cargo test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -43,12 +43,6 @@ jobs:
         with:
           toolchain: ${{ steps.rust-version.outputs.rust-version }}
 
-      - name: Add WASM targets
-        run: rustup target add wasm32-wasip1 wasm32-wasip2
-
-      - name: Setup Viceroy
-        run: cargo install viceroy --version 0.17.0 --locked
-
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
 
@@ -56,19 +50,125 @@ jobs:
         run: cargo test --workspace --all-targets
 
       - name: Check feature compilation
-        run: cargo check --workspace --all-targets --features "fastly cloudflare spin"
+        run: cargo check --workspace --all-targets --features "fastly cloudflare"
 
-      - name: Check Spin WASM target
-        run: cargo check --target wasm32-wasip2 -p mocktioneer-adapter-spin --features spin
+  adapter-wasm-tests:
+    name: ${{ matrix.adapter }} wasm tests
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - adapter: cloudflare
+            target: wasm32-unknown-unknown
+            runner_env: CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER
+            runner_value: wasm-bindgen-test-runner
+          - adapter: fastly
+            target: wasm32-wasip1
+            runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
+            runner_value: viceroy run
+          - adapter: spin
+            target: wasm32-wasip1
+            runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
+            runner_value: wasmtime run
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.adapter }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-${{ matrix.adapter }}-
+
+      - name: Retrieve Rust version
+        id: rust-version
+        run: echo "rust-version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Set up Rust tool chain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ steps.rust-version.outputs.rust-version }}
+
+      - name: Add wasm target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Resolve wasm-bindgen CLI version
+        if: matrix.adapter == 'cloudflare'
+        id: wasm-bindgen-version
+        shell: bash
+        run: |
+          version="$(
+            awk '
+              $1 == "name" && $3 == "\"wasm-bindgen\"" { in_pkg=1; next }
+              in_pkg && $1 == "version" {
+                gsub(/"/, "", $3)
+                print $3
+                exit
+              }
+            ' Cargo.lock
+          )"
+          test -n "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # `--force` overwrites a cache-restored binary (cargo install would
+      # otherwise refuse); `--locked` keeps the version pinned and reproducible.
+      - name: Install wasm-bindgen test runner
+        if: matrix.adapter == 'cloudflare'
+        run: cargo install wasm-bindgen-cli --version "${{ steps.wasm-bindgen-version.outputs.version }}" --locked --force
+
+      - name: Resolve Viceroy version
+        if: matrix.adapter == 'fastly'
+        id: viceroy-version
+        shell: bash
+        run: echo "version=$(grep '^viceroy ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      # Version comes from `.tool-versions` so local dev and CI share a single
+      # source of truth.
+      - name: Setup Viceroy
+        if: matrix.adapter == 'fastly'
+        run: cargo install viceroy --version "${{ steps.viceroy-version.outputs.version }}" --locked --force
+
+      - name: Resolve Wasmtime version
+        if: matrix.adapter == 'spin'
+        id: wasmtime-version
+        shell: bash
+        run: echo "version=$(grep '^wasmtime ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      # Pinned to `.tool-versions` so local dev and CI share a single source
+      # of truth. Always install the pinned version: a preinstalled wasmtime
+      # of a different version on the runner image would otherwise silently
+      # bypass the pin. `~/.wasmtime/bin/` is prepended to PATH so this
+      # install shadows any system-wide wasmtime for the rest of the job.
+      - name: Setup Wasmtime
+        if: matrix.adapter == 'spin'
+        run: |
+          curl https://wasmtime.dev/install.sh -sSf | bash -s -- --version "v${{ steps.wasmtime-version.outputs.version }}"
+          echo "$HOME/.wasmtime/bin" >> "$GITHUB_PATH"
+
+      - name: Fetch dependencies (locked)
+        run: cargo fetch --locked
+
+      - name: Run ${{ matrix.adapter }} wasm contract tests
+        env:
+          ${{ matrix.runner_env }}: ${{ matrix.runner_value }}
+        run: cargo test -p mocktioneer-adapter-${{ matrix.adapter }} --features ${{ matrix.adapter }} --target ${{ matrix.target }} --test contract
 
   playwright:
     name: playwright tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Cache Cargo dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -96,7 +196,7 @@ jobs:
         run: cargo fetch --locked
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: ${{ steps.tool-versions.outputs.node }}
 

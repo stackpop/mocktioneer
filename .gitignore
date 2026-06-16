@@ -5,6 +5,8 @@
 
 # crate-local outputs
 **/bin/
+**/build/
+**/dist
 **/pkg/
 
 # Spin runtime logs
@@ -37,4 +39,7 @@ test-results/
 
 # Cloudflare Workers
 .wrangler/
-**/build/
+
+
+# Spin
+.spin/

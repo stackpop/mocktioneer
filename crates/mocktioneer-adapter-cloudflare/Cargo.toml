@@ -26,3 +26,9 @@ mocktioneer-core = { workspace = true }
 edgezero-adapter-cloudflare = { workspace = true, features = ["cloudflare"] }
 edgezero-core = { workspace = true }
 worker = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.71"
+
+[lints]
+workspace = true
