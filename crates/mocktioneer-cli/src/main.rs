@@ -6,8 +6,7 @@
 
 use clap::{Parser, Subcommand};
 use edgezero_cli::args::{
-    AuthArgs, BuildArgs, ConfigPushArgs, ConfigValidateArgs, DeployArgs, NewArgs, ProvisionArgs,
-    ServeArgs,
+    AuthArgs, BuildArgs, ConfigPushArgs, ConfigValidateArgs, DeployArgs, ProvisionArgs, ServeArgs,
 };
 use mocktioneer_core::config::MocktioneerConfig;
 
@@ -29,8 +28,6 @@ enum Cmd {
     Config(MocktioneerConfigCmd),
     /// Deploy to a target edge.
     Deploy(DeployArgs),
-    /// Create a new EdgeZero app skeleton.
-    New(NewArgs),
     /// Create the platform resources backing the declared store ids.
     Provision(ProvisionArgs),
     /// Run a local simulation (adapter-specific).
@@ -61,7 +58,6 @@ fn main() {
             edgezero_cli::run_config_validate_typed::<MocktioneerConfig>(&args)
         }
         Cmd::Deploy(args) => edgezero_cli::run_deploy(&args),
-        Cmd::New(args) => edgezero_cli::run_new(&args),
         Cmd::Provision(args) => edgezero_cli::run_provision(&args),
         Cmd::Serve(args) => edgezero_cli::run_serve(&args),
     };

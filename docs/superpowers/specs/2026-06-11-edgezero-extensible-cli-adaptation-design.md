@@ -37,7 +37,10 @@
   cache hygiene (+ add the missing spin manifest); CLI-story widened to the
   per-adapter doc pages; docs `srcExclude` made verifiable + `.vitepress/.temp`
   ignored; plan call-site note corrected (mediation has a _separate_
-  `build_openrtb_response`).
+  `build_openrtb_response`). **R7 (during implementation)** — dropped the `new`
+  subcommand from `mocktioneer-cli`: scaffolding a brand-new EdgeZero app from
+  within Mocktioneer's own project CLI is nonsensical, so the crate exposes
+  `auth`/`build`/`deploy`/`provision`/`serve` + typed `config` only.
 
 ## 1. Problem & context
 
@@ -295,7 +298,7 @@ and malformed-value (error) branches without a live backend.
   crates:** `publish = false`, `license.workspace = true`, and
   `[lints] workspace = true` (cf. `mocktioneer-core/Cargo.toml`).
 - `src/main.rs`: clap `Args`/`Cmd` flattening
-  `edgezero_cli::run_{auth,build,deploy,new,provision,serve}` + a typed
+  `edgezero_cli::run_{auth,build,deploy,provision,serve}` + a typed
   `Config` subcommand dispatching `run_config_validate_typed::<MocktioneerConfig>`
   and `run_config_push_typed::<MocktioneerConfig>`.
 - Add `crates/mocktioneer-cli` to root `[workspace].members`.

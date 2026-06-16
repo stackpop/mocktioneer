@@ -1080,7 +1080,10 @@ mod tests {
 
     #[test]
     fn cpm_from_lookup_falls_back_when_absent() {
-        assert_eq!(cpm_from_lookup(None).unwrap().to_bits(), FIXED_BID_CPM.to_bits());
+        assert_eq!(
+            cpm_from_lookup(None).unwrap().to_bits(),
+            FIXED_BID_CPM.to_bits()
+        );
     }
 
     #[test]
@@ -1105,7 +1108,9 @@ mod tests {
             .collect();
         let handle = ConfigStoreHandle::new(Arc::new(MapConfigStore(map)));
         let by_id: BTreeMap<String, ConfigStoreHandle> =
-            [("mocktioneer_config".to_owned(), handle)].into_iter().collect();
+            [("mocktioneer_config".to_owned(), handle)]
+                .into_iter()
+                .collect();
         let registry: ConfigRegistry = StoreRegistry::new(by_id, "mocktioneer_config".to_owned());
 
         let mut request = request_builder()
