@@ -39,3 +39,6 @@ test-results/
 
 # Spin
 .spin/
+
+# EdgeZero local config/kv state (config push --adapter axum, etc.)
+.edgezero/
