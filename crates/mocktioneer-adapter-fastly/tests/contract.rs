@@ -16,7 +16,9 @@ fn root_dispatches_through_fastly_adapter() {
     let app = build_app();
     let req = fastly_request(FastlyMethod::GET, "/");
 
-    let mut response = FastlyService::new(&app).dispatch(req).expect("fastly response");
+    let mut response = FastlyService::new(&app)
+        .dispatch(req)
+        .expect("fastly response");
 
     assert_eq!(response.get_status(), FastlyStatus::OK);
     let body = response.take_body_bytes();
@@ -33,7 +35,9 @@ fn pixel_returns_gif_through_fastly_adapter() {
     let app = build_app();
     let req = fastly_request(FastlyMethod::GET, "/pixel?pid=fastly-contract");
 
-    let response = FastlyService::new(&app).dispatch(req).expect("fastly response");
+    let response = FastlyService::new(&app)
+        .dispatch(req)
+        .expect("fastly response");
 
     assert_eq!(response.get_status(), FastlyStatus::OK);
     let content_type = response
