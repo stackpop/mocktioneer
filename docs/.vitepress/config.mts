@@ -5,6 +5,9 @@ export default defineConfig({
   title: 'Mocktioneer',
   description: 'Deterministic OpenRTB banner bidder for edge platforms',
   base: '/mocktioneer/',
+  // Internal design specs/plans live under docs/superpowers/ but are not
+  // published documentation — keep them out of the built site.
+  srcExclude: ['**/superpowers/**'],
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     nav: [
