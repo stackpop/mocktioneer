@@ -13,7 +13,7 @@ use mocktioneer_core::MocktioneerApp;
 #[cfg(target_arch = "wasm32")]
 #[fastly::main]
 pub fn main(req: Request) -> Result<Response, Error> {
-    edgezero_adapter_fastly::run_app::<MocktioneerApp>(include_str!("../../../edgezero.toml"), req)
+    edgezero_adapter_fastly::run_app::<MocktioneerApp>(req)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
