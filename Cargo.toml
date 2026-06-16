@@ -5,6 +5,7 @@ members = [
   "crates/mocktioneer-adapter-cloudflare",
   "crates/mocktioneer-adapter-fastly",
   "crates/mocktioneer-adapter-spin",
+  "crates/mocktioneer-cli",
 ]
 resolver = "2"
 
