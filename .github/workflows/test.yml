@@ -52,6 +52,16 @@ jobs:
       - name: Check feature compilation
         run: cargo check --workspace --all-targets --features "fastly cloudflare"
 
+      - name: Validate typed app config
+        run: cargo run -p mocktioneer-cli -- config validate --strict
+
+      - name: Seed a non-default cpm and assert it round-trips (axum)
+        run: |
+          printf 'bid_cpm = 0.35\n' > "${RUNNER_TEMP}/seed.toml"
+          cargo run -p mocktioneer-cli -- config push --adapter axum --app-config "${RUNNER_TEMP}/seed.toml"
+          test "$(jq -r '.bid_cpm' .edgezero/local-config-mocktioneer_config.json)" = "0.35"
+          rm -f .edgezero/local-config-mocktioneer_config.json
+
   adapter-wasm-tests:
     name: ${{ matrix.adapter }} wasm tests
     runs-on: ubuntu-latest
@@ -68,8 +78,8 @@ jobs:
             runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
             runner_value: viceroy run
           - adapter: spin
-            target: wasm32-wasip1
-            runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
+            target: wasm32-wasip2
+            runner_env: CARGO_TARGET_WASM32_WASIP2_RUNNER
             runner_value: wasmtime run
     steps:
       - uses: actions/checkout@v6
