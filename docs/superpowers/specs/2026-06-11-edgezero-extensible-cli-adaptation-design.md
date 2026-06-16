@@ -3,9 +3,10 @@
 - **Date:** 2026-06-11
 - **Branch:** `feature/edgezero-extensible-cli` (off `main`)
 - **Upstream:** [stackpop/edgezero#269](https://github.com/stackpop/edgezero/pull/269)
-  — "EdgeZero CLI Extensions". Head `feature/extensible-cli`, base
-  `chore/strict-clippy`, **OPEN / unmerged** (re-verified via
-  `gh pr view 269` on 2026-06-11; re-check at implementation).
+  — "EdgeZero CLI Extensions". Head `feature/extensible-cli`, base **`main`**
+  (rebased off `chore/strict-clippy`), **OPEN / unmerged** (re-verified via
+  `gh pr view 269` on 2026-06-15: state OPEN, base `main`, updated
+  2026-06-12; re-check at implementation).
 - **Scope (approved):** Compat + typed config, with `bid_cpm` consumed at
   runtime. Pin deps to `feature/extensible-cli` now; re-pin to `main` after
   #269 merges.
@@ -21,10 +22,14 @@
   strict-clippy/#257 adaptation into `main`, and `main` pins all `edgezero-*`
   deps at `branch = "main"`, so the dep repin is now `main` →
   `feature/extensible-cli` (no longer stacked on `chore/edgezero-strict-clippy`).
-  R4 review findings (anyhow-in-core, Dockerfile manifest COPY, docs
-  edgezero-cli vs mocktioneer-cli story, exact check-ci commands, cli-crate
-  metadata/lints, docs-formatter/VitePress exclusion) are tracked but not yet
-  folded into the body below.
+  **R5** — folded all prior review findings into the body: anyhow-in-core
+  (§3.1), Dockerfile manifest COPY (§3.7/§5), cli-crate metadata/lints (§3.7),
+  mandatory docs-formatter + VitePress exclusion (§3.8), the wider
+  edgezero-cli→mocktioneer-cli story incl. README/Playwright (§3.8), the public
+  "$0.20 always" → "$0.20 default" pricing-doc rewrite (§3.8), the Spin
+  `runtime-config.toml`/`--runtime-config-file` requirement (§3.6), the
+  malformed-config-FILE-vs-read-error nuance (§3.5), and an explicit seeded
+  test fixture (§5).
 
 ## 1. Problem & context
 
@@ -89,6 +94,9 @@ Parts that **do** reach this repo:
   features = ["http", "key-value", "variables"] }`.
 - Add `clap = { version = "4", features = ["derive"] }` to
   `[workspace.dependencies]` (consumed as `clap = { workspace = true }`).
+- Add `anyhow = { workspace = true }` to **`crates/mocktioneer-core/Cargo.toml`**
+  (the §3.5 helper uses `anyhow::anyhow!`; core does not currently depend on
+  anyhow — only the workspace table does). `anyhow` is WASM-compatible.
 - Regenerate `Cargo.lock`.
 
 ### 3.2 Adapter entrypoints — drop the manifest arg
@@ -211,10 +219,24 @@ async fn resolve_bid_cpm(ctx: &RequestContext) -> Result<f64, EdgeError> {
 
 `auction.rs` bid builders and `build_aps_response` take a `cpm: f64` parameter
 (replacing direct `FIXED_BID_CPM` reads); `FIXED_BID_CPM` stays as the
-fallback constant and the value existing tests pass explicitly. **Contract
-summary:** no store → fallback; bound + key absent → fallback; bound + read
-error → propagate; bound + present-but-malformed → error. `EdgeError::internal`
-takes `Into<anyhow::Error>` (error.rs:63), hence `anyhow::anyhow!`, not a bare
+fallback constant and the value existing tests pass explicitly.
+
+**Contract summary** (note the malformed-*file* vs malformed-*value*
+distinction, which is easy to conflate):
+
+| Runtime situation | `config_store_default()` / `get` | Result |
+| --- | --- | --- |
+| No `[stores.config]`, or registry dropped | `None` | fallback `FIXED_BID_CPM` |
+| Axum local file **absent** (empty store bound) | `Ok(None)` | fallback |
+| File present, **missing** the `bid_cpm` key | `Ok(None)` | fallback |
+| File **malformed JSON** | store **dropped at bind** → `config_store_default()` is `None` (Axum `build_config_registry` drops the id, and if it's the default id the whole registry is dropped — it does **not** surface as a `get` error) | fallback |
+| Backend **read error** at `get` time (e.g. CF/Fastly KV hiccup) | `Err(ConfigStoreError)` | propagate via `EdgeError::from` (→ 400/503/500) |
+| Value present but unparseable / non-finite / ≤ 0 | `Ok(Some(bad))` | **error** (`EdgeError::internal`) |
+
+So a malformed Axum config *file* degrades to the fallback (the bind-time drop
+means handlers never see it), while a malformed *value* in an otherwise-valid
+file is a real misconfiguration and errors. `EdgeError::internal` takes
+`Into<anyhow::Error>` (error.rs:63), hence `anyhow::anyhow!`, not a bare
 `String`. **Determinism preserved** on the fallback path (semantic outputs
 match `main`).
 
@@ -237,40 +259,85 @@ Per-adapter backing + seed step:
 | **Axum** (primary local/CI path) | `.edgezero/local-config-mocktioneer_config.json` | `mocktioneer-cli config push --adapter axum` writes it. |
 | **Cloudflare** | KV namespace (config moved `[vars]`→KV in #269) | `provision --adapter cloudflare` (writes id to `wrangler.toml`) + `config push --adapter cloudflare`. |
 | **Fastly** | config store + `[setup]`/`[local_server]` in `fastly.toml` | `provision --adapter fastly` + `config push --adapter fastly`. |
-| **Spin** | **KV-backed** (`key_value_stores = ["mocktioneer_config"]` + `[key_value_store.mocktioneer_config]` runtime config) — config is KV-backed in #269; `[variables]` is secrets-only now (`edgezero-adapter-spin/src/config_store.rs`). | `provision --adapter spin` + `config push --adapter spin`. |
+| **Spin** | **KV-backed** (`key_value_stores = ["mocktioneer_config"]` in `spin.toml` + a **`runtime-config.toml`** declaring the `[key_value_store.mocktioneer_config]` backend) — config is KV-backed in #269; `[variables]` is secrets-only now (`edgezero-adapter-spin/src/config_store.rs`). | `provision --adapter spin` + `config push --adapter spin`. |
+
+**Spin runtime-config gap (must add):** Mocktioneer's Spin adapter has only
+`spin.toml` and **no `runtime-config.toml`**, and `edgezero.toml`'s spin
+commands (`spin up/build/deploy --from …/spin.toml`) pass **no
+`--runtime-config-file`**. KV-backed config needs both: add
+`crates/mocktioneer-adapter-spin/runtime-config.toml` with a
+`[key_value_store.mocktioneer_config]` entry, and update the
+`[adapters.spin.commands]` `serve`/`deploy` lines (and docs) to pass
+`--runtime-config-file crates/mocktioneer-adapter-spin/runtime-config.toml`.
 
 **Pragmatics:** the **axum** path is the one exercised locally and in CI.
-Cloud adapters get the manifest declaration + required native-backing tables so
-they *build and validate*; push/provision are documented but live cloud stores
-are not part of CI. Handler tests wire a `ConfigRegistry` fixture directly (the
-app-demo `handlers.rs` test pattern) to cover the seeded-value, empty-store
-(fallback), and malformed-value (error) branches without a live backend.
+Cloud/Spin adapters get the manifest declaration + required native-backing
+tables (incl. the Spin `runtime-config.toml`) so they *build and validate*;
+push/provision are documented but live cloud/Spin stores are not stood up in
+CI. Handler tests wire a `ConfigRegistry` fixture directly (the app-demo
+`handlers.rs` test pattern) to cover the seeded-value, empty-store (fallback),
+and malformed-value (error) branches without a live backend.
 
 ### 3.7 `mocktioneer-cli` crate
 
 `crates/mocktioneer-cli/`, mirroring `edgezero-cli/src/templates/cli/`:
 
-- `Cargo.toml`: `mocktioneer-core`, `edgezero-cli`, `clap = { workspace = true }`,
-  `log`.
+- `Cargo.toml`: deps `mocktioneer-core`, `edgezero-cli`,
+  `clap = { workspace = true }`, `log`. **Package metadata matching the other
+  crates:** `publish = false`, `license.workspace = true`, and
+  `[lints] workspace = true` (cf. `mocktioneer-core/Cargo.toml`).
 - `src/main.rs`: clap `Args`/`Cmd` flattening
   `edgezero_cli::run_{auth,build,deploy,new,provision,serve}` + a typed
   `Config` subcommand dispatching `run_config_validate_typed::<MocktioneerConfig>`
   and `run_config_push_typed::<MocktioneerConfig>`.
 - Add `crates/mocktioneer-cli` to root `[workspace].members`.
+- **Dockerfile:** the build pre-copies each crate manifest before
+  `cargo fetch --locked` ([Dockerfile:14-19]) to cache the dependency layer.
+  Add `COPY crates/mocktioneer-cli/Cargo.toml crates/mocktioneer-cli/Cargo.toml`
+  alongside the existing crate-manifest COPYs so the workspace `cargo fetch`
+  resolves with the new member present. (The image still ships only the axum
+  binary; the CLI crate just needs to be fetch-resolvable.)
 
 ### 3.8 Docs, agents, ignore files (verified surface)
 
-- `wasip1` → `wasip2` for **Spin only** + spin-sdk-6 note, across the files
-  that reference it (rg-verified): `CLAUDE.md`, `edgezero.toml`, the spin crate
-  files (§3.3), `.claude/agents/{code-architect,build-validator,verify-app}.md`,
+- **Spin wasip1 → wasip2** + spin-sdk-6 note, across the files that reference
+  it (rg-verified): `CLAUDE.md`, `edgezero.toml`, the spin crate files (§3.3),
+  `.claude/agents/{code-architect,build-validator,verify-app}.md`,
   `docs/guide/getting-started.md`, `docs/guide/configuration.md`,
   `.cargo/config.toml` (comment), `.github/workflows/test.yml` (§3.9).
-  **Leave Fastly wasip1 intact.** No `docs/guide/adapters/spin.md` exists;
-  `check-ci.md`/playwright README have no spin/wasip refs.
+  **Leave Fastly wasip1 intact.** No `docs/guide/adapters/spin.md` exists.
+- **Pricing docs — "$0.20 always/fixed" → "$0.20 default (configurable via
+  `bid_cpm`)".** This change makes the fixed CPM a *default*, not an invariant,
+  so the public claims must be reworded: `docs/guide/what-is-mocktioneer.md`,
+  `docs/guide/architecture.md`, `docs/integrations/prebidjs.md`,
+  `docs/integrations/prebid-server.md`, `docs/integrations/index.md`,
+  `docs/api/openrtb-auction.md`, `docs/api/aps-bid.md`, `docs/api/index.md`
+  (rg-verified). Mention the config + push path briefly; keep `0.20` as the
+  shipped default.
+- **edgezero-cli → mocktioneer-cli story (wider than VitePress docs).** After
+  adding the in-repo `mocktioneer-cli`, distinguish the two everywhere they're
+  referenced: `README.md`, `docs/guide/getting-started.md`,
+  `docs/guide/adapters/index.md`, `tests/playwright/README.md`, and
+  `tests/playwright/playwright.config.ts` (the `webServer` command). Rule:
+  **`config validate`/`config push` are typed and live only in
+  `mocktioneer-cli`**; `serve`/`build`/`deploy`/`auth`/`provision` work from
+  either the external `edgezero-cli` or the vendored `mocktioneer-cli`. Update
+  the "optional, not vendored" framing — `mocktioneer-cli` *is* in-repo.
+  Playwright's `webServer` should use `cargo run -p mocktioneer-cli -- serve
+  --adapter …` (no external install needed).
 - **`.gitignore`:** add `.edgezero/` (currently only `.spin/` is ignored; the
   worktree already has an untracked `.edgezero/`).
 - **`.claude/commands/check-ci.md`** and **`CLAUDE.md` "CI Gates"**: add the
-  new `config validate --strict` gate so local CI docs aren't stale.
+  new `config validate --strict` gate (exact command in §3.9) so local CI docs
+  aren't stale.
+- **Docs formatter + VitePress exclusion (mandatory — this spec lives under
+  `docs/`).** `docs/package.json`'s `format` runs `prettier --check .` and the
+  format CI job runs it; it **fails on this spec file** today, and VitePress
+  even built it into `docs/.vitepress/dist/…/superpowers/…`. Required:
+  (a) add `superpowers/` to `docs/.prettierignore`; (b) add
+  `srcExclude: ['**/superpowers/**']` to the VitePress config so internal specs
+  aren't published; (c) ensure no built `superpowers` artifact is committed
+  under `docs/.vitepress/dist/`.
 
 ### 3.9 CI — `.github/workflows/test.yml`
 
@@ -278,13 +345,22 @@ app-demo `handlers.rs` test pattern) to cover the seeded-value, empty-store
   target; set `CARGO_TARGET_WASM32_WASIP2_RUNNER`; keep the pinned Wasmtime
   install and confirm it runs wasip2 components.
 - `mocktioneer-cli` covered by `--workspace`.
-- **Required gate:** `cargo run -p mocktioneer-cli -- config validate --strict`,
-  plus a **real** `config push --adapter axum` (not dry-run — dry-run does not
-  seed) followed by an assertion that a seeded `bid_cpm` flows through (an
-  integration test or a serve smoke), so the seed → bind → read path is
-  actually exercised, not just validated.
-- If the docs Prettier/ESLint gate scopes `docs/**`, exclude
-  `docs/superpowers/**`.
+- **Required gate** (also mirror these exact commands into
+  `.claude/commands/check-ci.md` and the `CLAUDE.md` CI-gates list):
+  ```sh
+  cargo run -p mocktioneer-cli -- config validate --strict
+  cargo run -p mocktioneer-cli -- config push --adapter axum   # real, not --dry-run
+  ```
+  followed by an assertion that the seeded `bid_cpm` flows through (an
+  integration test or serve smoke), so the seed → bind → read path is
+  exercised, not just validated.
+- **Docker:** `.github/workflows/docker.yml` builds the image; with
+  `mocktioneer-cli` added as a workspace member, confirm the Dockerfile
+  manifest pre-copy (§3.7) keeps `cargo fetch --locked` working. Add a
+  `docker build` smoke if not already covered.
+- **Docs formatter is mandatory, not conditional:** the format CI job already
+  fails on this spec, so the `docs/.prettierignore` + VitePress `srcExclude`
+  changes (§3.8) must land in this branch.
 
 ## 4. Risks & mitigations
 
@@ -294,9 +370,12 @@ app-demo `handlers.rs` test pattern) to cover the seeded-value, empty-store
 | Spin SDK 6 macro/type churn beyond template | Mirror edgezero's `edgezero-adapter-spin` verbatim; build wasip2. |
 | Wasmtime can't run the wasip2 component | Wasmtime 45.0.0 supports it; set `CARGO_TARGET_WASM32_WASIP2_RUNNER`; match edgezero's contract-test config. |
 | Fresh dev errors before any push | Resolved: empty/absent → fallback to `FIXED_BID_CPM` (§3.5). |
-| Broken/malformed pushed config masked as $0.20 | Read errors propagate; malformed present value errors (§3.5). |
-| `bid_cpm` never exercised (store unseeded) | CI does a real `config push --adapter axum` + asserts the value flows; fixtures cover all branches. |
-| Pinning to an unmerged branch | Documented; re-pin to `main` post-merge. |
+| Broken/malformed pushed *value* masked as $0.20 | Read errors propagate; malformed present value errors (§3.5). Note a malformed *file* degrades to fallback (bind-time drop), by design. |
+| `bid_cpm` never exercised (store unseeded) | CI does a real `config push --adapter axum` + asserts the value flows; fixtures cover all branches (§5). |
+| Spin KV config silently empty (no `runtime-config.toml`) | Add `runtime-config.toml` + `--runtime-config-file` to spin commands (§3.6). |
+| New `mocktioneer-cli` breaks Docker dependency layer | Pre-copy its `Cargo.toml` before `cargo fetch` (§3.7); `docker build` smoke (§5). |
+| Spec under `docs/` fails the format CI gate | Mandatory `docs/.prettierignore` + VitePress `srcExclude` (§3.8). |
+| Pinning to an unmerged branch | Documented; re-pin to edgezero `main` post-merge. |
 | `.cargo/config.toml.local` patch drift (`edgezero-macros`) | Already lists it; verify it patches cleanly. |
 
 ## 5. Verification
@@ -315,10 +394,21 @@ app-demo `handlers.rs` test pattern) to cover the seeded-value, empty-store
    `cur`, creative markup/URLs, targeting match; volatile fields (IDs from
    `Uuid::now_v7()`, auction.rs:51 / mediation.rs:102 / APS `new_id()`) are
    excluded — byte equality is impossible even on `main`.
-9. Runtime exercise: with `.edgezero/local-config-mocktioneer_config.json` =
-   `{"bid_cpm":"0.35"}`, OpenRTB and APS emit `0.35`; with the file absent or
-   an empty object, they emit `0.20` (no error); with `{"bid_cpm":"-1"}` the
-   handler returns an error.
+9. Runtime exercise — **explicit fixtures** (the root `mocktioneer.toml` ships
+   `bid_cpm = 0.20`, so 0.35 must come from a seeded store, not the default):
+   - **Unit (preferred, deterministic, no files):** build a `RequestContext`
+     with a `ConfigRegistry` fixture wrapping an in-memory
+     `MapConfigStore { "bid_cpm": "0.35" }` (the app-demo `handlers.rs`
+     pattern); assert OpenRTB and APS emit `0.35`. A no-registry context → `0.20`;
+     a `{ "bid_cpm": "-1" }` fixture → handler error.
+   - **Integration (axum seed path):** write a temp config with `bid_cpm = 0.35`
+     and run `cargo run -p mocktioneer-cli -- config push --adapter axum` (or
+     write `.edgezero/local-config-mocktioneer_config.json` =
+     `{"bid_cpm":"0.35"}` directly), serve, and assert the auction returns
+     `0.35`; remove the file and assert `0.20` with no error.
+10. `docs/` formatter passes: `cd docs && npm run format` succeeds (i.e. the
+    `superpowers/` prettier-ignore is in place).
+11. `docker build` succeeds with `mocktioneer-cli` in the workspace.
 
 ## 6. Rollback / follow-ups
 
