@@ -64,13 +64,12 @@ Find the config file: `ls docs/.vitepress/config.*`. In its `defineConfig({ ... 
   srcExclude: ['**/superpowers/**'],
 ```
 
-- [ ] **Step 3: Remove any committed built artifacts for the spec**
+- [ ] **Step 3: Confirm built artifacts are not tracked**
 
-Run: `git ls-files 'docs/.vitepress/dist/**superpowers**'`
-If it lists files, remove them: `git rm -r --cached docs/.vitepress/dist 2>/dev/null; true` only if `dist/` is tracked. Otherwise confirm `docs/.vitepress/dist/` is gitignored:
+`docs/.vitepress/dist` is already gitignored and untracked (verified), so any locally-built `superpowers/*.html` is local-only — nothing to remove. Just confirm:
 
-Run: `grep -n "dist" docs/.gitignore .gitignore 2>/dev/null`
-Expected: `dist` is ignored. If not, add `docs/.vitepress/dist/` to `.gitignore`.
+Run: `git check-ignore docs/.vitepress/dist && echo ignored`
+Expected: `ignored`. (If it ever becomes tracked, `git rm -r --cached docs/.vitepress/dist`.)
 
 - [ ] **Step 4: Verify the docs formatter passes**
 
