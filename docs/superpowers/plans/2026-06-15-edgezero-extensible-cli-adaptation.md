@@ -929,7 +929,7 @@ Expected: `cargo fetch --locked` resolves and the build completes. (If Docker is
 
 ```bash
 git add Dockerfile
-git commit -m "build: copy mocktioneer-cli manifest before cargo fetch in Docker"
+git commit -m "build: copy missing adapter manifests before cargo fetch in Docker"
 ```
 
 ---
@@ -1056,10 +1056,16 @@ Add a step (in the existing native test job, after `cargo test`):
 
 A **bare** `config push --adapter axum` would silently seed the root `mocktioneer.toml` default (`0.20`) and a `test -f` only proves a file exists — it would pass even if `bid_cpm` were never wired. Seeding `0.35` via `--app-config` and asserting the JSON value with `jq` proves push writes the _configured_ value. The handler → response half (a seeded store yielding `0.35`) is proven deterministically by the registry-backed `resolve_bid_cpm` test (Task 6, Step 4b), so no flaky serve+curl is needed here. (`jq` is preinstalled on GitHub `ubuntu-latest`.)
 
-- [ ] **Step 4: Lint the workflow locally (if `act`/`actionlint` available) or eyeball YAML**
+- [ ] **Step 4: Lint the workflow locally**
 
-Run: `python -c "import yaml,sys; yaml.safe_load(open('.github/workflows/test.yml')); print('yaml-ok')"`
-Expected: `yaml-ok`.
+Prefer `actionlint` (validates GitHub Actions schema, not just YAML):
+
+Run: `command -v actionlint >/dev/null && actionlint .github/workflows/test.yml || echo "actionlint not installed"`
+Expected: PASS, or the not-installed note.
+
+Fallback YAML well-formedness check **only if PyYAML is available** (`pip install pyyaml`; it is not in the stdlib, so don't rely on it in a clean env):
+
+Run: `python -c "import importlib.util,sys; sys.exit(0) if importlib.util.find_spec('yaml') is None else __import__('yaml').safe_load(open('.github/workflows/test.yml'))" && echo "yaml-ok-or-skipped"`
 
 - [ ] **Step 5: Commit**
 
