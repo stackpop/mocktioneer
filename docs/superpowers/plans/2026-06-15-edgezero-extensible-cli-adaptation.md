@@ -65,23 +65,31 @@ Find the config file: `ls docs/.vitepress/config.*`. In its `defineConfig({ ... 
   srcExclude: ['**/superpowers/**'],
 ```
 
-- [ ] **Step 3: Confirm built artifacts are not tracked**
+- [ ] **Step 3: Ignore the VitePress build temp dir**
 
-`docs/.vitepress/dist` is already gitignored and untracked (verified), so any locally-built `superpowers/*.html` is local-only — nothing to remove. Just confirm:
+`docs/.gitignore` currently lists `node_modules`, `.vitepress/dist`, `.vitepress/cache` — but **not** `.vitepress/.temp`, which `npm run build` creates (and which also receives the rendered specs unless excluded). Add to `docs/.gitignore`:
 
-Run: `git check-ignore docs/.vitepress/dist && echo ignored`
-Expected: `ignored`. (If it ever becomes tracked, `git rm -r --cached docs/.vitepress/dist`.)
+```
+.vitepress/.temp
+```
 
-- [ ] **Step 4: Verify the docs formatter passes**
+`docs/.vitepress/dist` is already gitignored and untracked (verified) — nothing to remove. Confirm: `git check-ignore docs/.vitepress/dist && echo ignored` → `ignored`.
 
-Run: `cd docs && npm ci >/dev/null 2>&1; npm run format`
-Expected: PASS (no complaint about `superpowers/...`).
+- [ ] **Step 4: Verify the formatter AND that the build excludes specs/plans**
+
+Run: `cd docs && npm ci >/dev/null 2>&1 && npm run format && npm run build`
+Expected: both PASS.
+
+Then assert no spec/plan leaked into the build output (this is the check the prior plan revision was missing — `srcExclude` must actually drop them):
+
+Run: `find docs/.vitepress/dist docs/.vitepress/.temp -path '*superpowers*' -print -quit`
+Expected: **no output**. If anything prints, `srcExclude` is mis-scoped — fix the glob (e.g. `'**/superpowers/**'` relative to the VitePress `srcDir`) and rebuild.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/.prettierignore docs/.vitepress .gitignore
-git commit -m "docs: exclude superpowers specs/plans from prettier + vitepress"
+git add docs/.prettierignore docs/.vitepress docs/.gitignore .gitignore
+git commit -m "docs: exclude superpowers specs/plans from prettier + vitepress build"
 ```
 
 ---
@@ -279,8 +287,15 @@ In `crates/mocktioneer-adapter-spin/tests/contract.rs`, change the doc-comment l
 
 - [ ] **Step 6: Verify the Spin wasm build + native workspace check**
 
-Run: `rustup target add wasm32-wasip2 >/dev/null 2>&1; cargo build -p mocktioneer-adapter-spin --features spin --target wasm32-wasip2`
-Expected: PASS — produces `target/wasm32-wasip2/release/...` (or debug). If the SDK-6 macro needs a tweak, fix per the compiler.
+Build `--release` to match the `spin.toml` `source` path (`target/wasm32-wasip2/release/...`):
+
+Run: `rustup target add wasm32-wasip2 >/dev/null 2>&1; cargo build --release -p mocktioneer-adapter-spin --features spin --target wasm32-wasip2`
+Expected: PASS — produces `target/wasm32-wasip2/release/mocktioneer_adapter_spin.wasm`. If the SDK-6 macro needs a tweak, fix per the compiler.
+
+If the `spin` CLI is installed, also prove the manifest's source path resolves:
+
+Run: `command -v spin >/dev/null && spin build --from crates/mocktioneer-adapter-spin/spin.toml || echo "spin CLI not installed — skipping"`
+Expected: PASS or the skip note.
 
 Run: `cargo check --workspace`
 Expected: PASS (native).
@@ -508,6 +523,80 @@ async fn resolve_bid_cpm(ctx: &RequestContext) -> Result<f64, EdgeError> {
 Run: `cargo test -p mocktioneer-core routes::tests::cpm_from_lookup`
 Expected: PASS.
 
+- [ ] **Step 4b: Add registry-backed `resolve_bid_cpm` tests (spec §5 preferred fixture)**
+
+Exercises the real `RequestContext` → `ConfigRegistry` → `config_store_default()` → `store.get` path with an in-memory store (the app-demo `config_flow.rs` pattern; all types are public, no `test-utils` feature). Add to the `#[cfg(test)] mod tests` block in `crates/mocktioneer-core/src/routes.rs`:
+
+```rust
+    // In-memory ConfigStore for tests (mirrors app-demo's MapConfigStore).
+    struct MapConfigStore(std::collections::HashMap<String, String>);
+
+    #[async_trait]
+    impl edgezero_core::config_store::ConfigStore for MapConfigStore {
+        async fn get(
+            &self,
+            key: &str,
+        ) -> Result<Option<String>, edgezero_core::config_store::ConfigStoreError> {
+            Ok(self.0.get(key).cloned())
+        }
+    }
+
+    fn ctx_with_config(pairs: &[(&str, &str)]) -> RequestContext {
+        use edgezero_core::config_store::ConfigStoreHandle;
+        use edgezero_core::store_registry::{ConfigRegistry, StoreRegistry};
+        use std::collections::{BTreeMap, HashMap};
+        use std::sync::Arc;
+
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
+            .collect();
+        let handle = ConfigStoreHandle::new(Arc::new(MapConfigStore(map)));
+        let by_id: BTreeMap<String, ConfigStoreHandle> =
+            [("mocktioneer_config".to_owned(), handle)].into_iter().collect();
+        let registry: ConfigRegistry =
+            StoreRegistry::new(by_id, "mocktioneer_config".to_owned());
+
+        let mut request = request_builder()
+            .method(Method::GET)
+            .uri("/")
+            .body(Body::empty())
+            .expect("request");
+        request.extensions_mut().insert(registry);
+        RequestContext::new(request, PathParams::new(std::collections::HashMap::new()))
+    }
+
+    #[test]
+    fn resolve_bid_cpm_reads_seeded_store() {
+        let ctx = ctx_with_config(&[("bid_cpm", "0.35")]);
+        let cpm = futures::executor::block_on(resolve_bid_cpm(&ctx)).unwrap();
+        assert!((cpm - 0.35).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn resolve_bid_cpm_falls_back_without_registry() {
+        let request = request_builder()
+            .method(Method::GET)
+            .uri("/")
+            .body(Body::empty())
+            .expect("request");
+        let ctx = RequestContext::new(request, PathParams::new(std::collections::HashMap::new()));
+        let cpm = futures::executor::block_on(resolve_bid_cpm(&ctx)).unwrap();
+        assert_eq!(cpm.to_bits(), FIXED_BID_CPM.to_bits());
+    }
+
+    #[test]
+    fn resolve_bid_cpm_errors_on_malformed_value() {
+        let ctx = ctx_with_config(&[("bid_cpm", "-1")]);
+        assert!(futures::executor::block_on(resolve_bid_cpm(&ctx)).is_err());
+    }
+```
+
+Note: `async_trait`, `request_builder`, `Method`, `Body`, `PathParams` are already imported in the test module (confirmed). `futures` is a dev-dependency of `mocktioneer-core`.
+
+Run: `cargo test -p mocktioneer-core routes::tests::resolve_bid_cpm`
+Expected: PASS (after Step 3's helpers exist).
+
 - [ ] **Step 5: Add `cpm: f64` to the bid builders (write the new builder tests first)**
 
 In `crates/mocktioneer-core/src/auction.rs`, inside its `#[cfg(test)] mod tests`, add:
@@ -575,14 +664,18 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str, cpm: f64) -> Aps
 
 Replace `let price = FIXED_BID_CPM;` (≈line 259) with `let price = cpm;`.
 
-- [ ] **Step 7: Update existing auction.rs call sites in tests**
+- [ ] **Step 7: Update ALL auction.rs builder call sites in tests**
 
-The two existing tests that build responses now need the `cpm` arg. Update:
+There are **many** test call sites, not two. Enumerate them:
 
-- `bid_id_is_hex_like_uuid` and `ext_bid_override_is_ignored`: `build_openrtb_response(&req, "host.test", test_signature(), FIXED_BID_CPM)`.
-- `build_aps_response_price_encoding_is_base64`: `build_aps_response(&req, "mock.test", FIXED_BID_CPM)`.
+Run: `grep -rn "build_openrtb_response\|build_aps_response" crates/mocktioneer-core/src/auction.rs | grep -v "pub fn "`
+Expected: ~9 test call sites (e.g. lines ~344, 368, 389, 409, 436, 455, 488, 510, 563).
 
-(They keep asserting against `FIXED_BID_CPM`, which is now the value they pass in.)
+Append `, FIXED_BID_CPM` to every `build_openrtb_response(&req, "host.test", test_signature())` and every `build_aps_response(&req, "mock.test")` call in `auction.rs` tests. They keep asserting against `FIXED_BID_CPM`, which is now the value they pass in.
+
+**Do NOT touch `crates/mocktioneer-core/src/mediation.rs:183/187`** — that is a _separate, private_ `build_openrtb_response(request.id, request.imp, winning_bids, base_host)` for the mediation path. It is fed by request bids, never `FIXED_BID_CPM`, and is out of scope for `cpm`.
+
+Run after editing: `cargo build -p mocktioneer-core 2>&1 | grep -c "this function takes" || echo "no arity errors"` to confirm no missed call sites.
 
 - [ ] **Step 8: Wire the handlers**
 
@@ -794,24 +887,27 @@ git commit -m "feat: add mocktioneer-cli with typed config validate/push"
 
 ---
 
-## Task 9: Dockerfile — pre-copy the new crate manifest
+## Task 9: Dockerfile — keep the dependency-cache layer correct
+
+**Why (accuracy note):** the build already does `COPY crates ./crates` **before** `cargo fetch --locked` (Dockerfile:21/24), so the workspace fetch resolves regardless of the per-crate manifest pre-copies (lines 16-19). Those pre-copies exist only to create a **cache layer** (manifests change rarely → fetch is cached across source edits). That layer is currently already incomplete — it omits the existing **spin** member. So this task is **cache hygiene**, not a correctness fix: bring the pre-copy list in line with the actual member set.
 
 **Files:**
 
 - Modify: `Dockerfile`
 
-- [ ] **Step 1: Add the manifest COPY**
+- [ ] **Step 1: Add the missing member manifests to the cache layer**
 
-In `Dockerfile`, after the existing per-crate manifest COPY lines (after the fastly line, before `COPY crates ./crates`), add:
+In `Dockerfile`, after the existing per-crate manifest COPY lines (after the fastly line, before `COPY crates ./crates`), add the two members currently missing from the pre-copy list:
 
 ```dockerfile
+COPY crates/mocktioneer-adapter-spin/Cargo.toml crates/mocktioneer-adapter-spin/Cargo.toml
 COPY crates/mocktioneer-cli/Cargo.toml crates/mocktioneer-cli/Cargo.toml
 ```
 
 - [ ] **Step 2: Verify the build (if Docker is available)**
 
 Run: `docker build -t mocktioneer:plan-check . 2>&1 | tail -20`
-Expected: `cargo fetch --locked` resolves with the new member; build completes. (If Docker isn't available in this environment, note it and rely on CI.)
+Expected: `cargo fetch --locked` resolves and the build completes. (If Docker isn't available, note it and rely on CI; the build is correct either way because `COPY crates` precedes `cargo fetch`.)
 
 - [ ] **Step 3: Commit**
 
@@ -856,7 +952,7 @@ git commit -m "chore: gitignore .edgezero/ (local config/kv state)"
 
 - Modify (Spin wasip1→wasip2): `CLAUDE.md`, `docs/guide/getting-started.md`, `docs/guide/configuration.md`, `.claude/agents/code-architect.md`, `.claude/agents/build-validator.md`, `.claude/agents/verify-app.md`, `.cargo/config.toml` (comment only)
 - Modify (pricing default): `docs/guide/what-is-mocktioneer.md`, `docs/guide/architecture.md`, `docs/integrations/prebidjs.md`, `docs/integrations/prebid-server.md`, `docs/integrations/index.md`, `docs/api/openrtb-auction.md`, `docs/api/aps-bid.md`, `docs/api/index.md`
-- Modify (CLI story): `README.md`, `docs/guide/adapters/index.md`, `tests/playwright/README.md`, `tests/playwright/playwright.config.ts`
+- Modify (CLI story): `README.md`, `docs/guide/adapters/index.md`, `docs/guide/adapters/axum.md`, `docs/guide/adapters/cloudflare.md`, `docs/guide/adapters/fastly.md`, `docs/guide/getting-started.md`, `tests/playwright/README.md`, `tests/playwright/playwright.config.ts`
 - Modify (CI gate docs): `.claude/commands/check-ci.md`, `CLAUDE.md`
 
 - [ ] **Step 1: Spin target references → wasip2**
@@ -878,10 +974,14 @@ Run: `grep -rn "0.20\|fixed price\|always" docs/guide/what-is-mocktioneer.md doc
 
 - [ ] **Step 3: CLI story — distinguish `edgezero-cli` vs `mocktioneer-cli`**
 
-- `README.md`, `docs/guide/adapters/index.md`: note that `config validate`/`config push` are typed and live in the in-repo `mocktioneer-cli` (`cargo run -p mocktioneer-cli -- …`); `serve`/`build`/`deploy` work from either the external `edgezero-cli` or `mocktioneer-cli`. Drop "optional, not vendored" framing for the config commands.
+- `README.md`, `docs/guide/adapters/index.md`, `docs/guide/getting-started.md`: note that `config validate`/`config push` are typed and live in the in-repo `mocktioneer-cli` (`cargo run -p mocktioneer-cli -- …`); `serve`/`build`/`deploy` work from either the external `edgezero-cli` or `mocktioneer-cli`. Drop "optional, not vendored" framing for the config commands.
+- **Per-adapter pages** — `docs/guide/adapters/axum.md` (≈L22), `docs/guide/adapters/cloudflare.md` (≈L47), `docs/guide/adapters/fastly.md` (≈L36) each show `edgezero-cli serve/build/deploy` examples. Keep `edgezero-cli` as valid but add a one-line "or, in-repo: `cargo run -p mocktioneer-cli -- <same args>`" alongside, so the vendored CLI is mentioned consistently. Find them first:
+
+  Run: `grep -rn "edgezero-cli" docs/guide/adapters/`
+
 - `tests/playwright/README.md` and `tests/playwright/playwright.config.ts`: change the `webServer` launch command to `cargo run -p mocktioneer-cli -- serve --adapter cloudflare` (no external install). Confirm the exact current command first:
 
-Run: `grep -n "edgezero-cli\|webServer\|command" tests/playwright/playwright.config.ts`
+  Run: `grep -n "edgezero-cli\|webServer\|command" tests/playwright/playwright.config.ts`
 
 - [ ] **Step 4: Add the config-validate gate to local CI docs**
 
@@ -930,11 +1030,15 @@ Add a step (in the existing native test job, after `cargo test`):
 - name: Validate typed app config
   run: cargo run -p mocktioneer-cli -- config validate --strict
 
-- name: Seed + read-back local config (axum)
+- name: Seed a NON-default cpm and assert it round-trips (axum)
   run: |
-    cargo run -p mocktioneer-cli -- config push --adapter axum
-    test -f .edgezero/local-config-mocktioneer_config.json
+    printf 'bid_cpm = 0.35\n' > /tmp/seed.toml
+    cargo run -p mocktioneer-cli -- config push --adapter axum --app-config /tmp/seed.toml
+    test "$(jq -r '.bid_cpm' .edgezero/local-config-mocktioneer_config.json)" = "0.35"
+    rm -f .edgezero/local-config-mocktioneer_config.json
 ```
+
+A **bare** `config push --adapter axum` would silently seed the root `mocktioneer.toml` default (`0.20`) and a `test -f` only proves a file exists — it would pass even if `bid_cpm` were never wired. Seeding `0.35` via `--app-config` and asserting the JSON value with `jq` proves push writes the _configured_ value. The handler → response half (a seeded store yielding `0.35`) is proven deterministically by the registry-backed `resolve_bid_cpm` test (Task 6, Step 4b), so no flaky serve+curl is needed here. (`jq` is preinstalled on GitHub `ubuntu-latest`.)
 
 - [ ] **Step 4: Lint the workflow locally (if `act`/`actionlint` available) or eyeball YAML**
 
@@ -989,10 +1093,13 @@ Expected: PASS.
 Run: `printf 'bid_cpm = 0.35\n' > /tmp/seed.toml && cargo run -p mocktioneer-cli -- config push --adapter axum --app-config /tmp/seed.toml && cat .edgezero/local-config-mocktioneer_config.json`
 Expected: the JSON contains `bid_cpm` = `0.35`. (Then remove it: `rm -f .edgezero/local-config-mocktioneer_config.json`.)
 
-- [ ] **Step 5: Docs gates**
+- [ ] **Step 5: Docs gates (incl. spec/plan exclusion assertion)**
 
 Run: `cd docs && npm run format && npm run lint && npm run build`
-Expected: PASS (and the spec/plan are excluded from the build).
+Expected: PASS.
+
+Run: `find docs/.vitepress/dist docs/.vitepress/.temp -path '*superpowers*' -print -quit`
+Expected: **no output** (specs/plans excluded from the published build).
 
 - [ ] **Step 6: Semantic parity vs `main` (no store bound)**
 
@@ -1018,7 +1125,7 @@ git commit -m "chore: verification fixups for edgezero #269 adaptation"
 - **§3.7 mocktioneer-cli (metadata/lints) + Dockerfile** → Task 8 + Task 9. ✓
 - **§3.8 docs (wasip2, pricing default, CLI story, gitignore, check-ci, prettier/VitePress)** → Task 0 (prettier/VitePress) + Task 10 (gitignore) + Task 11 (rest). ✓
 - **§3.9 CI** → Task 12. ✓
-- **§5 verification (incl. explicit seeded fixture, docker, prettier)** → Task 13 (+ unit fixtures in Task 6 via `cpm_from_lookup`, seeded read-back in Tasks 8/12/13). ✓
+- **§5 verification (incl. explicit seeded fixture, docker, prettier)** → Task 13 (+ pure `cpm_from_lookup` tests **and** registry-backed `resolve_bid_cpm` tests in Task 6 Step 4b covering seeded-0.35 / fallback / malformed-error; non-default `0.35` seed + `jq` assert in Tasks 12/13; docs build-exclusion `find` check in Tasks 0/13). ✓
 
 No placeholders; types/functions (`MocktioneerConfig`, `cpm_from_lookup`, `resolve_bid_cpm`, builder signatures with `cpm: f64`) are consistent across tasks.
 

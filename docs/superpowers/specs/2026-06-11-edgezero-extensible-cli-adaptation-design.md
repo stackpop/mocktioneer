@@ -29,7 +29,15 @@
   "$0.20 always" → "$0.20 default" pricing-doc rewrite (§3.8), the Spin
   `runtime-config.toml`/`--runtime-config-file` requirement (§3.6), the
   malformed-config-FILE-vs-read-error nuance (§3.5), and an explicit seeded
-  test fixture (§5).
+  test fixture (§5). **R6 (PR #110 review)** — CI seed gate now seeds a
+  **non-default** `0.35` and `jq`-asserts it (a bare push silently seeds the
+  `0.20` default); the §5 runtime fixture is a **registry-backed
+  `resolve_bid_cpm`** test (public `StoreRegistry`/`ConfigStoreHandle`, app-demo
+  `config_flow.rs` pattern), not just the pure parser; Dockerfile reframed as
+  cache hygiene (+ add the missing spin manifest); CLI-story widened to the
+  per-adapter doc pages; docs `srcExclude` made verifiable + `.vitepress/.temp`
+  ignored; plan call-site note corrected (mediation has a _separate_
+  `build_openrtb_response`).
 
 ## 1. Problem & context
 
@@ -291,12 +299,16 @@ and malformed-value (error) branches without a live backend.
   `Config` subcommand dispatching `run_config_validate_typed::<MocktioneerConfig>`
   and `run_config_push_typed::<MocktioneerConfig>`.
 - Add `crates/mocktioneer-cli` to root `[workspace].members`.
-- **Dockerfile:** the build pre-copies each crate manifest before
-  `cargo fetch --locked` ([Dockerfile:14-19]) to cache the dependency layer.
-  Add `COPY crates/mocktioneer-cli/Cargo.toml crates/mocktioneer-cli/Cargo.toml`
-  alongside the existing crate-manifest COPYs so the workspace `cargo fetch`
-  resolves with the new member present. (The image still ships only the axum
-  binary; the CLI crate just needs to be fetch-resolvable.)
+- **Dockerfile (cache hygiene, not a correctness fix):** the build already does
+  `COPY crates ./crates` **before** `cargo fetch --locked` (Dockerfile:21/24),
+  so the workspace fetch resolves regardless of the per-crate manifest
+  pre-copies (Dockerfile:14-19). Those pre-copies exist only to create a
+  dependency **cache layer**, and that layer is already incomplete — it omits
+  the existing **spin** member. Bring it in line by adding the two missing
+  member manifests:
+  `COPY crates/mocktioneer-adapter-spin/Cargo.toml …` and
+  `COPY crates/mocktioneer-cli/Cargo.toml …`. (The image still ships only the
+  axum binary.)
 
 ### 3.8 Docs, agents, ignore files (verified surface)
 
@@ -317,7 +329,11 @@ and malformed-value (error) branches without a live backend.
 - **edgezero-cli → mocktioneer-cli story (wider than VitePress docs).** After
   adding the in-repo `mocktioneer-cli`, distinguish the two everywhere they're
   referenced: `README.md`, `docs/guide/getting-started.md`,
-  `docs/guide/adapters/index.md`, `tests/playwright/README.md`, and
+  `docs/guide/adapters/index.md`, the **per-adapter pages** that show
+  `edgezero-cli` examples — `docs/guide/adapters/axum.md`,
+  `docs/guide/adapters/cloudflare.md`, `docs/guide/adapters/fastly.md` (keep
+  `edgezero-cli` valid, add the in-repo `mocktioneer-cli` alternative
+  alongside) — `tests/playwright/README.md`, and
   `tests/playwright/playwright.config.ts` (the `webServer` command). Rule:
   **`config validate`/`config push` are typed and live only in
   `mocktioneer-cli`**; `serve`/`build`/`deploy`/`auth`/`provision` work from
@@ -332,12 +348,16 @@ and malformed-value (error) branches without a live backend.
   aren't stale.
 - **Docs formatter + VitePress exclusion (mandatory — this spec lives under
   `docs/`).** `docs/package.json`'s `format` runs `prettier --check .` and the
-  format CI job runs it; it **fails on this spec file** today, and VitePress
-  even built it into `docs/.vitepress/dist/…/superpowers/…`. Required:
-  (a) add `superpowers/` to `docs/.prettierignore`; (b) add
-  `srcExclude: ['**/superpowers/**']` to the VitePress config so internal specs
-  aren't published; (c) ensure no built `superpowers` artifact is committed
-  under `docs/.vitepress/dist/`.
+  format CI job runs it; it **fails on this spec file** today, and `npm run
+  build` renders specs/plans into `docs/.vitepress/dist/…/superpowers/…` (and a
+  `.vitepress/.temp/`). Required: (a) add `superpowers/` to
+  `docs/.prettierignore`; (b) add `srcExclude: ['**/superpowers/**']` to the
+  VitePress config so internal specs aren't published; (c) add
+  `.vitepress/.temp` to `docs/.gitignore` (currently missing); (d) **verify**
+  the build actually excludes them —
+  `find docs/.vitepress/dist docs/.vitepress/.temp -path '*superpowers*' -print
+  -quit` must produce no output after `npm run build` (a `format`-only check is
+  insufficient — that was the gap in the prior revision).
 
 ### 3.9 CI — `.github/workflows/test.yml`
 
@@ -345,19 +365,24 @@ and malformed-value (error) branches without a live backend.
   target; set `CARGO_TARGET_WASM32_WASIP2_RUNNER`; keep the pinned Wasmtime
   install and confirm it runs wasip2 components.
 - `mocktioneer-cli` covered by `--workspace`.
-- **Required gate** (also mirror these exact commands into
-  `.claude/commands/check-ci.md` and the `CLAUDE.md` CI-gates list):
+- **Required gate** (also mirror `config validate --strict` into
+  `.claude/commands/check-ci.md` and the `CLAUDE.md` CI-gates list). Seed a
+  **non-default** value so the gate actually proves `bid_cpm` is wired — a bare
+  `config push --adapter axum` would seed the root default (`0.20`) and a
+  `test -f` would pass even if nothing were wired:
   ```sh
   cargo run -p mocktioneer-cli -- config validate --strict
-  cargo run -p mocktioneer-cli -- config push --adapter axum   # real, not --dry-run
+  printf 'bid_cpm = 0.35\n' > /tmp/seed.toml
+  cargo run -p mocktioneer-cli -- config push --adapter axum --app-config /tmp/seed.toml
+  test "$(jq -r '.bid_cpm' .edgezero/local-config-mocktioneer_config.json)" = "0.35"
   ```
-  followed by an assertion that the seeded `bid_cpm` flows through (an
-  integration test or serve smoke), so the seed → bind → read path is
-  exercised, not just validated.
-- **Docker:** `.github/workflows/docker.yml` builds the image; with
-  `mocktioneer-cli` added as a workspace member, confirm the Dockerfile
-  manifest pre-copy (§3.7) keeps `cargo fetch --locked` working. Add a
-  `docker build` smoke if not already covered.
+  The handler → response half (seeded store → `0.35`) is proven deterministically
+  by the registry-backed `resolve_bid_cpm` test (§5), so no flaky serve+curl is
+  needed in CI.
+- **Docker:** `.github/workflows/docker.yml` builds the image. The Dockerfile
+  change (§3.7) is cache hygiene only — `COPY crates` already precedes
+  `cargo fetch`, so the build resolves regardless. A `docker build` smoke is a
+  nice-to-have, not a gate.
 - **Docs formatter is mandatory, not conditional:** the format CI job already
   fails on this spec, so the `docs/.prettierignore` + VitePress `srcExclude`
   changes (§3.8) must land in this branch.
@@ -371,9 +396,9 @@ and malformed-value (error) branches without a live backend.
 | Wasmtime can't run the wasip2 component                    | Wasmtime 45.0.0 supports it; set `CARGO_TARGET_WASM32_WASIP2_RUNNER`; match edgezero's contract-test config.                            |
 | Fresh dev errors before any push                           | Resolved: empty/absent → fallback to `FIXED_BID_CPM` (§3.5).                                                                            |
 | Broken/malformed pushed _value_ masked as $0.20            | Read errors propagate; malformed present value errors (§3.5). Note a malformed _file_ degrades to fallback (bind-time drop), by design. |
-| `bid_cpm` never exercised (store unseeded)                 | CI does a real `config push --adapter axum` + asserts the value flows; fixtures cover all branches (§5).                                |
+| `bid_cpm` never exercised (store unseeded)                 | CI seeds a non-default `0.35` via `--app-config` and `jq`-asserts it round-trips; registry-backed `resolve_bid_cpm` test covers the read path (§5).                                |
 | Spin KV config silently empty (no `runtime-config.toml`)   | Add `runtime-config.toml` + `--runtime-config-file` to spin commands (§3.6).                                                            |
-| New `mocktioneer-cli` breaks Docker dependency layer       | Pre-copy its `Cargo.toml` before `cargo fetch` (§3.7); `docker build` smoke (§5).                                                       |
+| Docker dependency-cache layer stale/incomplete             | Cache hygiene only — `COPY crates` precedes `cargo fetch`; add the missing spin + cli manifests to the pre-copy list (§3.7).                                                       |
 | Spec under `docs/` fails the format CI gate                | Mandatory `docs/.prettierignore` + VitePress `srcExclude` (§3.8).                                                                       |
 | Pinning to an unmerged branch                              | Documented; re-pin to edgezero `main` post-merge.                                                                                       |
 | `.cargo/config.toml.local` patch drift (`edgezero-macros`) | Already lists it; verify it patches cleanly.                                                                                            |
@@ -396,19 +421,23 @@ and malformed-value (error) branches without a live backend.
    excluded — byte equality is impossible even on `main`.
 9. Runtime exercise — **explicit fixtures** (the root `mocktioneer.toml` ships
    `bid_cpm = 0.20`, so 0.35 must come from a seeded store, not the default):
-   - **Unit (preferred, deterministic, no files):** build a `RequestContext`
-     with a `ConfigRegistry` fixture wrapping an in-memory
-     `MapConfigStore { "bid_cpm": "0.35" }` (the app-demo `handlers.rs`
-     pattern); assert OpenRTB and APS emit `0.35`. A no-registry context → `0.20`;
-     a `{ "bid_cpm": "-1" }` fixture → handler error.
-   - **Integration (axum seed path):** write a temp config with `bid_cpm = 0.35`
-     and run `cargo run -p mocktioneer-cli -- config push --adapter axum` (or
-     write `.edgezero/local-config-mocktioneer_config.json` =
-     `{"bid_cpm":"0.35"}` directly), serve, and assert the auction returns
-     `0.35`; remove the file and assert `0.20` with no error.
-10. `docs/` formatter passes: `cd docs && npm run format` succeeds (i.e. the
-    `superpowers/` prettier-ignore is in place).
-11. `docker build` succeeds with `mocktioneer-cli` in the workspace.
+   - **Registry-backed unit (preferred, deterministic, no files):** build a
+     `RequestContext` with a `ConfigRegistry` (public `StoreRegistry::new` +
+     `ConfigStoreHandle` over an in-memory `MapConfigStore`, inserted via
+     `request.extensions_mut().insert(registry)` — the app-demo
+     `config_flow.rs` pattern) and assert `resolve_bid_cpm(&ctx)` returns
+     `0.35`; a no-registry ctx → `0.20`; a `{ "bid_cpm": "-1" }` store → error.
+     Pair with builder tests that a supplied `cpm` (0.35) flows to the OpenRTB
+     bid `price` and the APS decoded price.
+   - **CI seed path (axum):** `printf 'bid_cpm = 0.35\n' > /tmp/seed.toml` then
+     `config push --adapter axum --app-config /tmp/seed.toml`, and assert
+     `jq -r '.bid_cpm' .edgezero/local-config-mocktioneer_config.json` == `0.35`
+     (not a bare push + `test -f`, which would silently seed `0.20`).
+10. `docs/` gates pass: `cd docs && npm run format && npm run lint && npm run
+    build`, **and** `find docs/.vitepress/dist docs/.vitepress/.temp -path
+    '*superpowers*' -print -quit` produces no output (specs/plans excluded).
+11. `docker build` succeeds with `mocktioneer-cli` in the workspace
+    (nice-to-have; not a gate — the build resolves regardless per §3.7).
 
 ## 6. Rollback / follow-ups
 
