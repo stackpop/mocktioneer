@@ -30,12 +30,12 @@ mod tests {
     #[test]
     fn accepts_positive_finite_cpm() {
         let cfg = MocktioneerConfig { bid_cpm: 0.20 };
-        assert!(cfg.validate().is_ok());
+        cfg.validate().unwrap();
     }
 
     #[test]
     fn rejects_zero_negative_and_non_finite() {
-        for bad in [0.0_f64, -1.0, f64::NAN, f64::INFINITY] {
+        for bad in [0.0_f64, -1.0_f64, f64::NAN, f64::INFINITY] {
             let cfg = MocktioneerConfig { bid_cpm: bad };
             assert!(cfg.validate().is_err(), "expected {bad} to be rejected");
         }

@@ -21,7 +21,7 @@ use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
 use crate::auction::{
-    build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
+    build_aps_response, build_openrtb_response, is_standard_size, standard_sizes, FIXED_BID_CPM,
 };
 use crate::mediation::{mediate_auction, MediationRequest};
 use crate::openrtb::OpenRTBRequest;
@@ -311,6 +311,34 @@ pub async fn handle_root(ForwardedHost(host): ForwardedHost) -> Result<Response,
     Ok(response)
 }
 
+/// Interpret a config-store lookup for `bid_cpm`. Pure (no `ctx`) so it is
+/// unit-testable. `None` (store absent / unseeded / key missing) → default;
+/// a present-but-unparseable / non-finite / ≤0 value → error.
+fn cpm_from_lookup(found: Option<String>) -> Result<f64, EdgeError> {
+    match found {
+        None => Ok(FIXED_BID_CPM),
+        Some(raw) => raw
+            .parse::<f64>()
+            .ok()
+            .filter(|value| value.is_finite() && *value > 0.0_f64)
+            .ok_or_else(|| {
+                EdgeError::internal(anyhow::anyhow!(
+                    "config store `mocktioneer_config` has malformed bid_cpm: {raw:?}"
+                ))
+            }),
+    }
+}
+
+/// Resolve the effective bid CPM from the bound default config store, falling
+/// back to `FIXED_BID_CPM` when no store is bound. A backend read error
+/// propagates via `From<ConfigStoreError>`.
+async fn resolve_bid_cpm(ctx: &RequestContext) -> Result<f64, EdgeError> {
+    let Some(store) = ctx.config_store_default() else {
+        return Ok(FIXED_BID_CPM);
+    };
+    cpm_from_lookup(store.get("bid_cpm").await.map_err(EdgeError::from)?)
+}
+
 #[action]
 pub async fn handle_openrtb_auction(
     RequestContext(ctx): RequestContext,
@@ -341,8 +369,9 @@ pub async fn handle_openrtb_auction(
 
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
+    let cpm = resolve_bid_cpm(&ctx).await?;
     // Build response with embedded metadata (signature status + request + response preview)
-    let resp = build_openrtb_response(&req, &host, signature_status);
+    let resp = build_openrtb_response(&req, &host, signature_status, cpm);
     let body = Body::json(&resp).map_err(|err| {
         log::error!("Failed to serialize OpenRTB response: {err}");
         EdgeError::internal(err)
@@ -468,6 +497,7 @@ pub async fn handle_pixel(
 
 #[action]
 pub async fn handle_aps_bid(
+    RequestContext(ctx): RequestContext,
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<ApsBidRequest>,
 ) -> Result<Response, EdgeError> {
@@ -477,7 +507,8 @@ pub async fn handle_aps_bid(
         req.slots.len()
     );
 
-    let resp = build_aps_response(&req, &host);
+    let cpm = resolve_bid_cpm(&ctx).await?;
+    let resp = build_aps_response(&req, &host, cpm);
     let body = Body::json(&resp).map_err(|err| {
         log::error!("Failed to serialize APS response: {err}");
         EdgeError::internal(err)
@@ -996,13 +1027,28 @@ fn sanitize_for_log(input: &str, max_len: usize) -> String {
 mod tests {
     use super::*;
     use edgezero_core::body::Body;
+    use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
     use edgezero_core::context::RequestContext;
     use edgezero_core::error::EdgeError;
     use edgezero_core::http::{request_builder, Method, Response, StatusCode};
     use edgezero_core::params::PathParams;
     use edgezero_core::response::IntoResponse as _;
+    use edgezero_core::store_registry::{ConfigRegistry, StoreRegistry};
     use futures::executor::block_on;
-    use std::collections::HashMap;
+    use std::collections::{BTreeMap, HashMap};
+    use std::sync::Arc;
+
+    /// In-memory `ConfigStore` for tests (mirrors app-demo's `MapConfigStore`).
+    struct MapConfigStore(HashMap<String, String>);
+
+    // `ConfigStore` is declared `#[async_trait(?Send)]` in edgezero-core, so
+    // the impl MUST use the same `(?Send)` mode or method signatures won't match.
+    #[async_trait(?Send)]
+    impl ConfigStore for MapConfigStore {
+        async fn get(&self, key: &str) -> Result<Option<String>, ConfigStoreError> {
+            Ok(self.0.get(key).cloned())
+        }
+    }
 
     fn response_from(result: Result<Response, EdgeError>) -> Response {
         match result {
@@ -1028,6 +1074,72 @@ mod tests {
             .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
             .collect::<HashMap<_, _>>();
         RequestContext::new(request, PathParams::new(map))
+    }
+
+    // ---- bid_cpm resolution ----
+
+    #[test]
+    fn cpm_from_lookup_falls_back_when_absent() {
+        assert_eq!(cpm_from_lookup(None).unwrap().to_bits(), FIXED_BID_CPM.to_bits());
+    }
+
+    #[test]
+    fn cpm_from_lookup_parses_valid_value() {
+        assert!((cpm_from_lookup(Some("0.35".to_owned())).unwrap() - 0.35).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn cpm_from_lookup_rejects_bad_values() {
+        for bad in ["-1", "0", "abc", "inf", "NaN", ""] {
+            assert!(
+                cpm_from_lookup(Some(bad.to_owned())).is_err(),
+                "expected {bad:?} to error"
+            );
+        }
+    }
+
+    fn ctx_with_config(pairs: &[(&str, &str)]) -> RequestContext {
+        let map: HashMap<String, String> = pairs
+            .iter()
+            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+            .collect();
+        let handle = ConfigStoreHandle::new(Arc::new(MapConfigStore(map)));
+        let by_id: BTreeMap<String, ConfigStoreHandle> =
+            [("mocktioneer_config".to_owned(), handle)].into_iter().collect();
+        let registry: ConfigRegistry = StoreRegistry::new(by_id, "mocktioneer_config".to_owned());
+
+        let mut request = request_builder()
+            .method(Method::GET)
+            .uri("/")
+            .body(Body::empty())
+            .expect("request");
+        request.extensions_mut().insert(registry);
+        RequestContext::new(request, PathParams::new(HashMap::new()))
+    }
+
+    #[test]
+    fn resolve_bid_cpm_reads_seeded_store() {
+        let ctx = ctx_with_config(&[("bid_cpm", "0.35")]);
+        let cpm = block_on(resolve_bid_cpm(&ctx)).unwrap();
+        assert!((cpm - 0.35).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn resolve_bid_cpm_falls_back_without_registry() {
+        let request = request_builder()
+            .method(Method::GET)
+            .uri("/")
+            .body(Body::empty())
+            .expect("request");
+        let ctx = RequestContext::new(request, PathParams::new(HashMap::new()));
+        let cpm = block_on(resolve_bid_cpm(&ctx)).unwrap();
+        assert_eq!(cpm.to_bits(), FIXED_BID_CPM.to_bits());
+    }
+
+    #[test]
+    fn resolve_bid_cpm_errors_on_malformed_value() {
+        let ctx = ctx_with_config(&[("bid_cpm", "-1")]);
+        block_on(resolve_bid_cpm(&ctx)).unwrap_err();
     }
 
     #[test]
