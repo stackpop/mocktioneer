@@ -9,11 +9,9 @@ npm install
 npx playwright install
 ```
 
-**Note:** The Cloudflare adapter requires `edgezero-cli` (not `edgezero`):
-
-```bash
-cargo install --git https://github.com/stackpop/edgezero.git edgezero-cli
-```
+**Note:** The Cloudflare web server is launched via the in-repo
+`mocktioneer-cli` (`cargo run -p mocktioneer-cli -- serve --adapter cloudflare`),
+so no external `edgezero-cli` install is required.
 
 ## Running Tests
 

@@ -38,6 +38,14 @@ Or run it from a local EdgeZero checkout:
 cargo run --manifest-path /path/to/edgezero/Cargo.toml -p edgezero-cli --features cli -- --help
 ```
 
+Alternatively, this repo vendors `mocktioneer-cli` (built on the EdgeZero CLI
+library) — no external install needed, and it adds the typed config commands:
+
+```bash
+cargo run -p mocktioneer-cli -- --help
+cargo run -p mocktioneer-cli -- config validate --strict
+```
+
 ## Running Locally
 
 ### Option 1: Native Axum Server (Recommended for Development)

@@ -19,10 +19,12 @@ cargo run -p mocktioneer-adapter-axum
 
 The server starts at `http://127.0.0.1:8787`.
 
-## Using EdgeZero CLI
+## Using the CLI
 
 ```bash
 edgezero-cli serve --adapter axum
+# or, in-repo (no external install):
+cargo run -p mocktioneer-cli -- serve --adapter axum
 ```
 
 This executes the command defined in `edgezero.toml`:

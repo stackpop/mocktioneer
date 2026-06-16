@@ -18,7 +18,7 @@ crates/
   mocktioneer-adapter-axum/       # Native Axum HTTP server
   mocktioneer-adapter-cloudflare/ # Cloudflare Workers bridge (wasm32-unknown-unknown)
   mocktioneer-adapter-fastly/     # Fastly Compute bridge (wasm32-wasip1)
-  mocktioneer-adapter-spin/       # Spin / Fermyon bridge (wasm32-wasip1)
+  mocktioneer-adapter-spin/       # Spin / Fermyon bridge (wasm32-wasip2)
 docs/                             # VitePress documentation site (Node.js)
 examples/                         # curl/shell scripts for endpoint demos
 tests/playwright/                 # Playwright e2e tests (creative visibility, sizes)
@@ -70,7 +70,7 @@ faster iteration since nearly all business logic lives there.
 | ---------- | ------------------------ | ---------------------------------------------------- |
 | Fastly     | `wasm32-wasip1`          | Requires Viceroy for local testing                   |
 | Cloudflare | `wasm32-unknown-unknown` | Requires `wrangler` for dev/deploy                   |
-| Spin       | `wasm32-wasip1`          | Requires `spin` for dev/deploy; tests via `wasmtime` |
+| Spin       | `wasm32-wasip2`          | Requires `spin` for dev/deploy; tests via `wasmtime` |
 | Axum       | Native (host triple)     | Standard Tokio runtime                               |
 
 ## Coding Conventions
@@ -165,8 +165,9 @@ Every PR must pass:
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 3. `cargo test --workspace --all-targets`
 4. `cargo check --workspace --all-targets --features "fastly cloudflare"`
-5. Playwright e2e tests (`tests/playwright/`)
-6. ESLint + Prettier on `docs/`
+5. `cargo run -p mocktioneer-cli -- config validate --strict`
+6. Playwright e2e tests (`tests/playwright/`)
+7. ESLint + Prettier on `docs/`
 
 Docker image is built and pushed to `ghcr.io/stackpop/mocktioneer` on push to
 main and on releases.

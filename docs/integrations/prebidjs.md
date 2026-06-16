@@ -74,7 +74,7 @@ params: {
 | ---------- | ------ | -------- | --------------------------- |
 | `endpoint` | string | No       | Custom auction endpoint URL |
 
-Mocktioneer always returns a fixed bid price of `$0.20` CPM.
+Mocktioneer returns a default bid price of `$0.20` CPM (configurable via `bid_cpm` in mocktioneer.toml).
 
 ## Example Page
 

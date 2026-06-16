@@ -91,7 +91,7 @@ Override the endpoint for specific requests:
 | ---------- | ------------------ | ------ | ------------------------- |
 | `endpoint` | `imp[].ext.bidder` | string | Override auction endpoint |
 
-Mocktioneer always returns a fixed bid price of `$0.20` CPM.
+Mocktioneer returns a default bid price of `$0.20` CPM (configurable via `bid_cpm` in mocktioneer.toml).
 
 ## Response Handling
 
@@ -273,7 +273,7 @@ Include Mocktioneer alongside real bidders:
 
 ### Price Floor Testing
 
-Test that your SSP enforces floors correctly (Mocktioneer always bids at a fixed `$0.20` and does not evaluate `bidfloor` itself):
+Test that your SSP enforces floors correctly (Mocktioneer bids at a default `$0.20` (configurable via `bid_cpm` in mocktioneer.toml) and does not evaluate `bidfloor` itself):
 
 ```json
 {

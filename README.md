@@ -48,8 +48,13 @@ See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for al
 ```bash
 cargo test                              # Run tests
 cargo run -p mocktioneer-adapter-axum   # Local server (Axum) on :8787
-edgezero-cli serve --adapter cloudflare # Local server (Cloudflare) on :8787
-edgezero-cli serve --adapter fastly     # Local server (Fastly) on :7676
+
+# Serve other adapters via the in-repo CLI (or the external edgezero-cli):
+cargo run -p mocktioneer-cli -- serve --adapter cloudflare # Cloudflare on :8787
+cargo run -p mocktioneer-cli -- serve --adapter fastly     # Fastly on :7676
+
+# Typed app config (validate / push bid_cpm):
+cargo run -p mocktioneer-cli -- config validate --strict
 ```
 
 ## License

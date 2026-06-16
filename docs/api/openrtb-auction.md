@@ -139,7 +139,7 @@ Size is determined in this order:
 
 ## Pricing
 
-Mocktioneer returns a fixed bid price of `$0.20` CPM for auction responses.
+Mocktioneer returns a default bid price of `$0.20` CPM for auction responses (configurable via `bid_cpm` in mocktioneer.toml).
 
 If `imp[].ext.mocktioneer.bid` is present, it is ignored.
 

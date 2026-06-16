@@ -33,7 +33,7 @@ The Fastly adapter runs Mocktioneer on Fastly's Compute platform, providing glob
 Run locally using Fastly's Viceroy runtime:
 
 ```bash
-# Using EdgeZero CLI
+# Using the CLI (edgezero-cli, or in-repo `cargo run -p mocktioneer-cli --`)
 edgezero-cli serve --adapter fastly
 
 # Or directly

@@ -87,6 +87,24 @@ edgezero-cli build --adapter fastly
 The CLI reads `edgezero.toml` and executes the appropriate commands for each adapter.
 If you don't have `edgezero-cli`, use the direct adapter commands on the pages below.
 
+### In-repo `mocktioneer-cli`
+
+This repository also vendors a thin `mocktioneer-cli` built on the EdgeZero CLI
+library — no separate install needed:
+
+```bash
+# serve / build / deploy (same as edgezero-cli)
+cargo run -p mocktioneer-cli -- serve --adapter cloudflare
+
+# typed config (lives only here — validated against MocktioneerConfig)
+cargo run -p mocktioneer-cli -- config validate --strict
+cargo run -p mocktioneer-cli -- config push --adapter axum
+```
+
+`serve`/`build`/`deploy`/`auth`/`provision` work from either the external
+`edgezero-cli` or `mocktioneer-cli`; the typed `config validate` / `config push`
+commands are only in `mocktioneer-cli`.
+
 ## Common Configuration
 
 All adapters read from the same `edgezero.toml`:

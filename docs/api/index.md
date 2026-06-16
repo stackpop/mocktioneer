@@ -66,7 +66,7 @@ All responses include CORS headers (`Access-Control-Allow-Origin: *`, etc.). See
 
 ## Supported Ad Sizes {#supported-sizes}
 
-Mocktioneer supports these standard IAB sizes. All auction bids use a fixed price of `$0.20` CPM.
+Mocktioneer supports these standard IAB sizes. All auction bids use a default price of `$0.20` CPM (configurable via `bid_cpm` in mocktioneer.toml).
 
 | Size    | Name                          |
 | ------- | ----------------------------- |
