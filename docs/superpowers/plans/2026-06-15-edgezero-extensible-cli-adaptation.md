@@ -49,12 +49,13 @@
 - Modify: `docs/.vitepress/config.mts` (or `.ts`/`.js` — whichever exists)
 - Test: `cd docs && npm run format`
 
-- [ ] **Step 1: Add `superpowers/` to the docs Prettier ignore**
+- [ ] **Step 1: Add `superpowers/` AND the build temp dir to the docs Prettier ignore**
 
-Append to `docs/.prettierignore`:
+`docs/.prettierignore` currently lists `.vitepress/cache`, `.vitepress/dist`, `node_modules`. Append both the specs dir and the VitePress build temp dir (a `git`-ignore does NOT stop Prettier/ESLint from scanning a working-tree dir — the tool ignores must be set explicitly):
 
 ```
 superpowers/
+.vitepress/.temp
 ```
 
 - [ ] **Step 2: Exclude internal specs/plans from the VitePress build**
@@ -65,22 +66,35 @@ Find the config file: `ls docs/.vitepress/config.*`. In its `defineConfig({ ... 
   srcExclude: ['**/superpowers/**'],
 ```
 
-- [ ] **Step 3: Ignore the VitePress build temp dir**
+- [ ] **Step 3: Ignore the VitePress build temp dir in ESLint AND git**
 
-`docs/.gitignore` currently lists `node_modules`, `.vitepress/dist`, `.vitepress/cache` — but **not** `.vitepress/.temp`, which `npm run build` creates (and which also receives the rendered specs unless excluded). Add to `docs/.gitignore`:
+`npm run build` generates `.vitepress/.temp/` (≈31 JS files) which **ESLint will scan and fail on** (≈700+ errors) unless the flat config ignores it — and the ESLint ignore list is separate from `.prettierignore` and `.gitignore`. In `docs/eslint.config.js`, extend the `ignores` array (currently `['.vitepress/cache/**', '.vitepress/dist/**', 'node_modules/**']`) to add `.vitepress/.temp/**`:
+
+```js
+    ignores: [
+      '.vitepress/cache/**',
+      '.vitepress/dist/**',
+      '.vitepress/.temp/**',
+      'node_modules/**',
+    ],
+```
+
+Also add `.vitepress/.temp` to `docs/.gitignore` (currently `node_modules`, `.vitepress/dist`, `.vitepress/cache`):
 
 ```
 .vitepress/.temp
 ```
 
-`docs/.vitepress/dist` is already gitignored and untracked (verified) — nothing to remove. Confirm: `git check-ignore docs/.vitepress/dist && echo ignored` → `ignored`.
+`docs/.vitepress/dist` is already gitignored and untracked — nothing to remove. Confirm: `git check-ignore docs/.vitepress/dist && echo ignored` → `ignored`.
 
-- [ ] **Step 4: Verify the formatter AND that the build excludes specs/plans**
+- [ ] **Step 4: Build FIRST, then verify format + lint pass with generated files present**
 
-Run: `cd docs && npm ci >/dev/null 2>&1 && npm run format && npm run build`
-Expected: both PASS.
+Generate the temp/dist dirs, THEN run the gates (the prior revision only checked format _before_ a build, so it missed the generated-file failures):
 
-Then assert no spec/plan leaked into the build output (this is the check the prior plan revision was missing — `srcExclude` must actually drop them):
+Run: `cd docs && npm ci >/dev/null 2>&1 && npm run build && npm run format && npm run lint`
+Expected: all PASS (the `.temp`/`dist`/`superpowers` ignores hold).
+
+Assert no spec/plan leaked into the build output:
 
 Run: `find docs/.vitepress/dist docs/.vitepress/.temp -path '*superpowers*' -print -quit`
 Expected: **no output**. If anything prints, `srcExclude` is mis-scoped — fix the glob (e.g. `'**/superpowers/**'` relative to the VitePress `srcDir`) and rebuild.
@@ -88,8 +102,8 @@ Expected: **no output**. If anything prints, `srcExclude` is mis-scoped — fix 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add docs/.prettierignore docs/.vitepress docs/.gitignore .gitignore
-git commit -m "docs: exclude superpowers specs/plans from prettier + vitepress build"
+git add docs/.prettierignore docs/eslint.config.js docs/.vitepress docs/.gitignore .gitignore
+git commit -m "docs: exclude superpowers + vitepress build temp from prettier/eslint/vitepress"
 ```
 
 ---
@@ -531,7 +545,9 @@ Exercises the real `RequestContext` → `ConfigRegistry` → `config_store_defau
     // In-memory ConfigStore for tests (mirrors app-demo's MapConfigStore).
     struct MapConfigStore(std::collections::HashMap<String, String>);
 
-    #[async_trait]
+    // `ConfigStore` is declared `#[async_trait(?Send)]` in edgezero-core, so
+    // the impl MUST use the same `(?Send)` mode or method signatures won't match.
+    #[async_trait(?Send)]
     impl edgezero_core::config_store::ConfigStore for MapConfigStore {
         async fn get(
             &self,
@@ -1079,7 +1095,7 @@ Expected: PASS.
 Run: `cargo build -p mocktioneer-adapter-fastly --features fastly --target wasm32-wasip1`
 Expected: PASS.
 
-Run: `cargo build -p mocktioneer-adapter-spin --features spin --target wasm32-wasip2`
+Run: `cargo build --release -p mocktioneer-adapter-spin --features spin --target wasm32-wasip2`
 Expected: PASS.
 
 Run: `cargo build -p mocktioneer-adapter-cloudflare --features cloudflare --target wasm32-unknown-unknown`

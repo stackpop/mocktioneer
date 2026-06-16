@@ -352,12 +352,16 @@ and malformed-value (error) branches without a live backend.
   build` renders specs/plans into `docs/.vitepress/dist/…/superpowers/…` (and a
   `.vitepress/.temp/`). Required: (a) add `superpowers/` to
   `docs/.prettierignore`; (b) add `srcExclude: ['**/superpowers/**']` to the
-  VitePress config so internal specs aren't published; (c) add
-  `.vitepress/.temp` to `docs/.gitignore` (currently missing); (d) **verify**
-  the build actually excludes them —
+  VitePress config so internal specs aren't published; (c) ignore the build
+  temp dir in **all three** tools — `.vitepress/.temp` in `docs/.prettierignore`
+  AND `.vitepress/.temp/**` in `docs/eslint.config.js` `ignores` (ESLint's flat
+  config has its own ignore list; a `.gitignore`/`.prettierignore` entry does
+  not stop ESLint scanning it) AND `.vitepress/.temp` in `docs/.gitignore`;
+  (d) **verify after a build, not before** — run `npm run build` first, then
+  `npm run format && npm run lint`, and assert
   `find docs/.vitepress/dist docs/.vitepress/.temp -path '*superpowers*' -print
-  -quit` must produce no output after `npm run build` (a `format`-only check is
-  insufficient — that was the gap in the prior revision).
+  -quit` yields nothing. (The prior revision only checked `format` pre-build, so
+  it missed the ~700 ESLint errors generated files produce.)
 
 ### 3.9 CI — `.github/workflows/test.yml`
 
