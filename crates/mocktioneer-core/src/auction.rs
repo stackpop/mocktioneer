@@ -257,7 +257,7 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str, cpm: f64) -> Aps
             continue;
         };
 
-        // Generate bid components using fixed CPM pricing
+        // Generate bid components using the resolved CPM
         let price = cpm;
         let impression_id = new_id();
         let crid = format!("{}-{}", new_id(), "mocktioneer");

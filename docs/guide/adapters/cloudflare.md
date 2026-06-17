@@ -44,8 +44,10 @@ The Cloudflare adapter runs Mocktioneer on Cloudflare Workers, providing global 
 Run locally using Wrangler's local mode:
 
 ```bash
-# Using the CLI (edgezero-cli, or in-repo `cargo run -p mocktioneer-cli --`)
+# Using the CLI
 edgezero-cli serve --adapter cloudflare
+# or, in-repo (no external install):
+cargo run -p mocktioneer-cli -- serve --adapter cloudflare
 
 # Or directly
 wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml

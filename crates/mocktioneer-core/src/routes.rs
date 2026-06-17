@@ -1593,7 +1593,7 @@ mod tests {
         let first = &sizes[0];
         assert!(first["width"].is_i64());
         assert!(first["height"].is_i64());
-        // CPM is no longer included — bid price is fixed at FIXED_BID_CPM
+        // CPM is not echoed in the response — bid price comes from config (default FIXED_BID_CPM)
         assert!(first.get("cpm").is_none());
     }
 
