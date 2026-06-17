@@ -6,7 +6,7 @@ Mocktioneer is a deterministic OpenRTB banner bidder for edge platforms. It lets
 you test client integrations (Prebid.js, Prebid Server, custom SDKs) without
 depending on third-party bidders or origin backends. Write once, deploy to
 Fastly Compute, Cloudflare Workers, or native Axum servers. The codebase is a
-Cargo workspace with 4 crates under `crates/`, a VitePress documentation site
+Cargo workspace with 6 crates under `crates/`, a VitePress documentation site
 under `docs/`, Playwright e2e tests under `tests/playwright/`, and CI workflows
 under `.github/workflows/`.
 
@@ -19,6 +19,7 @@ crates/
   mocktioneer-adapter-cloudflare/ # Cloudflare Workers bridge (wasm32-unknown-unknown)
   mocktioneer-adapter-fastly/     # Fastly Compute bridge (wasm32-wasip1)
   mocktioneer-adapter-spin/       # Spin / Fermyon bridge (wasm32-wasip2)
+  mocktioneer-cli/                # Custom CLI: edgezero commands + typed config validate/push
 docs/                             # VitePress documentation site (Node.js)
 examples/                         # curl/shell scripts for endpoint demos
 tests/playwright/                 # Playwright e2e tests (creative visibility, sizes)
@@ -154,7 +155,9 @@ through `render.rs`. Do not inline ad markup in handlers.
 
 ## Key Constants
 
-- `FIXED_BID_CPM: f64 = 0.20` — fixed price for all Mocktioneer-generated bids
+- `FIXED_BID_CPM: f64 = 0.20` — default bid price; the runtime value is
+  configurable via `bid_cpm` in `mocktioneer.toml` (typed `MocktioneerConfig`),
+  resolved from the bound config store with this constant as the fallback
 - `STANDARD_SIZES` — 13 standard IAB sizes as a const array (300x250, 728x90, 320x50, etc.)
 
 ## CI Gates
