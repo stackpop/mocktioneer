@@ -39,11 +39,12 @@ typed app config (`mocktioneer.toml`):
 ids = ["mocktioneer_config"]
 ```
 
-The `mocktioneer_config` store holds `bid_cpm` (see the typed `MocktioneerConfig`
-struct). Seed it per adapter with `mocktioneer-cli config push --adapter <name>`;
-handlers read it at runtime via `ctx.config_store_default()`, falling back to the
-compile-time `FIXED_BID_CPM` default when no store is bound. See
-[`mocktioneer.toml`](#typed-app-config) below.
+The `mocktioneer_config` store holds the typed config blob (see the
+`MocktioneerConfig` struct). Seed it per adapter with
+`mocktioneer-cli config push --adapter <name>`; the OpenRTB/APS handlers read it
+at runtime via the **fail-loud `AppConfig` extractor** — a `config push` is
+required before those endpoints serve (see [Typed App Config](#typed-app-config)
+below).
 
 ## HTTP Triggers
 

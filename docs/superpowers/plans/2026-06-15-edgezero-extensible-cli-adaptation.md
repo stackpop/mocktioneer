@@ -2,7 +2,18 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Adapt Mocktioneer to the breaking edgezero #269 API (extensible CLI, dropped `run_app` manifest arg, Spin SDK 6 / wasip2) and adopt typed `AppConfig` so `bid_cpm` is configurable at runtime, defaulting to `FIXED_BID_CPM`.
+> **⚠️ Superseded in part by spec R8 (blob app-config sync to edgezero `89f59266`).**
+> This plan was executed, then edgezero advanced past the pin with the **blob
+> app-config cutover**. The runtime-read design below (Task 6:
+> `cpm_from_lookup` / `resolve_bid_cpm` / per-leaf `get("bid_cpm")` / graceful
+> `None → FIXED_BID_CPM` fallback) is **obsolete**. As implemented, the handlers
+> use the **fail-loud `AppConfig<MocktioneerConfig>` extractor** (config is one
+> SHA-gated blob envelope under the store key; a `config push` is required before
+> auction/APS serve). The CLI also gained `config diff` (Task 8), and the CI
+> assertion reads into the envelope (Task 12). See spec §3.5 (R8) and the source
+> for the authoritative behaviour.
+
+**Goal:** Adapt Mocktioneer to the breaking edgezero #269 API (extensible CLI, dropped `run_app` manifest arg, Spin SDK 6 / wasip2) and adopt typed `AppConfig`. (R8: the typed config is read at runtime via the fail-loud `AppConfig` extractor — `bid_cpm` requires a `config push`; `FIXED_BID_CPM` is the builder default, not a runtime fallback.)
 
 **Architecture:** Pin the six `edgezero-*` git deps to `feature/extensible-cli`; fix every adapter entrypoint; migrate the Spin adapter to `spin-sdk ~6.0` / `wasm32-wasip2`; add a `MocktioneerConfig` typed-config struct + `mocktioneer.toml` + a `mocktioneer-cli` crate that mirrors edgezero's generated `<name>-cli`; thread a resolved `cpm` through the OpenRTB and APS bid builders; wire docs/CI/Docker/ignore files.
 
@@ -451,6 +462,14 @@ git commit -m "feat: add MocktioneerConfig typed config (bid_cpm, validated)"
 
 ## Task 6: Thread `cpm` through the bid builders + runtime resolution
 
+> **⚠️ Read model below is OBSOLETE (spec R8).** Keep the `cpm: f64` builder
+> parameter threading, but the runtime read is NOT `cpm_from_lookup` /
+> `resolve_bid_cpm` / `get("bid_cpm")`. As implemented: `handle_openrtb_auction`
+> and `handle_aps_bid` take `AppConfig(cfg): AppConfig<MocktioneerConfig>` and
+> pass `cfg.bid_cpm` to the builders — fail-loud (errors with no pushed config).
+> Tests seed a **blob envelope** via a `ConfigRegistry` fixture
+> (`StoreRegistry::single_id` + `ConfigStoreBinding` + `BlobEnvelope::new`).
+
 **Files:**
 
 - Modify: `crates/mocktioneer-core/src/auction.rs` (`build_openrtb_response`, `build_aps_response`, tests)
@@ -766,6 +785,12 @@ git commit -m "feat: add mocktioneer.toml typed config (bid_cpm default 0.20)"
 
 ## Task 8: `mocktioneer-cli` crate
 
+> **R8 addition:** the crate also wires the new `config diff` command —
+> `MocktioneerConfigCmd::Diff(ConfigDiffArgs)` dispatching
+> `edgezero_cli::run_config_diff_typed::<MocktioneerConfig>` (returns `DiffExit`;
+> non-zero codes `process::exit`, all errors exit `2`). `new` is intentionally
+> omitted (see R7).
+
 **Files:**
 
 - Create: `crates/mocktioneer-cli/Cargo.toml`
@@ -1045,8 +1070,9 @@ Add a step (in the existing native test job, after `cargo test`):
 - name: Seed a NON-default cpm and assert it round-trips (axum)
   run: |
     printf 'bid_cpm = 0.35\n' > /tmp/seed.toml
-    cargo run -p mocktioneer-cli -- config push --adapter axum --app-config /tmp/seed.toml
-    test "$(jq -r '.bid_cpm' .edgezero/local-config-mocktioneer_config.json)" = "0.35"
+    cargo run -p mocktioneer-cli -- config push --adapter axum --yes --app-config /tmp/seed.toml
+    # R8 blob model: bid_cpm is inside the envelope under the store key.
+    test "$(jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' .edgezero/local-config-mocktioneer_config.json)" = "0.35"
     rm -f .edgezero/local-config-mocktioneer_config.json
 ```
 
@@ -1108,8 +1134,8 @@ Expected: PASS.
 Run: `cargo run -p mocktioneer-cli -- config validate --strict`
 Expected: PASS.
 
-Run: `printf 'bid_cpm = 0.35\n' > /tmp/seed.toml && cargo run -p mocktioneer-cli -- config push --adapter axum --app-config /tmp/seed.toml && cat .edgezero/local-config-mocktioneer_config.json`
-Expected: the JSON contains `bid_cpm` = `0.35`. (Then remove it: `rm -f .edgezero/local-config-mocktioneer_config.json`.)
+Run: `printf 'bid_cpm = 0.35\n' > /tmp/seed.toml && cargo run -p mocktioneer-cli -- config push --adapter axum --yes --app-config /tmp/seed.toml && jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' .edgezero/local-config-mocktioneer_config.json`
+Expected: prints `0.35` (R8 blob envelope). (Then remove it: `rm -f .edgezero/local-config-mocktioneer_config.json`.)
 
 - [ ] **Step 5: Docs gates (incl. spec/plan exclusion assertion)**
 

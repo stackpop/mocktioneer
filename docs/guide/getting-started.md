@@ -48,6 +48,17 @@ cargo run -p mocktioneer-cli -- config validate --strict
 
 ## Running Locally
 
+> **Seed the app config first.** The OpenRTB (`/openrtb2/auction`) and APS
+> (`/e/dtb/bid`) endpoints read `bid_cpm` from the typed config via the
+> fail-loud `AppConfig` extractor, so they error until you push the config once
+> per adapter:
+>
+> ```bash
+> cargo run -p mocktioneer-cli -- config push --adapter axum --yes
+> ```
+>
+> The root, `/static/*`, `/pixel`, and `/_/sizes` endpoints work without it.
+
 ### Option 1: Native Axum Server (Recommended for Development)
 
 The fastest way to get started:

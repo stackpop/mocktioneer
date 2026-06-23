@@ -99,7 +99,8 @@ Parts that **do** reach this repo:
   `mocktioneer-cli`, and a **required** `config validate --strict` CI gate.
 - `bid_cpm` consumed at runtime by **both** the OpenRTB auction path
   (`handle_openrtb_auction`) **and** the APS path (`handle_aps_bid`), since
-  both currently emit `FIXED_BID_CPM`, with a defined fallback/error contract.
+  both currently emit `FIXED_BID_CPM`, read via the typed config (R8: fail-loud
+  `AppConfig` extractor — a `config push` is required before serving).
 
 **Non-goals**
 
@@ -205,65 +206,59 @@ fn validate_bid_cpm(value: &f64) -> Result<(), ValidationError> {
 - `pub mod config;` in `crates/mocktioneer-core/src/lib.rs`.
 - Root **`mocktioneer.toml`** (1:1, no `[config]` wrapper): `bid_cpm = 0.20`.
 
-**Runtime resolution — shared helper, used by BOTH handlers.** Both
-`build_aps_response` (in `auction.rs`, reads `FIXED_BID_CPM` at line ~259) and
-the OpenRTB bid builder (`auction.rs` ~116/120) emit the fixed CPM, so both
-`handle_openrtb_auction` (already binds `RequestContext(ctx)`) and
-`handle_aps_bid` (gains `RequestContext(ctx)`, alongside its existing
-`ForwardedHost`/`ValidatedJson` — the multi-extractor pattern
-`handle_openrtb_auction` already uses) resolve `cpm` once and thread it in:
+**Runtime resolution — `AppConfig` extractor, fail-loud (R8 / blob model).**
+> Superseded the original per-leaf `resolve_bid_cpm`/`get("bid_cpm")` design.
+> edgezero `89f59266` stores the whole typed config as one canonical-JSON
+> **blob envelope** (SHA-gated) under the store's key, read via the
+> `AppConfig<C>` extractor — there is no per-key `get("bid_cpm")`.
+
+`auction.rs`'s `build_openrtb_response` and `build_aps_response` take a
+`cpm: f64` parameter (replacing direct `FIXED_BID_CPM` reads). The two handlers
+read the typed config with the **bare, fail-loud extractor** and pass
+`cfg.bid_cpm` in:
 
 ```rust
 // routes.rs
-async fn resolve_bid_cpm(ctx: &RequestContext) -> Result<f64, EdgeError> {
-    // No config store bound at all → compile-time default.
-    let Some(store) = ctx.config_store_default() else {
-        return Ok(auction::FIXED_BID_CPM);
-    };
-    // Store read errors map through `From<ConfigStoreError>` (→ 400/503/500);
-    // do not mask a broken backend as a $0.20 bid.
-    match store.get("bid_cpm").await.map_err(EdgeError::from)? {
-        // Declared but unseeded: Axum binds an EMPTY store when
-        // `.edgezero/local-config-mocktioneer_config.json` is absent
-        // (dev_server.rs `from_local_file` → `Ok(empty)`), so a missing key
-        // is the normal "not yet pushed" state → fall back, not error.
-        None => Ok(auction::FIXED_BID_CPM),
-        // Present but malformed → real misconfiguration, surface it.
-        Some(raw) => raw
-            .parse::<f64>()
-            .ok()
-            .filter(|v| v.is_finite() && *v > 0.0)
-            .ok_or_else(|| {
-                EdgeError::internal(anyhow::anyhow!(
-                    "config store `mocktioneer_config` has malformed bid_cpm: {raw:?}"
-                ))
-            }),
-    }
+use edgezero_core::extractor::AppConfig;
+use crate::config::MocktioneerConfig;
+
+#[action]
+pub async fn handle_openrtb_auction(
+    RequestContext(ctx): RequestContext,
+    ForwardedHost(host): ForwardedHost,
+    ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
+    AppConfig(cfg): AppConfig<MocktioneerConfig>,
+) -> Result<Response, EdgeError> {
+    // ... signature handling ...
+    let resp = build_openrtb_response(&req, &host, signature_status, cfg.bid_cpm);
+}
+
+#[action]
+pub async fn handle_aps_bid(
+    ForwardedHost(host): ForwardedHost,
+    ValidatedJson(req): ValidatedJson<ApsBidRequest>,
+    AppConfig(cfg): AppConfig<MocktioneerConfig>,
+) -> Result<Response, EdgeError> {
+    let resp = build_aps_response(&req, &host, cfg.bid_cpm);
 }
 ```
 
-`auction.rs` bid builders and `build_aps_response` take a `cpm: f64` parameter
-(replacing direct `FIXED_BID_CPM` reads); `FIXED_BID_CPM` stays as the
-fallback constant and the value existing tests pass explicitly.
+**Contract (fail-loud — the approved trade-off):** the `AppConfig` extractor
+fetches the blob at the bound store's `default_key`, verifies the envelope SHA,
+deserialises into `MocktioneerConfig`, and runs `validator`. Outcomes:
 
-**Contract summary** (note the malformed-_file_ vs malformed-_value_
-distinction, which is easy to conflate):
+| Runtime situation | Result |
+| --- | --- |
+| No `[stores.config]` / no config store bound | **error** (`EdgeError::internal` "no default config store registered") |
+| Store bound but **no blob pushed** yet | **error** (`config_out_of_date` — "run `config push`") |
+| Blob present, valid | typed `cfg.bid_cpm` |
+| Blob present, value invalid (`bid_cpm` ≤ 0 / non-finite) | **error** (validation) |
 
-| Runtime situation                                               | `config_store_default()` / `get`                                                                                                                                                                                | Result                                          |
-| --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------- |
-| No `[stores.config]`, or registry dropped                       | `None`                                                                                                                                                                                                          | fallback `FIXED_BID_CPM`                        |
-| Axum local file **absent** (empty store bound)                  | `Ok(None)`                                                                                                                                                                                                      | fallback                                        |
-| File present, **missing** the `bid_cpm` key                     | `Ok(None)`                                                                                                                                                                                                      | fallback                                        |
-| File **malformed JSON**                                         | store **dropped at bind** → `config_store_default()` is `None` (Axum `build_config_registry` drops the id, and if it's the default id the whole registry is dropped — it does **not** surface as a `get` error) | fallback                                        |
-| Backend **read error** at `get` time (e.g. CF/Fastly KV hiccup) | `Err(ConfigStoreError)`                                                                                                                                                                                         | propagate via `EdgeError::from` (→ 400/503/500) |
-| Value present but unparseable / non-finite / ≤ 0                | `Ok(Some(bad))`                                                                                                                                                                                                 | **error** (`EdgeError::internal`)               |
-
-So a malformed Axum config _file_ degrades to the fallback (the bind-time drop
-means handlers never see it), while a malformed _value_ in an otherwise-valid
-file is a real misconfiguration and errors. `EdgeError::internal` takes
-`Into<anyhow::Error>` (error.rs:63), hence `anyhow::anyhow!`, not a bare
-`String`. **Determinism preserved** on the fallback path (semantic outputs
-match `main`).
+So OpenRTB/APS **require a `config push` per deploy** before they serve;
+`FIXED_BID_CPM` is the builders' default arg + the shipped `mocktioneer.toml`
+value, **not** a runtime fallback. The static/creative/pixel endpoints don't
+use the extractor and are unaffected. (The earlier graceful-fallback wrapper
+`resolve_bid_cpm` was dropped per the user's R8 decision.)
 
 ### 3.6 Config lifecycle (declare → seed → bind → read)
 
@@ -273,9 +268,10 @@ backing exists — `edgezero-adapter-axum/src/dev_server.rs:333 run_app` →
 `.edgezero/local-config-<id>.json`; Cloudflare (`request.rs:362`), Fastly
 (`request.rs:382`), Spin (`config_store.rs` via `request::build_config_registry`)
 have equivalents. The `app!` macro emits `stores().config` from
-`[stores.config]`. **Axum binds an empty store when the file is missing** (it
-does not skip the id), which is exactly why §3.5's contract falls back on
-`Ok(None)`.
+`[stores.config]`. Axum binds an empty store when the file is missing (it does
+not skip the id); under the R8 fail-loud model the `AppConfig` extractor then
+errors `config_out_of_date` (blob absent) — so the store must be **seeded with
+a `config push`** before the auction/APS routes serve.
 
 Per-adapter backing + seed step:
 
@@ -300,7 +296,7 @@ Cloud/Spin adapters get the manifest declaration + required native-backing
 tables (incl. the Spin `runtime-config.toml`) so they _build and validate_;
 push/provision are documented but live cloud/Spin stores are not stood up in
 CI. Handler tests wire a `ConfigRegistry` fixture directly (the app-demo
-`handlers.rs` test pattern) to cover the seeded-value, empty-store (fallback),
+`handlers.rs` test pattern) to cover the seeded-value, no-config (error),
 and malformed-value (error) branches without a live backend.
 
 ### 3.7 `mocktioneer-cli` crate
@@ -313,8 +309,10 @@ and malformed-value (error) branches without a live backend.
   `[lints] workspace = true` (cf. `mocktioneer-core/Cargo.toml`).
 - `src/main.rs`: clap `Args`/`Cmd` flattening
   `edgezero_cli::run_{auth,build,deploy,provision,serve}` + a typed
-  `Config` subcommand dispatching `run_config_validate_typed::<MocktioneerConfig>`
-  and `run_config_push_typed::<MocktioneerConfig>`.
+  `Config` subcommand dispatching `run_config_validate_typed`,
+  `run_config_push_typed`, and (R8) `run_config_diff_typed::<MocktioneerConfig>`
+  (the new `config diff` command — returns `DiffExit`; non-zero codes
+  `process::exit`, all errors exit `2`).
 - Add `crates/mocktioneer-cli` to root `[workspace].members`.
 - **Dockerfile (cache hygiene, not a correctness fix):** the build already does
   `COPY crates ./crates` **before** `cargo fetch --locked` (Dockerfile:21/24),
@@ -394,12 +392,13 @@ and malformed-value (error) branches without a live backend.
   ```sh
   cargo run -p mocktioneer-cli -- config validate --strict
   printf 'bid_cpm = 0.35\n' > /tmp/seed.toml
-  cargo run -p mocktioneer-cli -- config push --adapter axum --app-config /tmp/seed.toml
-  test "$(jq -r '.bid_cpm' .edgezero/local-config-mocktioneer_config.json)" = "0.35"
+  cargo run -p mocktioneer-cli -- config push --adapter axum --yes --app-config /tmp/seed.toml
+  # R8 blob model: bid_cpm lives inside the envelope under the store key.
+  test "$(jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' .edgezero/local-config-mocktioneer_config.json)" = "0.35"
   ```
   The handler → response half (seeded store → `0.35`) is proven deterministically
-  by the registry-backed `resolve_bid_cpm` test (§5), so no flaky serve+curl is
-  needed in CI.
+  by the registry-backed handler-dispatch test (§5, `auction_uses_seeded_cpm`),
+  so no flaky serve+curl is needed in CI.
 - **Docker:** `.github/workflows/docker.yml` builds the image. The Dockerfile
   change (§3.7) is cache hygiene only — `COPY crates` already precedes
   `cargo fetch`, so the build resolves regardless. A `docker build` smoke is a
@@ -415,9 +414,9 @@ and malformed-value (error) branches without a live backend.
 | New parser rejects an existing `[adapters.*]` table        | Compile-time `manifest.validate()` surfaces it; fix per upstream error.                                                                 |
 | Spin SDK 6 macro/type churn beyond template                | Mirror edgezero's `edgezero-adapter-spin` verbatim; build wasip2.                                                                       |
 | Wasmtime can't run the wasip2 component                    | Wasmtime 45.0.0 supports it; set `CARGO_TARGET_WASM32_WASIP2_RUNNER`; match edgezero's contract-test config.                            |
-| Fresh dev errors before any push                           | Resolved: empty/absent → fallback to `FIXED_BID_CPM` (§3.5).                                                                            |
+| Fresh dev errors before any push (R8 fail-loud)            | Intended: auction/APS require `config push` once per deploy; documented in `configuration.md`/README (§3.5).                            |
 | Broken/malformed pushed _value_ masked as $0.20            | Read errors propagate; malformed present value errors (§3.5). Note a malformed _file_ degrades to fallback (bind-time drop), by design. |
-| `bid_cpm` never exercised (store unseeded)                 | CI seeds a non-default `0.35` via `--app-config` and `jq`-asserts it round-trips; registry-backed `resolve_bid_cpm` test covers the read path (§5).                                |
+| `bid_cpm` never exercised (store unseeded)                 | CI seeds a non-default `0.35` via `--app-config` and `jq`-asserts it round-trips; registry-backed `auction_uses_seeded_cpm` handler test covers the read path (§5).                                |
 | Spin KV config silently empty (no `runtime-config.toml`)   | Add `runtime-config.toml` + `--runtime-config-file` to spin commands (§3.6).                                                            |
 | Docker dependency-cache layer stale/incomplete             | Cache hygiene only — `COPY crates` precedes `cargo fetch`; add the missing spin + cli manifests to the pre-copy list (§3.7).                                                       |
 | Spec under `docs/` fails the format CI gate                | Mandatory `docs/.prettierignore` + VitePress `srcExclude` (§3.8).                                                                       |
@@ -442,18 +441,18 @@ and malformed-value (error) branches without a live backend.
    excluded — byte equality is impossible even on `main`.
 9. Runtime exercise — **explicit fixtures** (the root `mocktioneer.toml` ships
    `bid_cpm = 0.20`, so 0.35 must come from a seeded store, not the default):
-   - **Registry-backed unit (preferred, deterministic, no files):** build a
-     `RequestContext` with a `ConfigRegistry` (public `StoreRegistry::new` +
-     `ConfigStoreHandle` over an in-memory `MapConfigStore`, inserted via
+   - **Registry-backed handler unit (R8):** build a `RequestContext` with a
+     `ConfigRegistry` whose default store holds a **blob envelope** for
+     `{ "bid_cpm": 0.35 }` (`StoreRegistry::single_id` + `ConfigStoreBinding` +
+     `BlobEnvelope::new` over an in-memory `MapConfigStore`, inserted via
      `request.extensions_mut().insert(registry)` — the app-demo
-     `config_flow.rs` pattern) and assert `resolve_bid_cpm(&ctx)` returns
-     `0.35`; a no-registry ctx → `0.20`; a `{ "bid_cpm": "-1" }` store → error.
-     Pair with builder tests that a supplied `cpm` (0.35) flows to the OpenRTB
-     bid `price` and the APS decoded price.
+     `config_flow.rs` pattern). Dispatch `handle_openrtb_auction` and assert the
+     bid `price` is `0.35`; dispatch with **no** registry and assert the handler
+     **errors** (fail-loud). The `0.20` default `ctx()` seeds the same way.
    - **CI seed path (axum):** `printf 'bid_cpm = 0.35\n' > /tmp/seed.toml` then
-     `config push --adapter axum --app-config /tmp/seed.toml`, and assert
-     `jq -r '.bid_cpm' .edgezero/local-config-mocktioneer_config.json` == `0.35`
-     (not a bare push + `test -f`, which would silently seed `0.20`).
+     `config push --adapter axum --yes --app-config /tmp/seed.toml`, and assert
+     `jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' …` == `0.35`
+     (the blob envelope; not a bare push + `test -f`).
 10. `docs/` gates pass: `cd docs && npm run format && npm run lint && npm run
     build`, **and** `find docs/.vitepress/dist docs/.vitepress/.temp -path
     '*superpowers*' -print -quit` produces no output (specs/plans excluded).

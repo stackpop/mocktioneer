@@ -12,9 +12,15 @@ Deterministic OpenRTB banner bidder for edge platforms. Test client integrations
 ## Quick Start
 
 ```bash
-# Clone and run locally
+# Clone
 git clone https://github.com/stackpop/mocktioneer.git
 cd mocktioneer
+
+# Seed the typed app config once (the auction/APS endpoints read bid_cpm from it
+# via the fail-loud AppConfig extractor and error until it is pushed).
+cargo run -p mocktioneer-cli -- config push --adapter axum --yes
+
+# Run locally
 cargo run -p mocktioneer-adapter-axum
 
 # Test the auction endpoint

@@ -8,6 +8,7 @@ git-fetch-with-cli = true
 edgezero-adapter-axum = { path = "../edgezero/crates/edgezero-adapter-axum" }
 edgezero-adapter-cloudflare = { path = "../edgezero/crates/edgezero-adapter-cloudflare" }
 edgezero-adapter-fastly = { path = "../edgezero/crates/edgezero-adapter-fastly" }
+edgezero-adapter-spin = { path = "../edgezero/crates/edgezero-adapter-spin" }
 edgezero-cli = { path = "../edgezero/crates/edgezero-cli" }
 edgezero-core = { path = "../edgezero/crates/edgezero-core" }
 edgezero-macros = { path = "../edgezero/crates/edgezero-macros" }
