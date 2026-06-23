@@ -190,12 +190,27 @@ there is no `[config]` wrapper:
 bid_cpm = 0.20
 ```
 
-Validate it against the typed contract and push it to an adapter's config store:
+Validate it, preview the diff against the live store, then push it:
 
 ```bash
 cargo run -p mocktioneer-cli -- config validate --strict
-cargo run -p mocktioneer-cli -- config push --adapter axum
+cargo run -p mocktioneer-cli -- config diff --adapter axum
+cargo run -p mocktioneer-cli -- config push --adapter axum --yes
 ```
+
+`config push` writes the whole struct as a single **blob envelope** (canonical
+JSON + a SHA for drift detection) under the store's key — for axum that's
+`.edgezero/local-config-mocktioneer_config.json` as
+`{ "mocktioneer_config": "<envelope>" }`. The handlers read it back through the
+typed `AppConfig` extractor.
+
+::: warning Config is required at runtime
+The OpenRTB (`/openrtb2/auction`) and APS (`/e/dtb/bid`) endpoints read
+`bid_cpm` via the fail-loud `AppConfig` extractor. **A fresh deploy must run
+`config push` once** before those endpoints serve bids — until then they return
+an error (the static/creative/pixel endpoints are unaffected). `bid_cpm = 0.20`
+is the shipped default value, not a runtime fallback.
+:::
 
 Any key can be overridden at runtime via the `MOCKTIONEER__<KEY>` env overlay
 (e.g. `MOCKTIONEER__BID_CPM=0.35`).

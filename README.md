@@ -53,9 +53,11 @@ cargo run -p mocktioneer-adapter-axum   # Local server (Axum) on :8787
 cargo run -p mocktioneer-cli -- serve --adapter cloudflare # Cloudflare on :8787
 cargo run -p mocktioneer-cli -- serve --adapter fastly     # Fastly on :7676
 
-# Typed app config (validate / push bid_cpm):
+# Typed app config (validate / diff / push bid_cpm as a blob envelope).
+# Auction + APS endpoints require a one-time `config push` per deploy.
 cargo run -p mocktioneer-cli -- config validate --strict
-cargo run -p mocktioneer-cli -- config push --adapter axum
+cargo run -p mocktioneer-cli -- config diff --adapter axum
+cargo run -p mocktioneer-cli -- config push --adapter axum --yes
 ```
 
 ## License

@@ -2,12 +2,14 @@
 //!
 //! Reuses every built-in edgezero command and adds the **typed** `config`
 //! arms parameterised over `MocktioneerConfig`, so `validator` rules run on
-//! `config validate` / `config push`.
+//! `config validate` / `config push` / `config diff`.
 
 use clap::{Parser, Subcommand};
 use edgezero_cli::args::{
-    AuthArgs, BuildArgs, ConfigPushArgs, ConfigValidateArgs, DeployArgs, ProvisionArgs, ServeArgs,
+    AuthArgs, BuildArgs, ConfigDiffArgs, ConfigPushArgs, ConfigValidateArgs, DeployArgs,
+    ProvisionArgs, ServeArgs,
 };
+use edgezero_cli::DiffExit;
 use mocktioneer_core::config::MocktioneerConfig;
 
 #[derive(Parser, Debug)]
@@ -34,11 +36,14 @@ enum Cmd {
     Serve(ServeArgs),
 }
 
-/// Dispatches `validate`/`push` to the typed entry points over
+/// Dispatches `validate`/`push`/`diff` to the typed entry points over
 /// `MocktioneerConfig`.
 #[derive(Subcommand, Debug)]
 enum MocktioneerConfigCmd {
-    /// Push `mocktioneer.toml` (flattened) to the adapter's config store.
+    /// Diff `mocktioneer.toml` against the live (or local-emulator) config
+    /// store. Exits 0 (no changes), 1 (changes with `--exit-code`), 2 (error).
+    Diff(ConfigDiffArgs),
+    /// Push `mocktioneer.toml` as a blob envelope to the adapter's config store.
     Push(ConfigPushArgs),
     /// Validate `edgezero.toml` + `mocktioneer.toml` against `MocktioneerConfig`.
     Validate(ConfigValidateArgs),
@@ -48,9 +53,19 @@ fn main() {
     use std::process;
 
     edgezero_cli::init_cli_logger();
-    let result = match Args::parse().cmd {
+    let result: Result<(), String> = match Args::parse().cmd {
         Cmd::Auth(args) => edgezero_cli::run_auth(&args),
         Cmd::Build(args) => edgezero_cli::run_build(&args),
+        Cmd::Config(MocktioneerConfigCmd::Diff(args)) => {
+            // `run_config_diff_typed` returns `Result<DiffExit, String>`: a
+            // non-zero exit code (1 = diff with `--exit-code`; 2 = unsupported)
+            // exits the process directly, mirroring the generated template.
+            match edgezero_cli::run_config_diff_typed::<MocktioneerConfig>(&args) {
+                Ok(DiffExit { code: 0 }) => Ok(()),
+                Ok(DiffExit { code }) => process::exit(code),
+                Err(err) => Err(err),
+            }
+        }
         Cmd::Config(MocktioneerConfigCmd::Push(args)) => {
             edgezero_cli::run_config_push_typed::<MocktioneerConfig>(&args)
         }
@@ -63,6 +78,8 @@ fn main() {
     };
     if let Err(err) = result {
         log::error!("[mocktioneer] {err}");
-        process::exit(1);
+        // Exit 2 for all errors so `config diff` errors satisfy the "errors are
+        // always ≥ 2" contract; push / validate are not 1-vs-2 sensitive.
+        process::exit(2);
     }
 }

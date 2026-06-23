@@ -58,8 +58,11 @@ jobs:
       - name: Seed a non-default cpm and assert it round-trips (axum)
         run: |
           printf 'bid_cpm = 0.35\n' > "${RUNNER_TEMP}/seed.toml"
-          cargo run -p mocktioneer-cli -- config push --adapter axum --app-config "${RUNNER_TEMP}/seed.toml"
-          test "$(jq -r '.bid_cpm' .edgezero/local-config-mocktioneer_config.json)" = "0.35"
+          cargo run -p mocktioneer-cli -- config push --adapter axum --yes --app-config "${RUNNER_TEMP}/seed.toml"
+          # edgezero #269 stores the typed config as a single blob envelope under
+          # the store key; bid_cpm lives at `<key> | fromjson | .data.bid_cpm`.
+          got="$(jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' .edgezero/local-config-mocktioneer_config.json)"
+          test "$got" = "0.35"
           rm -f .edgezero/local-config-mocktioneer_config.json
 
   adapter-wasm-tests:

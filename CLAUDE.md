@@ -155,9 +155,12 @@ through `render.rs`. Do not inline ad markup in handlers.
 
 ## Key Constants
 
-- `FIXED_BID_CPM: f64 = 0.20` — default bid price; the runtime value is
-  configurable via `bid_cpm` in `mocktioneer.toml` (typed `MocktioneerConfig`),
-  resolved from the bound config store with this constant as the fallback
+- `FIXED_BID_CPM: f64 = 0.20` — the auction/APS builders' default `cpm`
+  argument and the shipped value in `mocktioneer.toml`. At runtime the
+  OpenRTB/APS handlers read `bid_cpm` from the typed `MocktioneerConfig` blob via
+  the fail-loud `AppConfig` extractor (edgezero #269 blob model), so a deploy
+  must `config push` once before those endpoints serve — it is **not** a runtime
+  fallback
 - `STANDARD_SIZES` — 13 standard IAB sizes as a const array (300x250, 728x90, 320x50, etc.)
 
 ## CI Gates

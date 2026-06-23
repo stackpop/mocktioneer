@@ -41,6 +41,20 @@
   subcommand from `mocktioneer-cli`: scaffolding a brand-new EdgeZero app from
   within Mocktioneer's own project CLI is nonsensical, so the crate exposes
   `auth`/`build`/`deploy`/`provision`/`serve` + typed `config` only.
+  **R8 (sync to edgezero `89f59266`)** — supersedes the §3.5 read model. edgezero
+  advanced past the pin with a **blob app-config cutover**: the whole typed
+  config is stored as one canonical-JSON **blob envelope** (SHA-gated) under the
+  store's key, read via the new **`AppConfig<C>` extractor**, not per-leaf
+  `get("bid_cpm")`. Per the user's call, the handlers now use the **fail-loud**
+  bare `AppConfig(cfg): AppConfig<MocktioneerConfig>` extractor (dropping the
+  graceful `resolve_bid_cpm` wrapper): OpenRTB/APS **require a `config push`**
+  before serving (they error otherwise; `FIXED_BID_CPM` is the builder default /
+  shipped value, no longer a runtime fallback). Also: added the new `config diff`
+  command (`DiffExit`) to `mocktioneer-cli`; `config push` now needs `--yes` in
+  CI; the local-config file is `{ "mocktioneer_config": "<envelope>" }`, so the
+  CI assertion is `jq -r '.mocktioneer_config | fromjson | .data.bid_cpm'`; and
+  endpoint/handler tests seed a blob via a `ConfigRegistry` fixture
+  (`StoreRegistry` + `ConfigStoreBinding` + `BlobEnvelope::new`).
 
 ## 1. Problem & context
 

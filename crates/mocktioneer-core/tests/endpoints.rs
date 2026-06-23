@@ -1,14 +1,53 @@
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use edgezero_core::app::App;
+    use edgezero_core::blob_envelope::BlobEnvelope;
     use edgezero_core::body::Body;
+    use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
     use edgezero_core::http::{
         header, request_builder, HeaderValue, Method, Request, Response, StatusCode,
     };
+    use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    /// In-memory config store returning a blob envelope by key.
+    struct MapConfigStore(HashMap<String, String>);
+
+    #[async_trait(?Send)]
+    impl ConfigStore for MapConfigStore {
+        async fn get(&self, key: &str) -> Result<Option<String>, ConfigStoreError> {
+            Ok(self.0.get(key).cloned())
+        }
+    }
 
     fn app() -> App {
         mocktioneer_core::build_app()
+    }
+
+    /// Build a `ConfigRegistry` whose default `mocktioneer_config` store holds a
+    /// blob envelope for `{ "bid_cpm": <cpm> }` — what `config push` writes.
+    /// The auction/APS handlers use the fail-loud `AppConfig` extractor, so the
+    /// router needs this bound to serve those routes.
+    fn config_registry(bid_cpm: f64) -> ConfigRegistry {
+        let data = serde_json::json!({ "bid_cpm": bid_cpm });
+        let blob =
+            serde_json::to_string(&BlobEnvelope::new(data, "2026-01-01T00:00:00Z".to_owned()))
+                .expect("serialize envelope");
+        let store = MapConfigStore(
+            [("mocktioneer_config".to_owned(), blob)]
+                .into_iter()
+                .collect(),
+        );
+        StoreRegistry::single_id(
+            "mocktioneer_config".to_owned(),
+            ConfigStoreBinding {
+                handle: ConfigStoreHandle::new(Arc::new(store)),
+                default_key: "mocktioneer_config".to_owned(),
+            },
+        )
     }
 
     fn make_request(method: Method, uri: &str, body: Body) -> Request {
@@ -103,6 +142,7 @@ mod tests {
         request
             .headers_mut()
             .insert(header::HOST, HeaderValue::from_static("test.local"));
+        request.extensions_mut().insert(config_registry(0.20_f64));
         let response = dispatch(&app, request);
         assert_eq!(response.status(), StatusCode::OK);
         let content_type = response

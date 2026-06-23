@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use edgezero_core::action;
 use edgezero_core::context::RequestContext;
 use edgezero_core::extractor::{
-    ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedQuery,
+    AppConfig, ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedQuery,
 };
 use edgezero_core::http::{
     header, response_builder, HeaderMap, HeaderValue, Method, Response, StatusCode,
@@ -21,8 +21,9 @@ use validator::{Validate, ValidationError};
 
 use crate::aps::ApsBidRequest;
 use crate::auction::{
-    build_aps_response, build_openrtb_response, is_standard_size, standard_sizes, FIXED_BID_CPM,
+    build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
+use crate::config::MocktioneerConfig;
 use crate::mediation::{mediate_auction, MediationRequest};
 use crate::openrtb::OpenRTBRequest;
 use crate::render::{
@@ -311,39 +312,12 @@ pub async fn handle_root(ForwardedHost(host): ForwardedHost) -> Result<Response,
     Ok(response)
 }
 
-/// Interpret a config-store lookup for `bid_cpm`. Pure (no `ctx`) so it is
-/// unit-testable. `None` (store absent / unseeded / key missing) → default;
-/// a present-but-unparseable / non-finite / ≤0 value → error.
-fn cpm_from_lookup(found: Option<String>) -> Result<f64, EdgeError> {
-    match found {
-        None => Ok(FIXED_BID_CPM),
-        Some(raw) => raw
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite() && *value > 0.0_f64)
-            .ok_or_else(|| {
-                EdgeError::internal(anyhow::anyhow!(
-                    "config store `mocktioneer_config` has malformed bid_cpm: {raw:?}"
-                ))
-            }),
-    }
-}
-
-/// Resolve the effective bid CPM from the bound default config store, falling
-/// back to `FIXED_BID_CPM` when no store is bound. A backend read error
-/// propagates via `From<ConfigStoreError>`.
-async fn resolve_bid_cpm(ctx: &RequestContext) -> Result<f64, EdgeError> {
-    let Some(store) = ctx.config_store_default() else {
-        return Ok(FIXED_BID_CPM);
-    };
-    cpm_from_lookup(store.get("bid_cpm").await.map_err(EdgeError::from)?)
-}
-
 #[action]
 pub async fn handle_openrtb_auction(
     RequestContext(ctx): RequestContext,
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
+    AppConfig(cfg): AppConfig<MocktioneerConfig>,
 ) -> Result<Response, EdgeError> {
     // Capture signature verification status for metadata
     let signature_status =
@@ -369,9 +343,8 @@ pub async fn handle_openrtb_auction(
 
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
-    let cpm = resolve_bid_cpm(&ctx).await?;
     // Build response with embedded metadata (signature status + request + response preview)
-    let resp = build_openrtb_response(&req, &host, signature_status, cpm);
+    let resp = build_openrtb_response(&req, &host, signature_status, cfg.bid_cpm);
     let body = Body::json(&resp).map_err(|err| {
         log::error!("Failed to serialize OpenRTB response: {err}");
         EdgeError::internal(err)
@@ -497,9 +470,9 @@ pub async fn handle_pixel(
 
 #[action]
 pub async fn handle_aps_bid(
-    RequestContext(ctx): RequestContext,
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<ApsBidRequest>,
+    AppConfig(cfg): AppConfig<MocktioneerConfig>,
 ) -> Result<Response, EdgeError> {
     log::info!(
         "APS auction pubId={}, slots={}",
@@ -507,8 +480,7 @@ pub async fn handle_aps_bid(
         req.slots.len()
     );
 
-    let cpm = resolve_bid_cpm(&ctx).await?;
-    let resp = build_aps_response(&req, &host, cpm);
+    let resp = build_aps_response(&req, &host, cfg.bid_cpm);
     let body = Body::json(&resp).map_err(|err| {
         log::error!("Failed to serialize APS response: {err}");
         EdgeError::internal(err)
@@ -1026,6 +998,7 @@ fn sanitize_for_log(input: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use edgezero_core::blob_envelope::BlobEnvelope;
     use edgezero_core::body::Body;
     use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
     use edgezero_core::context::RequestContext;
@@ -1033,7 +1006,7 @@ mod tests {
     use edgezero_core::http::{request_builder, Method, Response, StatusCode};
     use edgezero_core::params::PathParams;
     use edgezero_core::response::IntoResponse as _;
-    use edgezero_core::store_registry::{ConfigRegistry, StoreRegistry};
+    use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
     use std::collections::{BTreeMap, HashMap};
     use std::sync::Arc;
@@ -1065,10 +1038,51 @@ mod tests {
             .to_vec()
     }
 
+    /// A valid blob-envelope JSON string wrapping `{ "bid_cpm": <cpm> }`,
+    /// matching what `config push` writes for the typed config.
+    fn config_blob(bid_cpm: f64) -> String {
+        let data = serde_json::json!({ "bid_cpm": bid_cpm });
+        serde_json::to_string(&BlobEnvelope::new(data, "2026-01-01T00:00:00Z".to_owned()))
+            .expect("serialize envelope")
+    }
+
+    fn config_registry(bid_cpm: f64) -> ConfigRegistry {
+        let map: HashMap<String, String> =
+            [("mocktioneer_config".to_owned(), config_blob(bid_cpm))]
+                .into_iter()
+                .collect();
+        let handle = ConfigStoreHandle::new(Arc::new(MapConfigStore(map)));
+        let binding = ConfigStoreBinding {
+            handle,
+            default_key: "mocktioneer_config".to_owned(),
+        };
+        let by_id: BTreeMap<String, ConfigStoreBinding> =
+            [("mocktioneer_config".to_owned(), binding)]
+                .into_iter()
+                .collect();
+        StoreRegistry::new(by_id, "mocktioneer_config".to_owned())
+    }
+
     fn ctx(method: Method, uri: &str, body: Body, params: &[(&str, &str)]) -> RequestContext {
-        let mut builder = request_builder();
-        builder = builder.method(method).uri(uri);
-        let request = builder.body(body).expect("request");
+        ctx_with_cpm(method, uri, body, params, 0.20_f64)
+    }
+
+    /// Like [`ctx`] but seeds the default config store with a `bid_cpm` blob.
+    /// The auction/APS handlers use the fail-loud `AppConfig` extractor, so a
+    /// bound, valid blob must be present for them to run.
+    fn ctx_with_cpm(
+        method: Method,
+        uri: &str,
+        body: Body,
+        params: &[(&str, &str)],
+        bid_cpm: f64,
+    ) -> RequestContext {
+        let mut request = request_builder()
+            .method(method)
+            .uri(uri)
+            .body(body)
+            .expect("request");
+        request.extensions_mut().insert(config_registry(bid_cpm));
         let map = params
             .iter()
             .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
@@ -1076,75 +1090,47 @@ mod tests {
         RequestContext::new(request, PathParams::new(map))
     }
 
-    // ---- bid_cpm resolution ----
+    // ---- bid_cpm typed-config wiring ----
 
     #[test]
-    fn cpm_from_lookup_falls_back_when_absent() {
-        assert_eq!(
-            cpm_from_lookup(None).unwrap().to_bits(),
-            FIXED_BID_CPM.to_bits()
+    fn auction_uses_seeded_cpm() {
+        let body = serde_json::json!({
+            "id": "rc",
+            "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }]
+        });
+        let ctx = ctx_with_cpm(
+            Method::POST,
+            "/openrtb2/auction",
+            Body::json(&body).expect("json body"),
+            &[],
+            0.35_f64,
         );
+        let response = response_from(block_on(handle_openrtb_auction(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body_bytes(response)).expect("json");
+        let price = payload["seatbid"][0]["bid"][0]["price"]
+            .as_f64()
+            .expect("price");
+        assert!((price - 0.35).abs() < f64::EPSILON);
     }
 
     #[test]
-    fn cpm_from_lookup_parses_valid_value() {
-        assert!((cpm_from_lookup(Some("0.35".to_owned())).unwrap() - 0.35).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn cpm_from_lookup_rejects_bad_values() {
-        for bad in ["-1", "0", "abc", "inf", "NaN", ""] {
-            assert!(
-                cpm_from_lookup(Some(bad.to_owned())).is_err(),
-                "expected {bad:?} to error"
-            );
-        }
-    }
-
-    fn ctx_with_config(pairs: &[(&str, &str)]) -> RequestContext {
-        let map: HashMap<String, String> = pairs
-            .iter()
-            .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
-            .collect();
-        let handle = ConfigStoreHandle::new(Arc::new(MapConfigStore(map)));
-        let by_id: BTreeMap<String, ConfigStoreHandle> =
-            [("mocktioneer_config".to_owned(), handle)]
-                .into_iter()
-                .collect();
-        let registry: ConfigRegistry = StoreRegistry::new(by_id, "mocktioneer_config".to_owned());
-
-        let mut request = request_builder()
-            .method(Method::GET)
-            .uri("/")
-            .body(Body::empty())
-            .expect("request");
-        request.extensions_mut().insert(registry);
-        RequestContext::new(request, PathParams::new(HashMap::new()))
-    }
-
-    #[test]
-    fn resolve_bid_cpm_reads_seeded_store() {
-        let ctx = ctx_with_config(&[("bid_cpm", "0.35")]);
-        let cpm = block_on(resolve_bid_cpm(&ctx)).unwrap();
-        assert!((cpm - 0.35).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn resolve_bid_cpm_falls_back_without_registry() {
+    fn auction_without_config_errors() {
+        // Fail-loud: with no config store bound the `AppConfig` extractor errors
+        // (out-of-the-box requires `config push` before serving auctions).
+        let body = serde_json::json!({
+            "id": "rc",
+            "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }]
+        });
         let request = request_builder()
-            .method(Method::GET)
-            .uri("/")
-            .body(Body::empty())
+            .method(Method::POST)
+            .uri("/openrtb2/auction")
+            .body(Body::json(&body).expect("json body"))
             .expect("request");
         let ctx = RequestContext::new(request, PathParams::new(HashMap::new()));
-        let cpm = block_on(resolve_bid_cpm(&ctx)).unwrap();
-        assert_eq!(cpm.to_bits(), FIXED_BID_CPM.to_bits());
-    }
-
-    #[test]
-    fn resolve_bid_cpm_errors_on_malformed_value() {
-        let ctx = ctx_with_config(&[("bid_cpm", "-1")]);
-        block_on(resolve_bid_cpm(&ctx)).unwrap_err();
+        let response = response_from(block_on(handle_openrtb_auction(ctx)));
+        assert_ne!(response.status(), StatusCode::OK);
     }
 
     #[test]
