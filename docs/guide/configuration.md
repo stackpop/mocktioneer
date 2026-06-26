@@ -213,8 +213,12 @@ an error (the static/creative/pixel endpoints are unaffected). `bid_cpm = 0.20`
 is the shipped default value, not a runtime fallback.
 :::
 
-Any key can be overridden at runtime via the `MOCKTIONEER__<KEY>` env overlay
-(e.g. `MOCKTIONEER__BID_CPM=0.35`).
+Any key can be overridden via the `MOCKTIONEER__<KEY>` env overlay
+(e.g. `MOCKTIONEER__BID_CPM=0.35`). The overlay is applied **when the CLI loads
+`mocktioneer.toml`** (during `config validate` / `diff` / `push`), so it changes
+the value pushed into the config-store blob — set it before `config push`. It
+does **not** mutate config the running server has already loaded; re-push to
+roll out a change.
 
 ## Logging Configuration
 

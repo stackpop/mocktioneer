@@ -40,7 +40,7 @@
 | `crates/mocktioneer-core/src/config.rs`                                                                               | `MocktioneerConfig` typed config                                                                         | Create        |
 | `crates/mocktioneer-core/src/lib.rs`                                                                                  | `pub mod config;`                                                                                        | Modify        |
 | `crates/mocktioneer-core/src/auction.rs`                                                                              | Thread `cpm: f64` into bid builders                                                                      | Modify        |
-| `crates/mocktioneer-core/src/routes.rs`                                                                               | `resolve_bid_cpm` + `cpm_from_lookup` helpers; wire both handlers                                        | Modify        |
+| `crates/mocktioneer-core/src/routes.rs`                                                                               | Fail-loud `AppConfig<MocktioneerConfig>` extractor on both handlers (R8)                                  | Modify        |
 | `mocktioneer.toml`                                                                                                    | Typed config values (default `bid_cpm = 0.20`)                                                           | Create        |
 | `crates/mocktioneer-cli/{Cargo.toml,src/main.rs}`                                                                     | Custom CLI mirroring edgezero `<name>-cli`                                                               | Create        |
 | `Dockerfile`                                                                                                          | Pre-copy `mocktioneer-cli` manifest before `cargo fetch`                                                 | Modify        |
@@ -475,285 +475,62 @@ git commit -m "feat: add MocktioneerConfig typed config (bid_cpm, validated)"
 - Modify: `crates/mocktioneer-core/src/auction.rs` (`build_openrtb_response`, `build_aps_response`, tests)
 - Modify: `crates/mocktioneer-core/src/routes.rs` (`handle_openrtb_auction`, `handle_aps_bid`, new helpers, imports)
 
-- [ ] **Step 1: Write the failing pure-helper tests in `routes.rs`**
+### As built (R8 fail-loud blob model)
 
-In `crates/mocktioneer-core/src/routes.rs`, inside the existing `#[cfg(test)] mod tests { ... }` block, add:
+> The original step-by-step (pure `cpm_from_lookup`, `resolve_bid_cpm`, and a
+> `None → FIXED_BID_CPM` fallback) was **removed** — it predates the blob
+> cutover and must not be implemented. The behaviour that shipped:
 
-```rust
-    #[test]
-    fn cpm_from_lookup_falls_back_when_absent() {
-        assert_eq!(
-            cpm_from_lookup(None).unwrap().to_bits(),
-            crate::auction::FIXED_BID_CPM.to_bits()
-        );
-    }
+1. **Builders take `cpm: f64`.** `build_openrtb_response(req, host, sig, cpm)`
+   and `build_aps_response(req, host, cpm)` replace their direct `FIXED_BID_CPM`
+   reads with the parameter; `FIXED_BID_CPM` stays the builders' default arg +
+   the shipped `mocktioneer.toml` value. Every `auction.rs` /
+   `tests/aps_endpoints.rs` call site passes `FIXED_BID_CPM` explicitly (and do
+   **not** touch the separate `mediation.rs::build_openrtb_response`).
 
-    #[test]
-    fn cpm_from_lookup_parses_valid_value() {
-        assert!((cpm_from_lookup(Some("0.35".to_owned())).unwrap() - 0.35).abs() < f64::EPSILON);
-    }
+2. **Handlers read typed config via the fail-loud `AppConfig` extractor.** Add
+   `use edgezero_core::extractor::AppConfig;` and
+   `use crate::config::MocktioneerConfig;`, then:
 
-    #[test]
-    fn cpm_from_lookup_rejects_bad_values() {
-        for bad in ["-1", "0", "abc", "inf", "NaN", ""] {
-            assert!(
-                cpm_from_lookup(Some(bad.to_owned())).is_err(),
-                "expected {bad:?} to error"
-            );
-        }
-    }
-```
+   ```rust
+   #[action]
+   pub async fn handle_openrtb_auction(
+       RequestContext(ctx): RequestContext,
+       ForwardedHost(host): ForwardedHost,
+       ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
+       AppConfig(cfg): AppConfig<MocktioneerConfig>,
+   ) -> Result<Response, EdgeError> { /* … build_openrtb_response(&req, &host, sig, cfg.bid_cpm) */ }
 
-- [ ] **Step 2: Run to verify failure**
+   #[action]
+   pub async fn handle_aps_bid(
+       ForwardedHost(host): ForwardedHost,
+       ValidatedJson(req): ValidatedJson<ApsBidRequest>,
+       AppConfig(cfg): AppConfig<MocktioneerConfig>,
+   ) -> Result<Response, EdgeError> { /* … build_aps_response(&req, &host, cfg.bid_cpm) */ }
+   ```
 
-Run: `cargo test -p mocktioneer-core routes::tests::cpm_from_lookup 2>&1 | tail -20`
-Expected: FAIL — `cannot find function cpm_from_lookup`.
+   With no store bound / no blob pushed, the extractor errors
+   (`config_out_of_date`) — auction/APS require a `config push`. `FIXED_BID_CPM`
+   is dropped from `routes.rs` imports (no longer referenced there).
 
-- [ ] **Step 3: Add the resolution helpers + import**
+3. **Tests seed a blob.** The `routes.rs` test `ctx()` helper seeds the default
+   config store with a blob envelope (`StoreRegistry::single_id` +
+   `ConfigStoreBinding` + `BlobEnvelope::new` over an in-memory `MapConfigStore`
+   holding `{ "mocktioneer_config": "<envelope for {bid_cpm}>" }`), so the
+   existing handler tests keep exercising their 400/422 paths. Add
+   `auction_uses_seeded_cpm` (seed `0.35` → assert bid `price == 0.35`) and
+   `auction_without_config_errors` (no registry → handler errors). The
+   `tests/endpoints.rs` router auction test inserts the same registry.
 
-In `crates/mocktioneer-core/src/routes.rs`, extend the auction import to include `FIXED_BID_CPM`:
+4. **Verify + commit.**
 
-```rust
-use crate::auction::{
-    build_aps_response, build_openrtb_response, is_standard_size, standard_sizes, FIXED_BID_CPM,
-};
-```
+   Run: `cargo test -p mocktioneer-core && cargo clippy -p mocktioneer-core --all-targets --all-features -- -D warnings`
+   Expected: PASS.
 
-Add these two functions near the handlers (module scope, not inside a fn):
-
-```rust
-/// Interpret a config-store lookup for `bid_cpm`. Pure (no `ctx`) so it is
-/// unit-testable. `None` (store absent / unseeded / key missing) → default;
-/// a present-but-unparseable / non-finite / ≤0 value → error.
-fn cpm_from_lookup(found: Option<String>) -> Result<f64, EdgeError> {
-    match found {
-        None => Ok(FIXED_BID_CPM),
-        Some(raw) => raw
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite() && *value > 0.0)
-            .ok_or_else(|| {
-                EdgeError::internal(anyhow::anyhow!(
-                    "config store `mocktioneer_config` has malformed bid_cpm: {raw:?}"
-                ))
-            }),
-    }
-}
-
-/// Resolve the effective bid CPM from the bound default config store, falling
-/// back to `FIXED_BID_CPM` when no store is bound. A backend read error
-/// propagates via `From<ConfigStoreError>`.
-async fn resolve_bid_cpm(ctx: &RequestContext) -> Result<f64, EdgeError> {
-    let Some(store) = ctx.config_store_default() else {
-        return Ok(FIXED_BID_CPM);
-    };
-    cpm_from_lookup(store.get("bid_cpm").await.map_err(EdgeError::from)?)
-}
-```
-
-- [ ] **Step 4: Run the pure-helper tests (expect PASS)**
-
-Run: `cargo test -p mocktioneer-core routes::tests::cpm_from_lookup`
-Expected: PASS.
-
-- [ ] **Step 4b: Add registry-backed `resolve_bid_cpm` tests (spec §5 preferred fixture)**
-
-Exercises the real `RequestContext` → `ConfigRegistry` → `config_store_default()` → `store.get` path with an in-memory store (the app-demo `config_flow.rs` pattern; all types are public, no `test-utils` feature). Add to the `#[cfg(test)] mod tests` block in `crates/mocktioneer-core/src/routes.rs`:
-
-```rust
-    // In-memory ConfigStore for tests (mirrors app-demo's MapConfigStore).
-    struct MapConfigStore(std::collections::HashMap<String, String>);
-
-    // `ConfigStore` is declared `#[async_trait(?Send)]` in edgezero-core, so
-    // the impl MUST use the same `(?Send)` mode or method signatures won't match.
-    #[async_trait(?Send)]
-    impl edgezero_core::config_store::ConfigStore for MapConfigStore {
-        async fn get(
-            &self,
-            key: &str,
-        ) -> Result<Option<String>, edgezero_core::config_store::ConfigStoreError> {
-            Ok(self.0.get(key).cloned())
-        }
-    }
-
-    fn ctx_with_config(pairs: &[(&str, &str)]) -> RequestContext {
-        use edgezero_core::config_store::ConfigStoreHandle;
-        use edgezero_core::store_registry::{ConfigRegistry, StoreRegistry};
-        use std::collections::{BTreeMap, HashMap};
-        use std::sync::Arc;
-
-        let map: HashMap<String, String> = pairs
-            .iter()
-            .map(|(k, v)| ((*k).to_owned(), (*v).to_owned()))
-            .collect();
-        let handle = ConfigStoreHandle::new(Arc::new(MapConfigStore(map)));
-        let by_id: BTreeMap<String, ConfigStoreHandle> =
-            [("mocktioneer_config".to_owned(), handle)].into_iter().collect();
-        let registry: ConfigRegistry =
-            StoreRegistry::new(by_id, "mocktioneer_config".to_owned());
-
-        let mut request = request_builder()
-            .method(Method::GET)
-            .uri("/")
-            .body(Body::empty())
-            .expect("request");
-        request.extensions_mut().insert(registry);
-        RequestContext::new(request, PathParams::new(std::collections::HashMap::new()))
-    }
-
-    #[test]
-    fn resolve_bid_cpm_reads_seeded_store() {
-        let ctx = ctx_with_config(&[("bid_cpm", "0.35")]);
-        let cpm = futures::executor::block_on(resolve_bid_cpm(&ctx)).unwrap();
-        assert!((cpm - 0.35).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn resolve_bid_cpm_falls_back_without_registry() {
-        let request = request_builder()
-            .method(Method::GET)
-            .uri("/")
-            .body(Body::empty())
-            .expect("request");
-        let ctx = RequestContext::new(request, PathParams::new(std::collections::HashMap::new()));
-        let cpm = futures::executor::block_on(resolve_bid_cpm(&ctx)).unwrap();
-        assert_eq!(cpm.to_bits(), FIXED_BID_CPM.to_bits());
-    }
-
-    #[test]
-    fn resolve_bid_cpm_errors_on_malformed_value() {
-        let ctx = ctx_with_config(&[("bid_cpm", "-1")]);
-        assert!(futures::executor::block_on(resolve_bid_cpm(&ctx)).is_err());
-    }
-```
-
-Note: `async_trait`, `request_builder`, `Method`, `Body`, `PathParams` are already imported in the test module (confirmed). `futures` is a dev-dependency of `mocktioneer-core`.
-
-Run: `cargo test -p mocktioneer-core routes::tests::resolve_bid_cpm`
-Expected: PASS (after Step 3's helpers exist).
-
-- [ ] **Step 5: Add `cpm: f64` to the bid builders (write the new builder tests first)**
-
-In `crates/mocktioneer-core/src/auction.rs`, inside its `#[cfg(test)] mod tests`, add:
-
-```rust
-    #[test]
-    fn openrtb_uses_supplied_cpm() {
-        let req = OpenRTBRequest {
-            id: "rc".to_owned(),
-            imp: vec![OpenrtbImp {
-                id: "1".to_owned(),
-                banner: Some(Banner {
-                    width: Some(300),
-                    height: Some(250),
-                    ..Default::default()
-                }),
-                ..Default::default()
-            }],
-            ..Default::default()
-        };
-        let resp = build_openrtb_response(&req, "host.test", test_signature(), 0.35);
-        assert!((resp.seatbid[0].bid[0].price - 0.35).abs() < f64::EPSILON);
-    }
-
-    #[test]
-    fn aps_uses_supplied_cpm() {
-        let req = ApsBidRequest {
-            pub_id: "test".to_owned(),
-            slots: vec![ApsSlot {
-                slot_id: "slot1".to_owned(),
-                sizes: vec![[300, 250]],
-                slot_name: None,
-            }],
-            page_url: None,
-            user_agent: None,
-            timeout: None,
-        };
-        let resp = build_aps_response(&req, "mock.test", 0.35);
-        let slot = &resp.contextual.slots[0];
-        let price = decode_aps_price(slot.amznbid.as_ref().unwrap()).unwrap();
-        assert!((price - 0.35).abs() < f64::EPSILON);
-    }
-```
-
-- [ ] **Step 6: Change the builder signatures + bodies**
-
-In `build_openrtb_response`, add the param and use it:
-
-```rust
-pub fn build_openrtb_response(
-    req: &OpenRTBRequest,
-    base_host: &str,
-    signature_status: SignatureStatus,
-    cpm: f64,
-) -> OpenRTBResponse {
-```
-
-Replace the deprecation `log::warn!` argument `FIXED_BID_CPM` with `cpm`, and replace `let price = FIXED_BID_CPM;` (≈line 120) with `let price = cpm;`.
-
-In `build_aps_response`:
-
-```rust
-pub fn build_aps_response(req: &ApsBidRequest, base_host: &str, cpm: f64) -> ApsBidResponse {
-```
-
-Replace `let price = FIXED_BID_CPM;` (≈line 259) with `let price = cpm;`.
-
-- [ ] **Step 7: Update ALL auction.rs builder call sites in tests**
-
-There are **many** test call sites, not two. Enumerate them:
-
-Run: `grep -rn "build_openrtb_response\|build_aps_response" crates/mocktioneer-core/src/auction.rs | grep -v "pub fn "`
-Expected: ~9 test call sites (e.g. lines ~344, 368, 389, 409, 436, 455, 488, 510, 563).
-
-Append `, FIXED_BID_CPM` to every `build_openrtb_response(&req, "host.test", test_signature())` and every `build_aps_response(&req, "mock.test")` call in `auction.rs` tests. They keep asserting against `FIXED_BID_CPM`, which is now the value they pass in.
-
-**Do NOT touch `crates/mocktioneer-core/src/mediation.rs:183/187`** — that is a _separate, private_ `build_openrtb_response(request.id, request.imp, winning_bids, base_host)` for the mediation path. It is fed by request bids, never `FIXED_BID_CPM`, and is out of scope for `cpm`.
-
-Run after editing: `cargo build -p mocktioneer-core 2>&1 | grep -c "this function takes" || echo "no arity errors"` to confirm no missed call sites.
-
-- [ ] **Step 8: Wire the handlers**
-
-In `crates/mocktioneer-core/src/routes.rs`:
-
-`handle_openrtb_auction` — resolve cpm and pass it (it already binds `RequestContext(ctx)`):
-
-```rust
-    let cpm = resolve_bid_cpm(&ctx).await?;
-    log::info!("auction id={}, imps={}", req.id, req.imp.len());
-    let resp = build_openrtb_response(&req, &host, signature_status, cpm);
-```
-
-`handle_aps_bid` — add the `RequestContext(ctx)` extractor and resolve cpm:
-
-```rust
-#[action]
-pub async fn handle_aps_bid(
-    RequestContext(ctx): RequestContext,
-    ForwardedHost(host): ForwardedHost,
-    ValidatedJson(req): ValidatedJson<ApsBidRequest>,
-) -> Result<Response, EdgeError> {
-    log::info!(
-        "APS auction pubId={}, slots={}",
-        req.pub_id,
-        req.slots.len()
-    );
-
-    let cpm = resolve_bid_cpm(&ctx).await?;
-    let resp = build_aps_response(&req, &host, cpm);
-```
-
-- [ ] **Step 9: Run the full core test suite**
-
-Run: `cargo test -p mocktioneer-core`
-Expected: PASS (new builder tests + updated existing tests + config tests).
-
-- [ ] **Step 10: Commit**
-
-```bash
-git add crates/mocktioneer-core/src/auction.rs crates/mocktioneer-core/src/routes.rs
-git commit -m "feat: resolve bid_cpm from config store at runtime (OpenRTB + APS), default FIXED_BID_CPM"
-```
+   ```bash
+   git add crates/mocktioneer-core/src/auction.rs crates/mocktioneer-core/src/routes.rs crates/mocktioneer-core/tests/endpoints.rs
+   git commit -m "feat: resolve bid_cpm from typed config (fail-loud AppConfig extractor, blob model)"
+   ```
 
 ---
 
@@ -1076,7 +853,7 @@ Add a step (in the existing native test job, after `cargo test`):
     rm -f .edgezero/local-config-mocktioneer_config.json
 ```
 
-A **bare** `config push --adapter axum` would silently seed the root `mocktioneer.toml` default (`0.20`) and a `test -f` only proves a file exists — it would pass even if `bid_cpm` were never wired. Seeding `0.35` via `--app-config` and asserting the JSON value with `jq` proves push writes the _configured_ value. The handler → response half (a seeded store yielding `0.35`) is proven deterministically by the registry-backed `resolve_bid_cpm` test (Task 6, Step 4b), so no flaky serve+curl is needed here. (`jq` is preinstalled on GitHub `ubuntu-latest`.)
+A **bare** `config push --adapter axum` would silently seed the root `mocktioneer.toml` default (`0.20`) and a `test -f` only proves a file exists — it would pass even if `bid_cpm` were never wired. Seeding `0.35` via `--app-config` and asserting the JSON value with `jq` proves push writes the _configured_ value. The handler → response half (a seeded store yielding `0.35`) is proven deterministically by the registry-backed `auction_uses_seeded_cpm` handler test (R8), so no flaky serve+curl is needed here. (`jq` is preinstalled on GitHub `ubuntu-latest`.)
 
 - [ ] **Step 4: Lint the workflow locally**
 
@@ -1145,9 +922,15 @@ Expected: PASS.
 Run: `find docs/.vitepress/dist docs/.vitepress/.temp -path '*superpowers*' -print -quit`
 Expected: **no output** (specs/plans excluded from the published build).
 
-- [ ] **Step 6: Semantic parity vs `main` (no store bound)**
+- [ ] **Step 6: Semantic parity vs `main` (R8: seed config first)**
 
-With no `.edgezero/local-config-*` present, hit `/openrtb2/auction` and `/e/dtb/bid` (via `cargo run -p mocktioneer-adapter-axum`) and confirm prices are `0.20` and the responses match `main` on semantic fields (price, sizes, `cur`, creative URLs, targeting) — IDs differ by design (`Uuid::now_v7()`).
+Under R8 the auction/APS endpoints are fail-loud, so seed first:
+`cargo run -p mocktioneer-cli -- config push --adapter axum --yes`. Then (via
+`cargo run -p mocktioneer-adapter-axum`) hit `/openrtb2/auction` and
+`/e/dtb/bid` and confirm prices are `0.20` and the responses match `main` on
+semantic fields (price, sizes, `cur`, creative URLs, targeting) — IDs differ by
+design (`Uuid::now_v7()`). Without a pushed blob both endpoints return
+`config_out_of_date` (expected).
 
 - [ ] **Step 7: Final commit (if any verification fixups were needed)**
 
@@ -1164,14 +947,14 @@ git commit -m "chore: verification fixups for edgezero #269 adaptation"
 - **§3.2 adapter entrypoints** → Tasks 2 (axum/cf/fastly) + 3 (spin). ✓
 - **§3.3 Spin wasip2 + runner** → Task 3 (adapter) + Task 12 (CI runner env). ✓
 - **§3.4 manifest `[stores.config]`** → Task 4. ✓
-- **§3.5 typed struct + runtime contract (incl. malformed-file vs read-error)** → Task 5 (struct) + Task 6 (`cpm_from_lookup`/`resolve_bid_cpm`; `None`→fallback covers absent/empty/missing-key; malformed value→error; read error→`From`). ✓
+- **§3.5 typed struct + runtime contract** → Task 5 (struct) + Task 6 (R8: fail-loud `AppConfig` extractor; no pushed blob → error; invalid value → validation error). ✓
 - **§3.6 config lifecycle (per-adapter backing, spin runtime-config)** → Task 3 (spin runtime-config.toml) + Task 4 (commands) + Task 8 (push) + Task 12 (axum seed). Cloud/Spin provision documented, not CI-stood-up, per spec. ✓
 - **§3.7 mocktioneer-cli (metadata/lints) + Dockerfile** → Task 8 + Task 9. ✓
 - **§3.8 docs (wasip2, pricing default, CLI story, gitignore, check-ci, prettier/VitePress)** → Task 0 (prettier/VitePress) + Task 10 (gitignore) + Task 11 (rest). ✓
 - **§3.9 CI** → Task 12. ✓
-- **§5 verification (incl. explicit seeded fixture, docker, prettier)** → Task 13 (+ pure `cpm_from_lookup` tests **and** registry-backed `resolve_bid_cpm` tests in Task 6 Step 4b covering seeded-0.35 / fallback / malformed-error; non-default `0.35` seed + `jq` assert in Tasks 12/13; docs build-exclusion `find` check in Tasks 0/13). ✓
+- **§5 verification (incl. explicit seeded fixture, docker, prettier)** → Task 13 (+ R8 registry-backed handler tests in Task 6 covering seeded-0.35 and no-config-error; non-default `0.35` seed + `jq` envelope assert in Tasks 12/13; docs build-exclusion `find` check in Tasks 0/13). ✓
 
-No placeholders; types/functions (`MocktioneerConfig`, `cpm_from_lookup`, `resolve_bid_cpm`, builder signatures with `cpm: f64`) are consistent across tasks.
+No placeholders; types/functions (`MocktioneerConfig`, the `AppConfig` extractor, builder signatures with `cpm: f64`) are consistent across tasks (R8).
 
 ---
 

@@ -1,4 +1,6 @@
 # Typed application config for Mocktioneer (maps 1:1 onto MocktioneerConfig).
-# `bid_cpm` is the default; override per-environment via `config push` or the
-# `MOCKTIONEER__BID_CPM` env overlay. Default keeps historical $0.20 behavior.
+# `bid_cpm` is the shipped default. To change it per-environment, set
+# `MOCKTIONEER__BID_CPM` (the env overlay is applied when the CLI loads this
+# file) and/or edit it, then `config push` — the overlay affects the value the
+# CLI pushes into the config-store blob, NOT already-pushed runtime config.
 bid_cpm = 0.20

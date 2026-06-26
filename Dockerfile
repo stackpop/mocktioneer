@@ -22,9 +22,17 @@ COPY crates/mocktioneer-cli/Cargo.toml crates/mocktioneer-cli/Cargo.toml
 
 COPY crates ./crates
 COPY edgezero.toml ./edgezero.toml
+COPY mocktioneer.toml ./mocktioneer.toml
 
 RUN cargo fetch --locked
-RUN cargo build --locked --release -p mocktioneer-adapter-axum
+RUN cargo build --locked --release -p mocktioneer-adapter-axum -p mocktioneer-cli
+
+# Seed the default typed-config blob into `.edgezero/` so the OpenRTB/APS
+# endpoints serve out-of-the-box: under edgezero #269 they read `bid_cpm`
+# through the fail-loud `AppConfig` extractor and 503 until a blob is pushed.
+# (Override at deploy time by mounting your own
+# `/app/.edgezero/local-config-mocktioneer_config.json`.)
+RUN ./target/release/mocktioneer-cli config push --adapter axum --yes
 
 FROM debian:stable-slim AS runtime
 
@@ -35,7 +43,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 RUN useradd --create-home --uid 10001 appuser
 
+WORKDIR /app
+
 COPY --from=builder /app/target/release/mocktioneer-adapter-axum /usr/local/bin/mocktioneer-adapter-axum
+# The Axum config store reads `./.edgezero/local-config-<id>.json` relative to
+# the working directory, so the seeded blob must sit under the runtime WORKDIR.
+COPY --from=builder --chown=10001:10001 /app/.edgezero /app/.edgezero
 
 USER appuser
 

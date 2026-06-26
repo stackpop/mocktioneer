@@ -67,7 +67,11 @@ Logs are written to stdout. Adjust `level` for more or less verbosity:
 
 ## Docker Deployment
 
-This repository does not include a Dockerfile. If you add one, you can containerize the Axum adapter like this:
+The repository ships a multi-stage `Dockerfile` (also built and pushed to
+`ghcr.io/stackpop/mocktioneer` by CI). The build **seeds the default typed-config
+blob** into `/app/.edgezero/`, so the OpenRTB/APS endpoints work out of the box
+(they read `bid_cpm` via the fail-loud `AppConfig` extractor and would otherwise
+503 until a blob is pushed):
 
 ```bash
 # Build the image
@@ -78,6 +82,14 @@ docker run -p 8787:8787 mocktioneer:latest
 
 # Run on custom port
 docker run -p 3000:8787 mocktioneer:latest
+```
+
+To override the baked-in config, mount your own blob over the seeded file:
+
+```bash
+docker run -p 8787:8787 \
+  -v "$PWD/.edgezero/local-config-mocktioneer_config.json:/app/.edgezero/local-config-mocktioneer_config.json:ro" \
+  mocktioneer:latest
 ```
 
 ## Development Workflow
