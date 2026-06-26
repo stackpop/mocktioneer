@@ -180,25 +180,17 @@ disturb Fastly's wasip1 Viceroy runner.
 
 ```rust
 use serde::{Deserialize, Serialize};
-use validator::{Validate, ValidationError};
+use validator::Validate;
 
 #[derive(Debug, Deserialize, Serialize, Validate, edgezero_core::AppConfig)]
 #[serde(deny_unknown_fields)]
 pub struct MocktioneerConfig {
-    /// Fixed bid CPM in USD. Validated finite and strictly positive.
-    #[validate(custom(function = "validate_bid_cpm"))]
+    /// Fixed bid CPM in USD. Strictly positive — `exclusive_min` rejects
+    /// `0.0`, negatives, and `NaN`; non-finite floats are also rejected by
+    /// edgezero's typed loader. (`_f64` suffix satisfies the strict
+    /// `default_numeric_fallback` clippy lint.)
+    #[validate(range(exclusive_min = 0.0_f64))]
     pub bid_cpm: f64,
-}
-
-// `validator` custom fns take a reference to the field (cf.
-// routes.rs `validate_static_asset_size(value: &str)`); `range` does not
-// reject NaN / inf for floats, so validate explicitly.
-fn validate_bid_cpm(value: &f64) -> Result<(), ValidationError> {
-    if value.is_finite() && *value > 0.0 {
-        Ok(())
-    } else {
-        Err(ValidationError::new("bid_cpm_must_be_finite_positive"))
-    }
 }
 ```
 
