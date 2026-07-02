@@ -49,6 +49,7 @@ Full documentation is available at **[stackpop.github.io/mocktioneer](https://st
 | `POST /e/dtb/bid`                   | APS TAM bid request          |
 | `GET /static/creatives/{size}.html` | Creative wrapper             |
 | `GET /_/sizes`                      | Supported sizes with pricing |
+| `GET /_mocktioneer/{manifest,config,routes}` | Introspection (manifest / config / route table) |
 
 See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for all endpoints.
 

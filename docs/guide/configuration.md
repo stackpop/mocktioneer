@@ -84,8 +84,32 @@ adapters = ["axum", "cloudflare", "fastly", "spin"]
 | `/sync/start`              | GET     | `handle_sync_start`       | EC pixel sync initiation |
 | `/sync/done`               | GET     | `handle_sync_done`        | EC pixel sync callback   |
 | `/resolve`                 | GET     | `handle_resolve`          | EC pull sync resolution  |
+| `/_mocktioneer/manifest`   | GET     | `introspection::manifest` | Full manifest as JSON    |
+| `/_mocktioneer/config`     | GET     | `introspection::config`   | Effective app config     |
+| `/_mocktioneer/routes`     | GET     | `introspection::routes`   | Route table as JSON      |
 
 All routes also have OPTIONS handlers for CORS preflight.
+
+### Introspection Routes
+
+The `/_mocktioneer/{manifest,config,routes}` endpoints are **framework-supplied**
+handlers from `edgezero_core::introspection`, bound like any other route in
+`edgezero.toml`:
+
+- **`manifest`** — the full `edgezero.toml` manifest as JSON (baked at compile
+  time; `[environment.secrets]` values are redacted).
+- **`config`** — the effective app config from the default config store (the
+  pushed `bid_cpm` blob's `.data`), with any `#[secret]` fields left as
+  unresolved key-name references (secret-safe).
+- **`routes`** — the live route table as `[{ "method", "path" }]`.
+
+::: warning Unauthenticated
+These endpoints are unauthenticated wherever bound — restrict access at the
+network/middleware layer before exposing them publicly. `manifest` emits
+`[environment.variables]` values verbatim (only `[environment.secrets]` are
+redacted), so keep secrets out of `[environment.variables]`. Mocktioneer
+declares no `[environment]` section, so nothing sensitive is exposed today.
+:::
 
 ## Adapter Configuration
 

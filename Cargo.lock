@@ -692,7 +692,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#42843b1c3934fab32f99cc76ddd5881f421cccc7"
+source = "git+https://github.com/stackpop/edgezero.git?branch=worktree-feature%2Bintrospection-routes#89996235d122807a1f5b18f34bb3d46c4c3cd7a3"
 dependencies = [
  "toml",
 ]
@@ -700,7 +700,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#42843b1c3934fab32f99cc76ddd5881f421cccc7"
+source = "git+https://github.com/stackpop/edgezero.git?branch=worktree-feature%2Bintrospection-routes#89996235d122807a1f5b18f34bb3d46c4c3cd7a3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -728,7 +728,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#42843b1c3934fab32f99cc76ddd5881f421cccc7"
+source = "git+https://github.com/stackpop/edgezero.git?branch=worktree-feature%2Bintrospection-routes#89996235d122807a1f5b18f34bb3d46c4c3cd7a3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -751,7 +751,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#42843b1c3934fab32f99cc76ddd5881f421cccc7"
+source = "git+https://github.com/stackpop/edgezero.git?branch=worktree-feature%2Bintrospection-routes#89996235d122807a1f5b18f34bb3d46c4c3cd7a3"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -780,7 +780,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-spin"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#42843b1c3934fab32f99cc76ddd5881f421cccc7"
+source = "git+https://github.com/stackpop/edgezero.git?branch=worktree-feature%2Bintrospection-routes#89996235d122807a1f5b18f34bb3d46c4c3cd7a3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -807,7 +807,7 @@ dependencies = [
 [[package]]
 name = "edgezero-cli"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#42843b1c3934fab32f99cc76ddd5881f421cccc7"
+source = "git+https://github.com/stackpop/edgezero.git?branch=worktree-feature%2Bintrospection-routes#89996235d122807a1f5b18f34bb3d46c4c3cd7a3"
 dependencies = [
  "chrono",
  "clap",
@@ -832,7 +832,7 @@ dependencies = [
 [[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#42843b1c3934fab32f99cc76ddd5881f421cccc7"
+source = "git+https://github.com/stackpop/edgezero.git?branch=worktree-feature%2Bintrospection-routes#89996235d122807a1f5b18f34bb3d46c4c3cd7a3"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -863,12 +863,13 @@ dependencies = [
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?branch=main#42843b1c3934fab32f99cc76ddd5881f421cccc7"
+source = "git+https://github.com/stackpop/edgezero.git?branch=worktree-feature%2Bintrospection-routes#89996235d122807a1f5b18f34bb3d46c4c3cd7a3"
 dependencies = [
  "log",
  "proc-macro2",
  "quote",
  "serde",
+ "serde_json",
  "syn 2.0.118",
  "toml",
  "validator",
