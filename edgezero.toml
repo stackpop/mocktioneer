@@ -8,6 +8,7 @@ middleware = [
 
 [stores.config]
 ids = ["mocktioneer_config"]
+default = "mocktioneer_config"
 
 [[triggers.http]]
 id = "root"

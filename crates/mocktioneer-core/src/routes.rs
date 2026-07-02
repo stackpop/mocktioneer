@@ -314,10 +314,10 @@ pub async fn handle_root(ForwardedHost(host): ForwardedHost) -> Result<Response,
 
 #[action]
 pub async fn handle_openrtb_auction(
+    AppConfig(cfg): AppConfig<MocktioneerConfig>,
     RequestContext(ctx): RequestContext,
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
-    AppConfig(cfg): AppConfig<MocktioneerConfig>,
 ) -> Result<Response, EdgeError> {
     // Capture signature verification status for metadata
     let signature_status =
@@ -470,9 +470,9 @@ pub async fn handle_pixel(
 
 #[action]
 pub async fn handle_aps_bid(
+    AppConfig(cfg): AppConfig<MocktioneerConfig>,
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<ApsBidRequest>,
-    AppConfig(cfg): AppConfig<MocktioneerConfig>,
 ) -> Result<Response, EdgeError> {
     log::info!(
         "APS auction pubId={}, slots={}",

@@ -36,14 +36,8 @@ test-results/
 # EdgeZero local config/kv state (config push --adapter axum, etc.)
 .edgezero/
 
-# Axum
-axum.toml
-
-# Cloudflare Workers
+# Cloudflare
 .wrangler/
-
-# Fastly
-fastly.toml
 
 # Spin
 .spin/
