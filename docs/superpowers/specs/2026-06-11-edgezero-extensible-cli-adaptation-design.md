@@ -199,6 +199,7 @@ pub struct MocktioneerConfig {
 - Root **`mocktioneer.toml`** (1:1, no `[config]` wrapper): `bid_cpm = 0.20`.
 
 **Runtime resolution — `AppConfig` extractor, fail-loud (R8 / blob model).**
+
 > Superseded the original per-leaf `resolve_bid_cpm`/`get("bid_cpm")` design.
 > edgezero `89f59266` stores the whole typed config as one canonical-JSON
 > **blob envelope** (SHA-gated) under the store's key, read via the
@@ -239,12 +240,12 @@ pub async fn handle_aps_bid(
 fetches the blob at the bound store's `default_key`, verifies the envelope SHA,
 deserialises into `MocktioneerConfig`, and runs `validator`. Outcomes:
 
-| Runtime situation | Result |
-| --- | --- |
-| No `[stores.config]` / no config store bound | **error** (`EdgeError::internal` "no default config store registered") |
-| Store bound but **no blob pushed** yet | **error** (`config_out_of_date` — "run `config push`") |
-| Blob present, valid | typed `cfg.bid_cpm` |
-| Blob present, value invalid (`bid_cpm` ≤ 0 / non-finite) | **error** (validation) |
+| Runtime situation                                        | Result                                                                 |
+| -------------------------------------------------------- | ---------------------------------------------------------------------- |
+| No `[stores.config]` / no config store bound             | **error** (`EdgeError::internal` "no default config store registered") |
+| Store bound but **no blob pushed** yet                   | **error** (`config_out_of_date` — "run `config push`")                 |
+| Blob present, valid                                      | typed `cfg.bid_cpm`                                                    |
+| Blob present, value invalid (`bid_cpm` ≤ 0 / non-finite) | **error** (validation)                                                 |
 
 So OpenRTB/APS **require a `config push` per deploy** before they serve;
 `FIXED_BID_CPM` is the builders' default arg + the shipped `mocktioneer.toml`
@@ -356,7 +357,7 @@ and malformed-value (error) branches without a live backend.
 - **Docs formatter + VitePress exclusion (mandatory — this spec lives under
   `docs/`).** `docs/package.json`'s `format` runs `prettier --check .` and the
   format CI job runs it; it **fails on this spec file** today, and `npm run
-  build` renders specs/plans into `docs/.vitepress/dist/…/superpowers/…` (and a
+build` renders specs/plans into `docs/.vitepress/dist/…/superpowers/…` (and a
   `.vitepress/.temp/`). Required: (a) add `superpowers/` to
   `docs/.prettierignore`; (b) add `srcExclude: ['**/superpowers/**']` to the
   VitePress config so internal specs aren't published; (c) ignore the build
@@ -367,7 +368,7 @@ and malformed-value (error) branches without a live backend.
   (d) **verify after a build, not before** — run `npm run build` first, then
   `npm run format && npm run lint`, and assert
   `find docs/.vitepress/dist docs/.vitepress/.temp -path '*superpowers*' -print
-  -quit` yields nothing. (The prior revision only checked `format` pre-build, so
+-quit` yields nothing. (The prior revision only checked `format` pre-build, so
   it missed the ~700 ESLint errors generated files produce.)
 
 ### 3.9 CI — `.github/workflows/test.yml`
@@ -401,19 +402,19 @@ and malformed-value (error) branches without a live backend.
 
 ## 4. Risks & mitigations
 
-| Risk                                                       | Mitigation                                                                                                                              |
-| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| New parser rejects an existing `[adapters.*]` table        | Compile-time `manifest.validate()` surfaces it; fix per upstream error.                                                                 |
-| Spin SDK 6 macro/type churn beyond template                | Mirror edgezero's `edgezero-adapter-spin` verbatim; build wasip2.                                                                       |
-| Wasmtime can't run the wasip2 component                    | Wasmtime 45.0.0 supports it; set `CARGO_TARGET_WASM32_WASIP2_RUNNER`; match edgezero's contract-test config.                            |
-| Fresh dev errors before any push (R8 fail-loud)            | Intended: auction/APS require `config push` once per deploy; documented in `configuration.md`/README (§3.5).                            |
-| Broken/malformed pushed _value_ masked as $0.20            | Read errors propagate; malformed present value errors (§3.5). Note a malformed _file_ degrades to fallback (bind-time drop), by design. |
-| `bid_cpm` never exercised (store unseeded)                 | CI seeds a non-default `0.35` via `--app-config` and `jq`-asserts it round-trips; registry-backed `auction_uses_seeded_cpm` handler test covers the read path (§5).                                |
-| Spin KV config silently empty (no `runtime-config.toml`)   | Add `runtime-config.toml` + `--runtime-config-file` to spin commands (§3.6).                                                            |
-| Docker dependency-cache layer stale/incomplete             | Cache hygiene only — `COPY crates` precedes `cargo fetch`; add the missing spin + cli manifests to the pre-copy list (§3.7).                                                       |
-| Spec under `docs/` fails the format CI gate                | Mandatory `docs/.prettierignore` + VitePress `srcExclude` (§3.8).                                                                       |
-| Pinning to an unmerged branch                              | Documented; re-pin to edgezero `main` post-merge.                                                                                       |
-| `.cargo/config.toml.local` patch drift (`edgezero-macros`) | Already lists it; verify it patches cleanly.                                                                                            |
+| Risk                                                       | Mitigation                                                                                                                                                          |
+| ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| New parser rejects an existing `[adapters.*]` table        | Compile-time `manifest.validate()` surfaces it; fix per upstream error.                                                                                             |
+| Spin SDK 6 macro/type churn beyond template                | Mirror edgezero's `edgezero-adapter-spin` verbatim; build wasip2.                                                                                                   |
+| Wasmtime can't run the wasip2 component                    | Wasmtime 45.0.0 supports it; set `CARGO_TARGET_WASM32_WASIP2_RUNNER`; match edgezero's contract-test config.                                                        |
+| Fresh dev errors before any push (R8 fail-loud)            | Intended: auction/APS require `config push` once per deploy; documented in `configuration.md`/README (§3.5).                                                        |
+| Broken/malformed pushed _value_ masked as $0.20            | Read errors propagate; malformed present value errors (§3.5). Note a malformed _file_ degrades to fallback (bind-time drop), by design.                             |
+| `bid_cpm` never exercised (store unseeded)                 | CI seeds a non-default `0.35` via `--app-config` and `jq`-asserts it round-trips; registry-backed `auction_uses_seeded_cpm` handler test covers the read path (§5). |
+| Spin KV config silently empty (no `runtime-config.toml`)   | Add `runtime-config.toml` + `--runtime-config-file` to spin commands (§3.6).                                                                                        |
+| Docker dependency-cache layer stale/incomplete             | Cache hygiene only — `COPY crates` precedes `cargo fetch`; add the missing spin + cli manifests to the pre-copy list (§3.7).                                        |
+| Spec under `docs/` fails the format CI gate                | Mandatory `docs/.prettierignore` + VitePress `srcExclude` (§3.8).                                                                                                   |
+| Pinning to an unmerged branch                              | Documented; re-pin to edgezero `main` post-merge.                                                                                                                   |
+| `.cargo/config.toml.local` patch drift (`edgezero-macros`) | Already lists it; verify it patches cleanly.                                                                                                                        |
 
 ## 5. Verification
 
@@ -446,8 +447,8 @@ and malformed-value (error) branches without a live backend.
      `jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' …` == `0.35`
      (the blob envelope; not a bare push + `test -f`).
 10. `docs/` gates pass: `cd docs && npm run format && npm run lint && npm run
-    build`, **and** `find docs/.vitepress/dist docs/.vitepress/.temp -path
-    '*superpowers*' -print -quit` produces no output (specs/plans excluded).
+build`, **and** `find docs/.vitepress/dist docs/.vitepress/.temp -path
+'*superpowers*' -print -quit` produces no output (specs/plans excluded).
 11. `docker build` succeeds with `mocktioneer-cli` in the workspace
     (nice-to-have; not a gate — the build resolves regardless per §3.7).
 
