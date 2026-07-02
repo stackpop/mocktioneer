@@ -8,6 +8,14 @@ The Mocktioneer adapter is not yet merged into upstream Prebid Server. Use the S
 **[github.com/stackpop/prebid-server](https://github.com/stackpop/prebid-server)**
 :::
 
+::: tip Push the config first
+Mocktioneer's auction endpoint (`/openrtb2/auction`) only returns bids after the
+typed config has been pushed once (`mocktioneer-cli config push --adapter <name>`).
+Do this before adding Mocktioneer as a bidder, or Prebid Server will see errors
+instead of bids. See
+[Configuration › Typed App Config](/guide/configuration#typed-app-config).
+:::
+
 ## Configuration
 
 ### Host Configuration

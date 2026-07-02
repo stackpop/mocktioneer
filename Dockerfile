@@ -22,7 +22,9 @@ COPY crates/mocktioneer-cli/Cargo.toml crates/mocktioneer-cli/Cargo.toml
 
 COPY crates ./crates
 COPY edgezero.toml ./edgezero.toml
-COPY mocktioneer.toml ./mocktioneer.toml
+# `mocktioneer.toml` is gitignored (per-env); ship the committed template as the
+# config the image seeds from.
+COPY mocktioneer.toml.example ./mocktioneer.toml
 
 RUN cargo fetch --locked
 RUN cargo build --locked --release -p mocktioneer-adapter-axum -p mocktioneer-cli

@@ -191,6 +191,13 @@ there is no `[config]` wrapper:
 bid_cpm = 0.20
 ```
 
+`mocktioneer.toml` is **gitignored** (per-environment); the repo commits
+`mocktioneer.toml.example` as the template. Create your local copy first:
+
+```bash
+cp mocktioneer.toml.example mocktioneer.toml   # then edit bid_cpm as needed
+```
+
 Validate it, preview the diff against the live store, then push it:
 
 ```bash

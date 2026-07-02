@@ -2,6 +2,20 @@
 
 The `/openrtb2/auction` endpoint accepts OpenRTB 2.x bid requests and returns deterministic bid responses.
 
+::: warning Requires a pushed config
+This endpoint reads `bid_cpm` from the typed app config via the fail-loud
+`AppConfig` extractor, so it returns an error (`config_out_of_date`) until the
+config blob has been pushed once for the target adapter:
+
+```bash
+cargo run -p mocktioneer-cli -- config push --adapter axum --yes
+```
+
+See [Configuration › Typed App Config](/guide/configuration#typed-app-config)
+for per-adapter details. (Static, `/pixel`, and `/_/sizes` endpoints work
+without it.)
+:::
+
 ## Endpoint
 
 ```

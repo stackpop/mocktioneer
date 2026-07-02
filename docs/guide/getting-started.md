@@ -51,9 +51,11 @@ cargo run -p mocktioneer-cli -- config validate --strict
 > **Seed the app config first.** The OpenRTB (`/openrtb2/auction`) and APS
 > (`/e/dtb/bid`) endpoints read `bid_cpm` from the typed config via the
 > fail-loud `AppConfig` extractor, so they error until you push the config once
-> per adapter:
+> per adapter. `mocktioneer.toml` is gitignored (per-env); create it from the
+> committed template, then push:
 >
 > ```bash
+> cp mocktioneer.toml.example mocktioneer.toml   # then edit bid_cpm if desired
 > cargo run -p mocktioneer-cli -- config push --adapter axum --yes
 > ```
 >

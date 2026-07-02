@@ -14,10 +14,17 @@ The Axum adapter runs Mocktioneer as a native Rust HTTP server. It's the recomme
 ## Quick Start
 
 ```bash
+# One-time: create the local config and push it (auction/APS are fail-loud)
+cp mocktioneer.toml.example mocktioneer.toml
+cargo run -p mocktioneer-cli -- config push --adapter axum --yes
+
 cargo run -p mocktioneer-adapter-axum
 ```
 
-The server starts at `http://127.0.0.1:8787`.
+The server starts at `http://127.0.0.1:8787`. Axum reads the pushed blob from
+`./.edgezero/local-config-mocktioneer_config.json` **once at startup**, so
+re-run `config push` and restart after changing `bid_cpm`. (Static/pixel/sizes
+endpoints work without a pushed config.)
 
 ## Using the CLI
 

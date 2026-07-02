@@ -30,6 +30,17 @@ The Fastly adapter runs Mocktioneer on Fastly's Compute platform, providing glob
 
 ## Local Development
 
+::: tip Push the config first
+`/openrtb2/auction` and `/e/dtb/bid` are fail-loud — push the typed config to
+the Fastly config store before serving (static/pixel/sizes work without it):
+
+```bash
+cp mocktioneer.toml.example mocktioneer.toml
+cargo run -p mocktioneer-cli -- config push --adapter fastly --local
+```
+
+:::
+
 Run locally using Fastly's Viceroy runtime:
 
 ```bash

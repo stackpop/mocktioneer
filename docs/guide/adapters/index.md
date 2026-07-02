@@ -97,13 +97,15 @@ library — no separate install needed:
 cargo run -p mocktioneer-cli -- serve --adapter cloudflare
 
 # typed config (lives only here — validated against MocktioneerConfig)
+cp mocktioneer.toml.example mocktioneer.toml       # gitignored per-env copy
 cargo run -p mocktioneer-cli -- config validate --strict
-cargo run -p mocktioneer-cli -- config push --adapter axum
+cargo run -p mocktioneer-cli -- config diff --adapter axum
+cargo run -p mocktioneer-cli -- config push --adapter axum --yes
 ```
 
 `serve`/`build`/`deploy`/`auth`/`provision` work from either the external
-`edgezero-cli` or `mocktioneer-cli`; the typed `config validate` / `config push`
-commands are only in `mocktioneer-cli`.
+`edgezero-cli` or `mocktioneer-cli`; the typed `config validate` / `config diff` /
+`config push` commands are only in `mocktioneer-cli`.
 
 ## Common Configuration
 

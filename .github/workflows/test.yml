@@ -53,7 +53,12 @@ jobs:
         run: cargo check --workspace --all-targets --features "fastly cloudflare"
 
       - name: Validate typed app config
-        run: cargo run -p mocktioneer-cli -- config validate --strict
+        run: |
+          # `mocktioneer.toml` is gitignored (per-env); the committed template is
+          # `mocktioneer.toml.example`. Materialise it so `config validate` (which
+          # reads the `<app-name>.toml` default path) has a file to check.
+          cp mocktioneer.toml.example mocktioneer.toml
+          cargo run -p mocktioneer-cli -- config validate --strict
 
       - name: Seed a non-default cpm and assert it round-trips (axum)
         run: |

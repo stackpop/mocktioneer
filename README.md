@@ -16,6 +16,9 @@ Deterministic OpenRTB banner bidder for edge platforms. Test client integrations
 git clone https://github.com/stackpop/mocktioneer.git
 cd mocktioneer
 
+# Create your local app config from the template (mocktioneer.toml is gitignored)
+cp mocktioneer.toml.example mocktioneer.toml
+
 # Seed the typed app config once (the auction/APS endpoints read bid_cpm from it
 # via the fail-loud AppConfig extractor and error until it is pushed).
 cargo run -p mocktioneer-cli -- config push --adapter axum --yes

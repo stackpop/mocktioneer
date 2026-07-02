@@ -33,12 +33,20 @@ node_modules/
 playwright-report/
 test-results/
 
+# EdgeZero local config/kv state (config push --adapter axum, etc.)
+.edgezero/
+
+# Axum
+axum.toml
+
 # Cloudflare Workers
 .wrangler/
 
+# Fastly
+fastly.toml
 
 # Spin
 .spin/
 
-# EdgeZero local config/kv state (config push --adapter axum, etc.)
-.edgezero/
+# Mocktioneer
+mocktioneer.toml
