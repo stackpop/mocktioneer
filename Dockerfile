@@ -36,7 +36,10 @@ RUN cargo build --locked --release -p mocktioneer-adapter-axum -p mocktioneer-cl
 # `/app/.edgezero/local-config-mocktioneer_config.json`.)
 RUN ./target/release/mocktioneer-cli config push --adapter axum --yes
 
-FROM debian:stable-slim AS runtime
+# Pin the runtime base to the same Debian release as the builder
+# (`rust:1.95.0-slim-bookworm`) so the runtime glibc can't drift out from under
+# the build env on a later rebuild.
+FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
