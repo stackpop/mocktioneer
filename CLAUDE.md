@@ -53,7 +53,12 @@ cargo run -p mocktioneer-adapter-axum
 # Run via EdgeZero CLI
 edgezero-cli serve --adapter cloudflare   # Cloudflare on :8787
 edgezero-cli serve --adapter fastly       # Fastly on :7676
-edgezero-cli serve --adapter spin         # Spin on :3000
+edgezero-cli serve --adapter spin         # Spin on :3000 — NOTE: `spin up` is
+                                          # currently blocked (spin-sdk 6.0.0
+                                          # imports wasi:http@0.3.0-rc, which no
+                                          # released Spin runtime provides).
+                                          # Build + wasmtime contract tests pass;
+                                          # live serve needs an upstream fix.
 
 # Playwright e2e tests
 cd tests/playwright && npm test
@@ -171,7 +176,8 @@ Every PR must pass:
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 3. `cargo test --workspace --all-targets`
 4. `cargo check --workspace --all-targets --features "fastly cloudflare"`
-5. `cargo run -p mocktioneer-cli -- config validate --strict`
+5. `cargo run -p mocktioneer-cli -- config validate --strict --app-config mocktioneer.toml.example`
+   (`mocktioneer.toml` is gitignored; CI copies the template first — see `test.yml`)
 6. Playwright e2e tests (`tests/playwright/`)
 7. ESLint + Prettier on `docs/`
 

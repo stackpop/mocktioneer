@@ -54,6 +54,12 @@ COPY --from=builder --chown=10001:10001 /app/.edgezero /app/.edgezero
 
 USER appuser
 
+# Bind to all interfaces so `docker run -p <host>:8787` (and k8s) can reach the
+# service — EdgeZero's Axum dev server otherwise defaults to 127.0.0.1:8787,
+# which is only reachable from inside the container.
+ENV EDGEZERO__ADAPTER__HOST=0.0.0.0 \
+    EDGEZERO__ADAPTER__PORT=8787
+
 EXPOSE 8787
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

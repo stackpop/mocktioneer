@@ -88,3 +88,36 @@ jobs:
           build-args: RUST_VERSION=${{ steps.rust.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      # Load the just-built image locally (reuses the gha cache, so this is
+      # near-instant). `load` can't be combined with a registry push in one
+      # step, hence the separate cache-hit build.
+      - name: Load image for smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          push: false
+          tags: mocktioneer:ci-smoke
+          platforms: linux/amd64
+          build-args: RUST_VERSION=${{ steps.rust.outputs.version }}
+          cache-from: type=gha
+
+      - name: Smoke test — reachable on mapped port and serves bids
+        run: |
+          cid="$(docker run -d -p 8787:8787 mocktioneer:ci-smoke)"
+          # Wait for the mapped host port — proves the container binds 0.0.0.0,
+          # not 127.0.0.1 (a loopback bind would make this fail).
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8787/ >/dev/null
+          # The baked-in config blob should let the auction endpoint serve a bid.
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/openrtb2/auction \
+            -H 'content-type: application/json' \
+            -d '{"id":"t","imp":[{"id":"1","banner":{"w":300,"h":250}}]}')"
+          echo "auction status: $code"
+          docker logs "$cid" 2>&1 | tail -20 || true
+          docker rm -f "$cid" >/dev/null 2>&1 || true
+          test "$code" = "200"

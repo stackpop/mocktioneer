@@ -998,6 +998,7 @@ fn sanitize_for_log(input: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auction::decode_aps_price;
     use edgezero_core::blob_envelope::BlobEnvelope;
     use edgezero_core::body::Body;
     use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
@@ -1130,6 +1131,47 @@ mod tests {
             .expect("request");
         let ctx = RequestContext::new(request, PathParams::new(HashMap::new()));
         let response = response_from(block_on(handle_openrtb_auction(ctx)));
+        assert_ne!(response.status(), StatusCode::OK);
+    }
+
+    #[test]
+    fn aps_bid_uses_seeded_cpm() {
+        let body = serde_json::json!({
+            "pubId": "5555",
+            "slots": [{ "slotID": "slot1", "sizes": [[300_i32, 250_i32]] }]
+        });
+        let ctx = ctx_with_cpm(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::json(&body).expect("json body"),
+            &[],
+            0.35_f64,
+        );
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body_bytes(response)).expect("json");
+        let amznbid = payload["contextual"]["slots"][0]["amznbid"]
+            .as_str()
+            .expect("amznbid");
+        let price = decode_aps_price(amznbid).expect("decode price");
+        assert!((price - 0.35).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn aps_bid_without_config_errors() {
+        // Fail-loud parity with the OpenRTB path: no config store bound → error.
+        let body = serde_json::json!({
+            "pubId": "5555",
+            "slots": [{ "slotID": "slot1", "sizes": [[300_i32, 250_i32]] }]
+        });
+        let request = request_builder()
+            .method(Method::POST)
+            .uri("/e/dtb/bid")
+            .body(Body::json(&body).expect("json body"))
+            .expect("request");
+        let ctx = RequestContext::new(request, PathParams::new(HashMap::new()));
+        let response = response_from(block_on(handle_aps_bid(ctx)));
         assert_ne!(response.status(), StatusCode::OK);
     }
 

@@ -186,6 +186,16 @@ echo_stdout = true
 Spin targets `wasm32-wasip2` (spin-sdk 6). Its config store is KV-backed, so the
 `serve`/`deploy` commands pass a `--runtime-config-file` declaring the KV label:
 
+::: warning `spin up` currently blocked (upstream)
+The Spin adapter **compiles** to a `wasm32-wasip2` component and passes the
+router-level contract tests (run under `wasmtime`), but `spin up` on today's
+Spin runtimes (e.g. 3.6.3) fails to link: `spin-sdk 6.0.0` pulls
+`wasi:http@0.3.0-rc`, which no released Spin provides (they expose
+`wasi:http@0.2`). This is a spin-sdk/runtime ABI mismatch to be resolved
+upstream in EdgeZero's `spin-sdk` pin — the Fastly / Cloudflare / Axum adapters
+are unaffected.
+:::
+
 ```toml
 [adapters.spin.adapter]
 crate = "crates/mocktioneer-adapter-spin"
