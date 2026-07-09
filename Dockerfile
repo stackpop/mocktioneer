@@ -22,12 +22,15 @@ COPY crates/mocktioneer-cli/Cargo.toml crates/mocktioneer-cli/Cargo.toml
 
 COPY crates ./crates
 COPY edgezero.toml ./edgezero.toml
-# `mocktioneer.toml` is gitignored (per-env); ship the committed template as the
-# config the image seeds from.
-COPY mocktioneer.toml.example ./mocktioneer.toml
 
 RUN cargo fetch --locked
 RUN cargo build --locked --release -p mocktioneer-adapter-axum -p mocktioneer-cli
+
+# `mocktioneer.toml` is gitignored (per-env); ship the committed template as the
+# config the image seeds from. Copied here (after the build layers) so that
+# editing `bid_cpm` in the template doesn't invalidate the dependency-fetch and
+# compile caches — only the cheap `config push` layer below re-runs.
+COPY mocktioneer.toml.example ./mocktioneer.toml
 
 # Seed the default typed-config blob into `.edgezero/` so the OpenRTB/APS
 # endpoints serve out-of-the-box: under edgezero #269 they read `bid_cpm`

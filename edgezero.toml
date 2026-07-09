@@ -282,7 +282,7 @@ features = ["spin"]
 
 [adapters.spin.commands]
 build = "spin build --from crates/mocktioneer-adapter-spin/spin.toml"
-deploy = "spin deploy --from crates/mocktioneer-adapter-spin/spin.toml --runtime-config-file crates/mocktioneer-adapter-spin/runtime-config.toml"
+deploy = "spin deploy --from crates/mocktioneer-adapter-spin/spin.toml"
 serve = "spin up --from crates/mocktioneer-adapter-spin/spin.toml --runtime-config-file crates/mocktioneer-adapter-spin/runtime-config.toml"
 
 [adapters.spin.logging]

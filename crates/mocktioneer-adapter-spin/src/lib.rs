@@ -1,11 +1,3 @@
-#![cfg_attr(
-    target_arch = "wasm32",
-    allow(
-        unsafe_code,
-        reason = "spin's #[http_service] macro generates the unsafe wasm export"
-    )
-)]
-
 #[cfg(target_arch = "wasm32")]
 use mocktioneer_core::MocktioneerApp;
 #[cfg(target_arch = "wasm32")]

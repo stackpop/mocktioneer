@@ -184,7 +184,9 @@ echo_stdout = true
 ### Spin Adapter
 
 Spin targets `wasm32-wasip2` (spin-sdk 6). Its config store is KV-backed, so the
-`serve`/`deploy` commands pass a `--runtime-config-file` declaring the KV label:
+`serve` command passes a `--runtime-config-file` declaring the KV label
+(`spin deploy` is plugin-mediated and provisions KV itself, so it takes no
+runtime-config flag):
 
 ::: warning `spin up` currently blocked (upstream)
 The Spin adapter **compiles** to a `wasm32-wasip2` component and passes the
@@ -209,7 +211,7 @@ features = ["spin"]
 [adapters.spin.commands]
 build = "spin build --from crates/mocktioneer-adapter-spin/spin.toml"
 serve = "spin up --from crates/mocktioneer-adapter-spin/spin.toml --runtime-config-file crates/mocktioneer-adapter-spin/runtime-config.toml"
-deploy = "spin deploy --from crates/mocktioneer-adapter-spin/spin.toml --runtime-config-file crates/mocktioneer-adapter-spin/runtime-config.toml"
+deploy = "spin deploy --from crates/mocktioneer-adapter-spin/spin.toml"
 
 [adapters.spin.logging]
 level = "info"

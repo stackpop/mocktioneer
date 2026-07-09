@@ -1009,7 +1009,7 @@ mod tests {
     use edgezero_core::response::IntoResponse as _;
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
-    use std::collections::{BTreeMap, HashMap};
+    use std::collections::HashMap;
     use std::sync::Arc;
 
     /// In-memory `ConfigStore` for tests (mirrors app-demo's `MapConfigStore`).
@@ -1052,16 +1052,13 @@ mod tests {
             [("mocktioneer_config".to_owned(), config_blob(bid_cpm))]
                 .into_iter()
                 .collect();
-        let handle = ConfigStoreHandle::new(Arc::new(MapConfigStore(map)));
-        let binding = ConfigStoreBinding {
-            handle,
-            default_key: "mocktioneer_config".to_owned(),
-        };
-        let by_id: BTreeMap<String, ConfigStoreBinding> =
-            [("mocktioneer_config".to_owned(), binding)]
-                .into_iter()
-                .collect();
-        StoreRegistry::new(by_id, "mocktioneer_config".to_owned())
+        StoreRegistry::single_id(
+            "mocktioneer_config".to_owned(),
+            ConfigStoreBinding {
+                handle: ConfigStoreHandle::new(Arc::new(MapConfigStore(map))),
+                default_key: "mocktioneer_config".to_owned(),
+            },
+        )
     }
 
     fn ctx(method: Method, uri: &str, body: Body, params: &[(&str, &str)]) -> RequestContext {
