@@ -1039,6 +1039,23 @@ mod tests {
             .to_vec()
     }
 
+    /// Assert the fail-loud compatibility contract for a bid route served with
+    /// no config store bound: `503 Service Unavailable`, a `Retry-After` header,
+    /// and a JSON body whose `error.kind` is `config_out_of_date`.
+    fn assert_config_out_of_date(response: Response) {
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok()),
+            Some("60"),
+        );
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body_bytes(response)).expect("json error body");
+        assert_eq!(payload["error"]["kind"], "config_out_of_date");
+    }
+
     /// A valid blob-envelope JSON string wrapping `{ "bid_cpm": <cpm> }`,
     /// matching what `config push` writes for the typed config.
     fn config_blob(bid_cpm: f64) -> String {
@@ -1063,6 +1080,27 @@ mod tests {
 
     fn ctx(method: Method, uri: &str, body: Body, params: &[(&str, &str)]) -> RequestContext {
         ctx_with_cpm(method, uri, body, params, 0.20_f64)
+    }
+
+    /// A `RequestContext` whose default config store is bound but empty — i.e. a
+    /// deploy that declared `[stores.config]` but never ran `config push`. The
+    /// `AppConfig` extractor then fails loud with `503 config_out_of_date`, the
+    /// documented "must push before serving bids" compatibility contract.
+    fn ctx_without_pushed_config(method: Method, uri: &str, body: Body) -> RequestContext {
+        let mut request = request_builder()
+            .method(method)
+            .uri(uri)
+            .body(body)
+            .expect("request");
+        let empty = StoreRegistry::single_id(
+            "mocktioneer_config".to_owned(),
+            ConfigStoreBinding {
+                handle: ConfigStoreHandle::new(Arc::new(MapConfigStore(HashMap::new()))),
+                default_key: "mocktioneer_config".to_owned(),
+            },
+        );
+        request.extensions_mut().insert(empty);
+        RequestContext::new(request, PathParams::new(HashMap::new()))
     }
 
     /// Like [`ctx`] but seeds the default config store with a `bid_cpm` blob.
@@ -1121,14 +1159,13 @@ mod tests {
             "id": "rc",
             "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }]
         });
-        let request = request_builder()
-            .method(Method::POST)
-            .uri("/openrtb2/auction")
-            .body(Body::json(&body).expect("json body"))
-            .expect("request");
-        let ctx = RequestContext::new(request, PathParams::new(HashMap::new()));
+        let ctx = ctx_without_pushed_config(
+            Method::POST,
+            "/openrtb2/auction",
+            Body::json(&body).expect("json body"),
+        );
         let response = response_from(block_on(handle_openrtb_auction(ctx)));
-        assert_ne!(response.status(), StatusCode::OK);
+        assert_config_out_of_date(response);
     }
 
     #[test]
@@ -1157,19 +1194,18 @@ mod tests {
 
     #[test]
     fn aps_bid_without_config_errors() {
-        // Fail-loud parity with the OpenRTB path: no config store bound → error.
+        // Fail-loud parity with the OpenRTB path: store bound but not pushed.
         let body = serde_json::json!({
             "pubId": "5555",
             "slots": [{ "slotID": "slot1", "sizes": [[300_i32, 250_i32]] }]
         });
-        let request = request_builder()
-            .method(Method::POST)
-            .uri("/e/dtb/bid")
-            .body(Body::json(&body).expect("json body"))
-            .expect("request");
-        let ctx = RequestContext::new(request, PathParams::new(HashMap::new()));
+        let ctx = ctx_without_pushed_config(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::json(&body).expect("json body"),
+        );
         let response = response_from(block_on(handle_aps_bid(ctx)));
-        assert_ne!(response.status(), StatusCode::OK);
+        assert_config_out_of_date(response);
     }
 
     #[test]

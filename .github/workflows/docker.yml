@@ -77,22 +77,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-          build-args: RUST_VERSION=${{ steps.rust.outputs.version }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      # Load the just-built image locally (reuses the gha cache, so this is
-      # near-instant). `load` can't be combined with a registry push in one
-      # step, hence the separate cache-hit build.
-      - name: Load image for smoke test
+      # Build once and load locally (no registry push yet) so the smoke test
+      # can gate publication — a broken image must never reach its final tag.
+      # `cache-to` is populated here so the publish step below is a near-instant
+      # cache hit of the exact same image.
+      - name: Build and load for smoke test
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -102,6 +91,7 @@ jobs:
           platforms: linux/amd64
           build-args: RUST_VERSION=${{ steps.rust.outputs.version }}
           cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Smoke test — reachable on mapped port and serves bids
         run: |
@@ -121,3 +111,16 @@ jobs:
           docker logs "$cid" 2>&1 | tail -20 || true
           docker rm -f "$cid" >/dev/null 2>&1 || true
           test "$code" = "200"
+
+      # Only now publish — reuses the gha cache from the build above, so this
+      # pushes the exact image the smoke test just validated (not a rebuild).
+      - name: Push validated image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64
+          build-args: RUST_VERSION=${{ steps.rust.outputs.version }}
+          cache-from: type=gha

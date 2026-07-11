@@ -43,7 +43,9 @@ library) — no external install needed, and it adds the typed config commands:
 
 ```bash
 cargo run -p mocktioneer-cli -- --help
-cargo run -p mocktioneer-cli -- config validate --strict
+# `mocktioneer.toml` is gitignored (created in Running Locally below); validate
+# the committed template so this works on a fresh checkout.
+cargo run -p mocktioneer-cli -- config validate --strict --app-config mocktioneer.toml.example
 ```
 
 ## Running Locally
