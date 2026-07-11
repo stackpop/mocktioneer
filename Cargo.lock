@@ -1748,9 +1748,11 @@ dependencies = [
 name = "mocktioneer-adapter-cloudflare"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "edgezero-adapter-cloudflare",
  "edgezero-core",
  "mocktioneer-core",
+ "serde_json",
  "wasm-bindgen-test",
  "worker",
 ]
@@ -1759,11 +1761,13 @@ dependencies = [
 name = "mocktioneer-adapter-fastly"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "edgezero-adapter-fastly",
  "edgezero-core",
  "fastly",
  "log",
  "mocktioneer-core",
+ "serde_json",
 ]
 
 [[package]]
