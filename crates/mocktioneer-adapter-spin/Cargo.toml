@@ -1,6 +1,6 @@
 [package]
 name = "mocktioneer-adapter-spin"
-description = "Spin / Fermyon adapter for Mocktioneer (wasm32-wasip2)."
+description = "Spin / Fermyon adapter for Mocktioneer (wasm32-wasip1)."
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
