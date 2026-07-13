@@ -1,9 +1,11 @@
 [package]
 name = "mocktioneer-adapter-spin"
-version = "0.1.0"
-edition = "2021"
-publish = false
-license.workspace = true
+description = "Spin / Fermyon adapter for Mocktioneer (wasm32-wasip2)."
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+version = { workspace = true }
 
 [[bin]]
 name = "mocktioneer-adapter-spin"

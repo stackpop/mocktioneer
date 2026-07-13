@@ -1,9 +1,11 @@
 [package]
 name = "mocktioneer-adapter-cloudflare"
-version = "0.1.0"
-edition = "2021"
-publish = false
-license.workspace = true
+description = "Cloudflare Workers adapter for Mocktioneer (wasm32-unknown-unknown)."
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+version = { workspace = true }
 
 [[bin]]
 name = "mocktioneer-adapter-cloudflare"

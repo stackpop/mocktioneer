@@ -3,7 +3,7 @@ mod tests {
     use edgezero_core::app::App;
     use edgezero_core::body::Body;
     use edgezero_core::http::{
-        header, request_builder, HeaderValue, Method, Request, Response, StatusCode,
+        HeaderValue, Method, Request, Response, StatusCode, header, request_builder,
     };
     use futures::executor::block_on;
 
