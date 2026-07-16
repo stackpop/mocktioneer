@@ -19,6 +19,9 @@ pub struct MocktioneerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use edgezero_core::app_config::{load_app_config, AppConfigError};
+    use std::env::temp_dir;
+    use std::fs::{remove_file, write};
 
     #[test]
     fn accepts_positive_finite_cpm() {
@@ -34,6 +37,28 @@ mod tests {
         for bad in [0.0_f64, -1.0_f64, f64::NAN] {
             let cfg = MocktioneerConfig { bid_cpm: bad };
             assert!(cfg.validate().is_err(), "expected {bad} to be rejected");
+        }
+    }
+
+    /// Pins the upstream guarantee the `bid_cpm` doc comment relies on: the
+    /// typed-config loader rejects non-finite floats *before* validation runs.
+    /// `range(exclusive_min = 0.0)` alone would let `inf` through (`inf > 0.0`
+    /// is true) and TOML can express `bid_cpm = inf`, so without that guard an
+    /// operator could serve infinite-priced bids. If edgezero ever drops it,
+    /// this test fails here rather than silently in production.
+    #[test]
+    fn loader_rejects_non_finite_bid_cpm() {
+        for literal in ["inf", "-inf", "nan"] {
+            let path = temp_dir().join(format!("mocktioneer-cfg-{literal}.toml"));
+            write(&path, format!("bid_cpm = {literal}\n")).expect("write temp config");
+            let result = load_app_config::<MocktioneerConfig>(&path, "mocktioneer");
+            drop(remove_file(&path));
+            // `InvalidValue` specifically — the loader's non-finite guard, not a
+            // downstream validation error (which `inf` would never trigger).
+            assert!(
+                matches!(result, Err(AppConfigError::InvalidValue { .. })),
+                "loader must reject `bid_cpm = {literal}` with InvalidValue",
+            );
         }
     }
 }

@@ -48,7 +48,7 @@ Full documentation is available at **[stackpop.github.io/mocktioneer](https://st
 | `POST /openrtb2/auction`            | OpenRTB 2.x bid request      |
 | `POST /e/dtb/bid`                   | APS TAM bid request          |
 | `GET /static/creatives/{size}.html` | Creative wrapper             |
-| `GET /_/sizes`                      | Supported sizes with pricing |
+| `GET /_/sizes`                      | Supported sizes              |
 | `GET /_mocktioneer/{manifest,config,routes}` | Introspection (manifest / config / route table) |
 
 See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for all endpoints.
