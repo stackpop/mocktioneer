@@ -33,6 +33,28 @@ methods = ["GET"]
 handler = "edgezero_core::introspection::routes"
 adapters = ["axum", "cloudflare", "fastly", "spin"]
 
+# CORS preflight for the introspection routes (parity with every other route).
+[[triggers.http]]
+id = "introspect_manifest_options"
+path = "/_mocktioneer/manifest"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly", "spin"]
+
+[[triggers.http]]
+id = "introspect_config_options"
+path = "/_mocktioneer/config"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly", "spin"]
+
+[[triggers.http]]
+id = "introspect_routes_options"
+path = "/_mocktioneer/routes"
+methods = ["OPTIONS"]
+handler = "mocktioneer_core::routes::handle_options"
+adapters = ["axum", "cloudflare", "fastly", "spin"]
+
 [[triggers.http]]
 id = "root"
 path = "/"

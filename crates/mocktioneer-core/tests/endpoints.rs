@@ -323,7 +323,18 @@ mod tests {
     #[test]
     fn options_includes_allow_and_cors_headers() {
         let app = app();
-        for path in ["/openrtb2/auction", "/sync/start", "/sync/done", "/resolve"] {
+        for path in [
+            "/openrtb2/auction",
+            "/sync/start",
+            "/sync/done",
+            "/resolve",
+            // Introspection routes carry CORS preflight like every other route
+            // (regression: these OPTIONS triggers returned 405 before they were
+            // added alongside the GET introspection routes).
+            "/_mocktioneer/manifest",
+            "/_mocktioneer/config",
+            "/_mocktioneer/routes",
+        ] {
             let response = dispatch(&app, make_request(Method::OPTIONS, path, Body::empty()));
             assert_eq!(response.status(), StatusCode::NO_CONTENT, "{path}");
             let allow = response
