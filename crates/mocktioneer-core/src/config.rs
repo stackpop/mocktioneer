@@ -19,9 +19,10 @@ pub struct MocktioneerConfig {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auction::FIXED_BID_CPM;
     use edgezero_core::app_config::{load_app_config, AppConfigError};
-    use std::env::temp_dir;
-    use std::fs::{remove_file, write};
+    use std::fs::write;
+    use tempfile::tempdir;
 
     #[test]
     fn accepts_positive_finite_cpm() {
@@ -48,11 +49,11 @@ mod tests {
     /// this test fails here rather than silently in production.
     #[test]
     fn loader_rejects_non_finite_bid_cpm() {
+        let dir = tempdir().expect("tempdir");
         for literal in ["inf", "-inf", "nan"] {
-            let path = temp_dir().join(format!("mocktioneer-cfg-{literal}.toml"));
+            let path = dir.path().join(format!("mocktioneer-cfg-{literal}.toml"));
             write(&path, format!("bid_cpm = {literal}\n")).expect("write temp config");
             let result = load_app_config::<MocktioneerConfig>(&path, "mocktioneer");
-            drop(remove_file(&path));
             // `InvalidValue` specifically — the loader's non-finite guard, not a
             // downstream validation error (which `inf` would never trigger).
             assert!(
@@ -60,5 +61,17 @@ mod tests {
                 "loader must reject `bid_cpm = {literal}` with InvalidValue",
             );
         }
+    }
+
+    /// The shipped `mocktioneer.toml.example` — which the Docker image bakes in
+    /// and CI validates — must still deserialize into the current struct and
+    /// carry the `FIXED_BID_CPM` default. Nothing else keeps the two in lockstep,
+    /// so a drift in either the template or the constant fails here.
+    #[test]
+    fn example_template_matches_shipped_default() {
+        let cfg: MocktioneerConfig =
+            toml::from_str(include_str!("../../../mocktioneer.toml.example"))
+                .expect("template parses into MocktioneerConfig");
+        assert_eq!(cfg.bid_cpm.to_bits(), FIXED_BID_CPM.to_bits());
     }
 }

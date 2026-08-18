@@ -6,8 +6,8 @@
 
 use clap::{Parser, Subcommand};
 use edgezero_cli::args::{
-    AuthArgs, BuildArgs, ConfigDiffArgs, ConfigPushArgs, ConfigValidateArgs, DeployArgs,
-    ProvisionArgs, ServeArgs,
+    AuthArgs, BuildArgs, ConfigDiffArgs, ConfigGcArgs, ConfigPushArgs, ConfigValidateArgs,
+    DeployArgs, ProvisionArgs, ServeArgs,
 };
 use edgezero_cli::DiffExit;
 use mocktioneer_core::config::MocktioneerConfig;
@@ -43,6 +43,11 @@ enum MocktioneerConfigCmd {
     /// Diff `mocktioneer.toml` against the live (or local-emulator) config
     /// store. Exits 0 (no changes), 1 (changes with `--exit-code`), 2 (error).
     Diff(ConfigDiffArgs),
+    /// Reclaim orphaned chunk entries the config store leaked from prior
+    /// oversized pushes. Store-derived and untyped (no `MocktioneerConfig`).
+    /// A dry-run by default; deletes only with `--yes` + an explicit
+    /// `--older-than`.
+    Gc(ConfigGcArgs),
     /// Push `mocktioneer.toml` as a blob envelope to the adapter's config store.
     Push(ConfigPushArgs),
     /// Validate `edgezero.toml` + `mocktioneer.toml` against `MocktioneerConfig`.
@@ -66,6 +71,9 @@ fn main() {
                 Err(err) => Err(err),
             }
         }
+        // `gc` inspects the store, not the typed config, so it uses the
+        // untyped entry point (no `MocktioneerConfig` parameterisation).
+        Cmd::Config(MocktioneerConfigCmd::Gc(args)) => edgezero_cli::run_config_gc(&args),
         Cmd::Config(MocktioneerConfigCmd::Push(args)) => {
             edgezero_cli::run_config_push_typed::<MocktioneerConfig>(&args)
         }
@@ -81,5 +89,19 @@ fn main() {
         // Exit 2 for all errors so `config diff` errors satisfy the "errors are
         // always ≥ 2" contract; push / validate are not 1-vs-2 sensitive.
         process::exit(2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Args;
+    use clap::CommandFactory as _;
+
+    /// Catches clap wiring mistakes (duplicate short flags, shadowed
+    /// subcommands, malformed `#[command]` attrs) that otherwise only surface
+    /// when the binary is run.
+    #[test]
+    fn cli_definition_is_valid() {
+        Args::command().debug_assert();
     }
 }

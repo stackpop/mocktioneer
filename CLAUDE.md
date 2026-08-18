@@ -176,8 +176,9 @@ Every PR must pass:
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 3. `cargo test --workspace --all-targets`
 4. `cargo check --workspace --all-targets --features "fastly cloudflare"`
-5. `cargo run -p mocktioneer-cli -- config validate --strict --app-config mocktioneer.toml.example`
-   (`mocktioneer.toml` is gitignored; CI copies the template first — see `test.yml`)
+5. `cp mocktioneer.toml.example mocktioneer.toml && cargo run -p mocktioneer-cli -- config validate --strict`
+   (`mocktioneer.toml` is gitignored; CI copies the template first, then validates
+   the default path — this is the exact `test.yml` invocation)
 6. Playwright e2e tests (`tests/playwright/`)
 7. ESLint + Prettier on `docs/`
 

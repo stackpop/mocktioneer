@@ -356,4 +356,36 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn introspection_routes_serve_json() {
+        let app = app();
+
+        // `routes` — the live route table as [{ "method", "path" }]. Needs no
+        // config store.
+        let routes = dispatch(
+            &app,
+            make_request(Method::GET, "/_mocktioneer/routes", Body::empty()),
+        );
+        assert_eq!(routes.status(), StatusCode::OK);
+        let table: serde_json::Value = serde_json::from_slice(&body_bytes(routes)).unwrap();
+        let entries = table.as_array().expect("route table is a JSON array");
+        assert!(entries
+            .iter()
+            .any(|entry| { entry["path"] == "/openrtb2/auction" && entry["method"] == "POST" }));
+
+        // `manifest` — the compiled manifest as JSON. Needs no config store.
+        let manifest = dispatch(
+            &app,
+            make_request(Method::GET, "/_mocktioneer/manifest", Body::empty()),
+        );
+        assert_eq!(manifest.status(), StatusCode::OK);
+
+        // `config` — the effective app config; reads the default config store,
+        // so it needs the same seeded registry the auction tests use.
+        let mut request = make_request(Method::GET, "/_mocktioneer/config", Body::empty());
+        request.extensions_mut().insert(config_registry(0.20_f64));
+        let config = dispatch(&app, request);
+        assert_eq!(config.status(), StatusCode::OK);
+    }
 }

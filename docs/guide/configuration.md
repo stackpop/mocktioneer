@@ -248,6 +248,25 @@ JSON + a SHA for drift detection) under the store's key — for axum that's
 `{ "mocktioneer_config": "<envelope>" }`. The handlers read it back through the
 typed `AppConfig` extractor.
 
+### Reclaiming leaked chunks (`config gc`)
+
+A large config is split into chunk entries in the store; superseding it can leave
+orphaned chunks behind. `config gc` reclaims them. Unlike `validate`/`diff`/`push`
+it is **untyped** (it inspects the store, not `MocktioneerConfig`) and is a
+**dry-run by default** — it only deletes with `--yes` **and** an explicit
+`--older-than` safety window:
+
+```bash
+# Preview what would be reclaimed (deletes nothing)
+cargo run -p mocktioneer-cli -- config gc --adapter fastly
+# Actually reclaim chunks older than 7 days
+cargo run -p mocktioneer-cli -- config gc --adapter fastly --older-than 7d --yes
+```
+
+`--older-than` is your assertion that no root in the physical store changed within
+that window, so nothing a PoP may still be serving is deleted. Check the store id
+`gc` reports before passing `--yes`.
+
 ::: warning Config is required at runtime
 The OpenRTB (`/openrtb2/auction`) and APS (`/e/dtb/bid`) endpoints read
 `bid_cpm` via the fail-loud `AppConfig` extractor. **A fresh deploy must run
