@@ -287,11 +287,13 @@ mod tests {
         assert_eq!(contextual.cfe, Some(true));
         assert_eq!(contextual.ev, Some(true));
         assert!(contextual.host.is_some());
-        assert!(contextual
-            .host
-            .as_ref()
-            .unwrap()
-            .contains("mocktioneer.test"));
+        assert!(
+            contextual
+                .host
+                .as_ref()
+                .unwrap()
+                .contains("mocktioneer.test")
+        );
         assert_eq!(contextual.cb, Some("6".to_owned()));
         assert_eq!(
             contextual.cfn,

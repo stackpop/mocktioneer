@@ -1,9 +1,11 @@
 [package]
 name = "mocktioneer-core"
-version = "0.1.0"
-edition = "2021"
-publish = false
-license.workspace = true
+description = "Shared business logic for Mocktioneer: OpenRTB, APS, auction, render, and route handlers."
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+version = { workspace = true }
 
 [dependencies]
 async-trait = { workspace = true }

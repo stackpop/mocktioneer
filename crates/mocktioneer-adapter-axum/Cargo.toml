@@ -1,9 +1,11 @@
 [package]
 name = "mocktioneer-adapter-axum"
-version = "0.1.0"
-edition = "2021"
-publish = false
-license.workspace = true
+description = "Native Axum HTTP server adapter for Mocktioneer."
+authors = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+publish = { workspace = true }
+version = { workspace = true }
 
 [[bin]]
 name = "mocktioneer-adapter-axum"

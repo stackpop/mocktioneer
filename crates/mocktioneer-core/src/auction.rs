@@ -2,7 +2,7 @@ use crate::aps::{ApsBidRequest, ApsBidResponse, ApsContextual, ApsSlotResponse};
 use crate::openrtb::{
     Bid as OpenrtbBid, Imp as OpenrtbImp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid,
 };
-use crate::render::{extract_ec_info, iframe_html, CreativeMetadata, SignatureStatus};
+use crate::render::{CreativeMetadata, SignatureStatus, extract_ec_info, iframe_html};
 use uuid::Uuid;
 
 // ============================================================================
@@ -59,12 +59,12 @@ pub fn size_from_imp(imp: &OpenrtbImp) -> (i64, i64) {
         if let (Some(width), Some(height)) = (banner.width, banner.height) {
             return (width, height);
         }
-        if let Some(fmt) = &banner.format {
-            if let Some(fmt0) = fmt.first() {
-                let width = fmt0.width;
-                let height = fmt0.height;
-                return (width, height);
-            }
+        if let Some(fmt) = &banner.format
+            && let Some(fmt0) = fmt.first()
+        {
+            let width = fmt0.width;
+            let height = fmt0.height;
+            return (width, height);
         }
     }
     (300, 250)
@@ -197,7 +197,7 @@ pub fn build_openrtb_response(
 /// Our mock uses transparent base64 encoding that CAN be decoded for testing/debugging purposes.
 /// Example: `echo "MC4y" | base64 -d` → `0.2`.
 fn encode_aps_price(price: f64) -> String {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     let price_str = price.to_string();
     STANDARD.encode(price_str.as_bytes())
@@ -210,7 +210,7 @@ fn encode_aps_price(price: f64) -> String {
 #[inline]
 #[must_use]
 pub fn decode_aps_price(encoded: &str) -> Option<f64> {
-    use base64::{engine::general_purpose::STANDARD, Engine as _};
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
 
     let decoded = STANDARD.decode(encoded).ok()?;
     let price_str = String::from_utf8(decoded).ok()?;

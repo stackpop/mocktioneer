@@ -4,7 +4,7 @@
 //! and selects winners based on price (highest price wins).
 
 use crate::openrtb::{Bid as OpenRTBBid, Imp, MediaType, OpenRTBRequest, OpenRTBResponse, SeatBid};
-use crate::render::{extract_ec_info, iframe_html, CreativeMetadata, SignatureStatus};
+use crate::render::{CreativeMetadata, SignatureStatus, extract_ec_info, iframe_html};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;

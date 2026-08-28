@@ -9,7 +9,11 @@ members = [
 resolver = "2"
 
 [workspace.package]
+authors = ["Mocktioneer Team <dev@stackpop.com>"]
+edition = "2024"
 license = "Apache-2.0"
+publish = false
+version = "0.1.0"
 
 [profile.release]
 debug = 1

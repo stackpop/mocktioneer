@@ -1,4 +1,4 @@
-use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};
 use edgezero_core::body::Body;
 use edgezero_core::context::RequestContext;
@@ -635,9 +635,10 @@ mod tests {
         ));
         let err = result.unwrap_err();
         assert!(matches!(err, VerificationError::InvalidSignature(_)));
-        assert!(err
-            .to_string()
-            .contains("Missing ext.trusted_server.request_host"));
+        assert!(
+            err.to_string()
+                .contains("Missing ext.trusted_server.request_host")
+        );
     }
 
     #[test]
@@ -662,9 +663,10 @@ mod tests {
         ));
         let err = result.unwrap_err();
         assert!(matches!(err, VerificationError::InvalidSignature(_)));
-        assert!(err
-            .to_string()
-            .contains("Missing ext.trusted_server.request_scheme"));
+        assert!(
+            err.to_string()
+                .contains("Missing ext.trusted_server.request_scheme")
+        );
     }
 
     #[test]
