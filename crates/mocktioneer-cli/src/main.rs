@@ -6,8 +6,8 @@
 
 use clap::{Parser, Subcommand};
 use edgezero_cli::args::{
-    AuthArgs, BuildArgs, ConfigDiffArgs, ConfigGcArgs, ConfigPushArgs, ConfigValidateArgs,
-    DeployArgs, ProvisionArgs, ServeArgs,
+    ActiveVersionArgs, AuthArgs, BuildArgs, ConfigDiffArgs, ConfigGcArgs, ConfigPushArgs,
+    ConfigValidateArgs, DeployArgs, HealthcheckArgs, ProvisionArgs, RollbackArgs, ServeArgs,
 };
 use edgezero_cli::DiffExit;
 use mocktioneer_core::config::MocktioneerConfig;
@@ -21,6 +21,9 @@ struct Args {
 
 #[derive(Subcommand, Debug)]
 enum Cmd {
+    /// Resolve and print the currently-active service version — capture a
+    /// rollback target before a deploy supersedes it.
+    ActiveVersion(ActiveVersionArgs),
     /// Sign in / out / status against the adapter's native CLI.
     Auth(AuthArgs),
     /// Build the project for a target edge.
@@ -30,8 +33,14 @@ enum Cmd {
     Config(MocktioneerConfigCmd),
     /// Deploy to a target edge.
     Deploy(DeployArgs),
+    /// Probe a deployed version's health (Fastly staging lifecycle); exits
+    /// non-zero when unhealthy after retries.
+    Healthcheck(HealthcheckArgs),
     /// Create the platform resources backing the declared store ids.
     Provision(ProvisionArgs),
+    /// Roll a service back to a previous version, or deactivate a staged
+    /// version (Fastly staging lifecycle).
+    Rollback(RollbackArgs),
     /// Run a local simulation (adapter-specific).
     Serve(ServeArgs),
 }
@@ -59,6 +68,7 @@ fn main() {
 
     edgezero_cli::init_cli_logger();
     let result: Result<(), String> = match Args::parse().cmd {
+        Cmd::ActiveVersion(args) => edgezero_cli::run_active_version(&args),
         Cmd::Auth(args) => edgezero_cli::run_auth(&args),
         Cmd::Build(args) => edgezero_cli::run_build(&args),
         Cmd::Config(MocktioneerConfigCmd::Diff(args)) => {
@@ -81,7 +91,9 @@ fn main() {
             edgezero_cli::run_config_validate_typed::<MocktioneerConfig>(&args)
         }
         Cmd::Deploy(args) => edgezero_cli::run_deploy(&args),
+        Cmd::Healthcheck(args) => edgezero_cli::run_healthcheck(&args),
         Cmd::Provision(args) => edgezero_cli::run_provision(&args),
+        Cmd::Rollback(args) => edgezero_cli::run_rollback(&args),
         Cmd::Serve(args) => edgezero_cli::run_serve(&args),
     };
     if let Err(err) = result {

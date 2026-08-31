@@ -692,7 +692,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.5#a2d0c53821fee3eff7b7dcd0454e40fd800beee7"
+source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.6#c8d6e414e2095875c429b36dc8099ef26bf2842b"
 dependencies = [
  "toml",
 ]
@@ -700,7 +700,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-axum"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.5#a2d0c53821fee3eff7b7dcd0454e40fd800beee7"
+source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.6#c8d6e414e2095875c429b36dc8099ef26bf2842b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -720,7 +720,6 @@ dependencies = [
  "thiserror 2.0.18",
  "tokio",
  "toml",
- "toml_edit",
  "tower",
  "tracing",
  "walkdir",
@@ -729,7 +728,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-cloudflare"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.5#a2d0c53821fee3eff7b7dcd0454e40fd800beee7"
+source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.6#c8d6e414e2095875c429b36dc8099ef26bf2842b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -752,7 +751,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-fastly"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.5#a2d0c53821fee3eff7b7dcd0454e40fd800beee7"
+source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.6#c8d6e414e2095875c429b36dc8099ef26bf2842b"
 dependencies = [
  "anyhow",
  "async-stream",
@@ -781,7 +780,7 @@ dependencies = [
 [[package]]
 name = "edgezero-adapter-spin"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.5#a2d0c53821fee3eff7b7dcd0454e40fd800beee7"
+source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.6#c8d6e414e2095875c429b36dc8099ef26bf2842b"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -808,7 +807,7 @@ dependencies = [
 [[package]]
 name = "edgezero-cli"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.5#a2d0c53821fee3eff7b7dcd0454e40fd800beee7"
+source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.6#c8d6e414e2095875c429b36dc8099ef26bf2842b"
 dependencies = [
  "chrono",
  "clap",
@@ -818,7 +817,6 @@ dependencies = [
  "edgezero-adapter-fastly",
  "edgezero-adapter-spin",
  "edgezero-core",
- "fs4",
  "futures",
  "handlebars",
  "log",
@@ -826,17 +824,15 @@ dependencies = [
  "serde_json",
  "similar",
  "simple_logger",
- "tempfile",
  "thiserror 2.0.18",
  "toml",
- "toml_edit",
  "validator",
 ]
 
 [[package]]
 name = "edgezero-core"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.5#a2d0c53821fee3eff7b7dcd0454e40fd800beee7"
+source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.6#c8d6e414e2095875c429b36dc8099ef26bf2842b"
 dependencies = [
  "anyhow",
  "async-compression",
@@ -867,7 +863,7 @@ dependencies = [
 [[package]]
 name = "edgezero-macros"
 version = "0.1.0"
-source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.5#a2d0c53821fee3eff7b7dcd0454e40fd800beee7"
+source = "git+https://github.com/stackpop/edgezero.git?tag=v0.0.6#c8d6e414e2095875c429b36dc8099ef26bf2842b"
 dependencies = [
  "log",
  "proc-macro2",
@@ -1041,16 +1037,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb4cb245038516f5f85277875cdaa4f7d2c9a0fa0468de06ed190163b1581fcf"
 dependencies = [
  "percent-encoding",
-]
-
-[[package]]
-name = "fs4"
-version = "0.13.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8640e34b88f7652208ce9e88b1a37a2ae95227d84abec377ccd3c5cfeb141ed4"
-dependencies = [
- "rustix",
- "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3468,15 +3454,6 @@ name = "windows-sys"
 version = "0.52.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "282be5f36a8ce781fad8c8ae18fa3f9beff57ec1b52cb3de0789201425d9a33d"
-dependencies = [
- "windows-targets 0.52.6",
-]
-
-[[package]]
-name = "windows-sys"
-version = "0.59.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e38bc4d79ed67fd075bcc251a1c39b32a1776bbe92e5bef1f0bf1f8c531853b"
 dependencies = [
  "windows-targets 0.52.6",
 ]

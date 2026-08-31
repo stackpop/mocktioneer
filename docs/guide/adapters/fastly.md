@@ -134,6 +134,22 @@ cargo run -p mocktioneer-cli -- config diff --adapter fastly   # preview
 cargo run -p mocktioneer-cli -- config push --adapter fastly --yes
 ```
 
+### Deployment Lifecycle (staging)
+
+`mocktioneer-cli` also exposes the Fastly staging-lifecycle commands from
+EdgeZero for a safe deploy → verify → roll-forward-or-back loop:
+
+```bash
+# Capture the current live version BEFORE deploying (your rollback target)
+cargo run -p mocktioneer-cli -- active-version --adapter fastly
+
+# After deploying a staged version, probe its health (retries; non-zero on fail)
+cargo run -p mocktioneer-cli -- healthcheck --adapter fastly
+
+# Roll back to a previous version (or deactivate a staged one) if it's unhealthy
+cargo run -p mocktioneer-cli -- rollback --adapter fastly
+```
+
 ## Configuration
 
 ### Build Settings
