@@ -20,7 +20,7 @@ pub struct MocktioneerConfig {
 mod tests {
     use super::*;
     use crate::auction::FIXED_BID_CPM;
-    use edgezero_core::app_config::{load_app_config, AppConfigError};
+    use edgezero_core::app_config::{AppConfigError, load_app_config};
     use std::fs::write;
     use tempfile::tempdir;
 

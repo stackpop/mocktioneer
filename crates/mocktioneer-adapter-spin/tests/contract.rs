@@ -10,7 +10,7 @@
 #![cfg(all(feature = "spin", target_arch = "wasm32"))]
 
 use edgezero_core::body::Body;
-use edgezero_core::http::{header, request_builder, Method, Request, Response, StatusCode};
+use edgezero_core::http::{Method, Request, Response, StatusCode, header, request_builder};
 use futures::executor::block_on;
 use mocktioneer_core::build_app;
 

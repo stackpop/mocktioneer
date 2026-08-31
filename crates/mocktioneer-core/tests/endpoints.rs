@@ -6,7 +6,7 @@ mod tests {
     use edgezero_core::body::Body;
     use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
     use edgezero_core::http::{
-        header, request_builder, HeaderValue, Method, Request, Response, StatusCode,
+        HeaderValue, Method, Request, Response, StatusCode, header, request_builder,
     };
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
@@ -370,9 +370,11 @@ mod tests {
         assert_eq!(routes.status(), StatusCode::OK);
         let table: serde_json::Value = serde_json::from_slice(&body_bytes(routes)).unwrap();
         let entries = table.as_array().expect("route table is a JSON array");
-        assert!(entries
-            .iter()
-            .any(|entry| { entry["path"] == "/openrtb2/auction" && entry["method"] == "POST" }));
+        assert!(
+            entries
+                .iter()
+                .any(|entry| { entry["path"] == "/openrtb2/auction" && entry["method"] == "POST" })
+        );
 
         // `manifest` — the compiled manifest as JSON. Needs no config store.
         let manifest = dispatch(

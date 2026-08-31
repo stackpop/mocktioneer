@@ -1,10 +1,10 @@
 use mocktioneer_core::aps::{ApsBidRequest, ApsSlot};
-use mocktioneer_core::auction::{build_aps_response, FIXED_BID_CPM};
+use mocktioneer_core::auction::{FIXED_BID_CPM, build_aps_response};
 
 #[cfg(test)]
 mod tests {
-    use super::{build_aps_response, FIXED_BID_CPM};
     use super::{ApsBidRequest, ApsSlot};
+    use super::{FIXED_BID_CPM, build_aps_response};
 
     #[test]
     fn build_aps_response_single_slot() {
@@ -287,11 +287,13 @@ mod tests {
         assert_eq!(contextual.cfe, Some(true));
         assert_eq!(contextual.ev, Some(true));
         assert!(contextual.host.is_some());
-        assert!(contextual
-            .host
-            .as_ref()
-            .unwrap()
-            .contains("mocktioneer.test"));
+        assert!(
+            contextual
+                .host
+                .as_ref()
+                .unwrap()
+                .contains("mocktioneer.test")
+        );
         assert_eq!(contextual.cb, Some("6".to_owned()));
         assert_eq!(
             contextual.cfn,

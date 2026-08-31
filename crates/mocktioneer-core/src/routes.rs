@@ -10,7 +10,7 @@ use edgezero_core::extractor::{
     AppConfig, ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedQuery,
 };
 use edgezero_core::http::{
-    header, response_builder, HeaderMap, HeaderValue, Method, Response, StatusCode,
+    HeaderMap, HeaderValue, Method, Response, StatusCode, header, response_builder,
 };
 use edgezero_core::middleware::{Middleware, Next};
 use edgezero_core::{body::Body, error::EdgeError};
@@ -24,10 +24,10 @@ use crate::auction::{
     build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
 use crate::config::MocktioneerConfig;
-use crate::mediation::{mediate_auction, MediationRequest};
+use crate::mediation::{MediationRequest, mediate_auction};
 use crate::openrtb::OpenRTBRequest;
 use crate::render::{
-    creative_html, extract_ec_hash, info_html, render_svg, render_template_str, SignatureStatus,
+    SignatureStatus, creative_html, extract_ec_hash, info_html, render_svg, render_template_str,
 };
 use crate::verification::verify_request_id_signature;
 
@@ -274,10 +274,10 @@ fn apply_cors(headers: &mut HeaderMap) {
 
 fn build_response(status: StatusCode, body: Body) -> Response {
     let mut builder = response_builder().status(status);
-    if let Body::Once(bytes) = &body {
-        if !bytes.is_empty() {
-            builder = builder.header(header::CONTENT_LENGTH, bytes.len().to_string());
-        }
+    if let Body::Once(bytes) = &body
+        && !bytes.is_empty()
+    {
+        builder = builder.header(header::CONTENT_LENGTH, bytes.len().to_string());
     }
     builder.body(body).unwrap_or_else(|_| {
         response_builder()
@@ -393,10 +393,10 @@ pub async fn handle_static_creatives(
 fn parse_cookie<'cookie>(cookie_header: &'cookie str, name: &str) -> Option<&'cookie str> {
     for part in cookie_header.split(';') {
         let trimmed = part.trim();
-        if let Some((key, value)) = trimmed.split_once('=') {
-            if key.trim() == name {
-                return Some(value.trim());
-            }
+        if let Some((key, value)) = trimmed.split_once('=')
+            && key.trim() == name
+        {
+            return Some(value.trim());
         }
     }
     None
@@ -459,10 +459,10 @@ pub async fn handle_pixel(
         response_headers.insert(header::CONTENT_LENGTH, length_value);
     }
 
-    if let Some(cookie) = set_cookie {
-        if let Ok(value) = HeaderValue::from_str(&cookie) {
-            response.headers_mut().append("Set-Cookie", value);
-        }
+    if let Some(cookie) = set_cookie
+        && let Ok(value) = HeaderValue::from_str(&cookie)
+    {
+        response.headers_mut().append("Set-Cookie", value);
     }
 
     Ok(response)
@@ -759,10 +759,10 @@ pub async fn handle_sync_start(
         HeaderValue::from_static("no-store, no-cache, must-revalidate, max-age=0"),
     );
 
-    if let Some(cookie) = set_cookie {
-        if let Ok(value) = HeaderValue::from_str(&cookie) {
-            response.headers_mut().append("Set-Cookie", value);
-        }
+    if let Some(cookie) = set_cookie
+        && let Ok(value) = HeaderValue::from_str(&cookie)
+    {
+        response.headers_mut().append("Set-Cookie", value);
     }
 
     Ok(response)
@@ -1004,7 +1004,7 @@ mod tests {
     use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
     use edgezero_core::context::RequestContext;
     use edgezero_core::error::EdgeError;
-    use edgezero_core::http::{request_builder, Method, Response, StatusCode};
+    use edgezero_core::http::{Method, Response, StatusCode, request_builder};
     use edgezero_core::params::PathParams;
     use edgezero_core::response::IntoResponse as _;
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
@@ -1235,9 +1235,11 @@ mod tests {
             .unwrap();
         assert_eq!(ct, "image/gif");
         let cookies = response.headers().get_all("set-cookie");
-        assert!(cookies
-            .iter()
-            .any(|value| value.to_str().unwrap_or_default().starts_with("mtkid=")));
+        assert!(
+            cookies
+                .iter()
+                .any(|value| value.to_str().unwrap_or_default().starts_with("mtkid="))
+        );
     }
 
     #[test]
