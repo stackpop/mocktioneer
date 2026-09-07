@@ -15,10 +15,12 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^24.7.0",
-    "eslint": "^10.6.0",
-    "prettier": "^3.4.2",
-    "typescript-eslint": "^8.62.1",
-    "vitepress": "^1.5.0"
+    "@types/node": "^24.13.3",
+    "eslint": "^10.10.0",
+    "mermaid": "^11.17.2",
+    "prettier": "^3.9.6",
+    "typescript-eslint": "^8.70.0",
+    "vitepress": "^1.5.0",
+    "vitepress-plugin-mermaid": "^2.0.17"
   }
 }

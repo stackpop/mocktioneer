@@ -4,11 +4,15 @@ Mocktioneer runs on multiple edge platforms through the adapter pattern. Each ad
 
 ## Available Adapters
 
-| Adapter                    | Platform           | Use Case                               |
-| -------------------------- | ------------------ | -------------------------------------- |
-| [Axum](./axum)             | Native Rust        | Local development, integration testing |
-| [Fastly](./fastly)         | Fastly Compute     | Production edge deployment             |
-| [Cloudflare](./cloudflare) | Cloudflare Workers | Production edge deployment             |
+| Adapter                               | Platform           | Use Case                               |
+| ------------------------------------- | ------------------ | -------------------------------------- |
+| [Axum](./axum)                        | Native Rust        | Local development, integration testing |
+| [Fastly](./fastly)                    | Fastly Compute     | Production edge deployment             |
+| [Cloudflare](./cloudflare)            | Cloudflare Workers | Production edge deployment             |
+| [Spin](../configuration#spin-adapter) | Spin / Fermyon     | Production edge deployment             |
+
+Spin requires a Spin 4.1+ runtime; see [its configuration
+notes](../configuration#spin-adapter) for the reason and the setup.
 
 ## How Adapters Work
 
@@ -19,25 +23,27 @@ All adapters share the same core logic from `mocktioneer-core`. The adapter laye
 3. **Runtime initialization** - Set up logging, configuration
 4. **Platform features** - Access platform-specific APIs (KV stores, etc.)
 
-```
-┌─────────────────────────────────────────────────────┐
-│                   mocktioneer-core                   │
-│  (routes, openrtb, aps, auction, render, etc.)      │
-└─────────────────────────────────────────────────────┘
-                          │
-          ┌───────────────┼───────────────┐
-          │               │               │
-          ▼               ▼               ▼
-    ┌──────────┐   ┌──────────┐   ┌──────────┐
-    │   Axum   │   │  Fastly  │   │Cloudflare│
-    │ Adapter  │   │ Adapter  │   │ Adapter  │
-    └──────────┘   └──────────┘   └──────────┘
-          │               │               │
-          ▼               ▼               ▼
-    ┌──────────┐   ┌──────────┐   ┌──────────┐
-    │  Native  │   │  Fastly  │   │  Workers │
-    │  Binary  │   │  Compute │   │  Runtime │
-    └──────────┘   └──────────┘   └──────────┘
+```mermaid
+flowchart TD
+    core["mocktioneer-core"]
+
+    core --> axum["Axum<br/>adapter"]
+    core --> fastly["Fastly<br/>adapter"]
+    core --> cf["Cloudflare<br/>adapter"]
+    core --> spin["Spin<br/>adapter"]
+
+    axum --> axumRt["Native binary<br/><i>host triple</i>"]
+    fastly --> fastlyRt["Fastly Compute<br/><i>wasm32-wasip1</i>"]
+    cf --> cfRt["Workers runtime<br/><i>wasm32-unknown-unknown</i>"]
+    spin --> spinRt["Spin runtime 4.1+<br/><i>wasm32-wasip2</i>"]
+
+    classDef core fill:#3451b2,stroke:#3451b2,color:#fff;
+    classDef adapter fill:#e8ecf7,stroke:#3451b2,color:#1a1a1a;
+    classDef runtime fill:#f6f6f7,stroke:#9c9ca4,color:#1a1a1a;
+
+    class core core;
+    class axum,fastly,cf,spin adapter;
+    class axumRt,fastlyRt,cfRt,spinRt runtime;
 ```
 
 ## Choosing an Adapter
@@ -60,8 +66,9 @@ Choose based on your infrastructure:
 
 - **Fastly Compute** - If you're already using Fastly or need their edge network
 - **Cloudflare Workers** - If you're already using Cloudflare or prefer their platform
+- **Spin / Fermyon** - If you're running Spin; needs a 4.1+ runtime
 
-Both provide:
+All three provide:
 
 - Global edge deployment
 - Low latency
@@ -79,6 +86,7 @@ cargo install --git https://github.com/stackpop/edgezero.git edgezero-cli --feat
 edgezero-cli serve --adapter axum
 edgezero-cli serve --adapter fastly
 edgezero-cli serve --adapter cloudflare
+edgezero-cli serve --adapter spin        # needs a Spin 4.1+ runtime
 
 # Build any adapter
 edgezero-cli build --adapter fastly
