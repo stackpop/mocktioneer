@@ -8,6 +8,14 @@ The Mocktioneer adapter is not yet merged into upstream Prebid Server. Use the S
 **[github.com/stackpop/prebid-server](https://github.com/stackpop/prebid-server)**
 :::
 
+::: tip Push the config first
+Mocktioneer's auction endpoint (`/openrtb2/auction`) only returns bids after the
+typed config has been pushed once (`mocktioneer-cli config push --adapter <name>`).
+Do this before adding Mocktioneer as a bidder, or Prebid Server will see errors
+instead of bids. See
+[Configuration › Typed App Config](/guide/configuration#typed-app-config).
+:::
+
 ## Configuration
 
 ### Host Configuration
@@ -91,7 +99,7 @@ Override the endpoint for specific requests:
 | ---------- | ------------------ | ------ | ------------------------- |
 | `endpoint` | `imp[].ext.bidder` | string | Override auction endpoint |
 
-Mocktioneer always returns a fixed bid price of `$0.20` CPM.
+Mocktioneer returns a default bid price of `$0.20` CPM (configurable via `bid_cpm` in mocktioneer.toml).
 
 ## Response Handling
 
@@ -273,7 +281,7 @@ Include Mocktioneer alongside real bidders:
 
 ### Price Floor Testing
 
-Test that your SSP enforces floors correctly (Mocktioneer always bids at a fixed `$0.20` and does not evaluate `bidfloor` itself):
+Test that your SSP enforces floors correctly (Mocktioneer bids at a default `$0.20` (configurable via `bid_cpm` in mocktioneer.toml) and does not evaluate `bidfloor` itself):
 
 ```json
 {

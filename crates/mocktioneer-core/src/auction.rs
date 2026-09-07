@@ -83,7 +83,8 @@ pub fn standard_or_default((width, height): (i64, i64)) -> (i64, i64) {
 /// Build an `OpenRTB` bid response for the given request.
 ///
 /// - Enforces standard ad sizes (non-standard sizes default to 300x250)
-/// - Uses a fixed CPM price ($0.20)
+/// - Prices every bid at the supplied `cpm` (callers pass the resolved config
+///   value, defaulting to `FIXED_BID_CPM`)
 /// - Embeds signature verification status, the original request, and a preview
 ///   of the response as HTML comments in each creative
 /// - The signature badge is rendered inside the creative via the `sig` query param
@@ -93,6 +94,7 @@ pub fn build_openrtb_response(
     req: &OpenRTBRequest,
     base_host: &str,
     signature_status: SignatureStatus,
+    cpm: f64,
 ) -> OpenRTBResponse {
     // Build bids without adm
     let mut bids: Vec<OpenrtbBid> = Vec::new();
@@ -111,13 +113,13 @@ pub fn build_openrtb_response(
         {
             log::warn!(
                 "imp[{}].ext.mocktioneer.bid is deprecated and ignored; \
-                 all bids use fixed price ${}",
+                 all bids use the configured price ${}",
                 imp.id,
-                FIXED_BID_CPM
+                cpm
             );
         }
 
-        let price = FIXED_BID_CPM;
+        let price = cpm;
 
         bids.push(OpenrtbBid {
             id: bid_id,
@@ -220,14 +222,14 @@ pub fn decode_aps_price(encoded: &str) -> Option<f64> {
 /// Build APS TAM response from an APS bid request matching real Amazon API format.
 ///
 /// This function generates mock bids for all slots with standard sizes:
-/// - Fixed bid price of $0.20 CPM
+/// - Prices every slot at the supplied `cpm` (defaulting to `FIXED_BID_CPM`)
 /// - 100% fill rate for standard sizes
 /// - Returns contextual format matching real Amazon APS API
 /// - No creative HTML (APS doesn't return adm field)
 /// - Generates base64-encoded price strings (recoverable in mock, unlike real APS)
 #[inline]
 #[must_use]
-pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidResponse {
+pub fn build_aps_response(req: &ApsBidRequest, base_host: &str, cpm: f64) -> ApsBidResponse {
     let mut slots: Vec<ApsSlotResponse> = Vec::new();
 
     for slot in &req.slots {
@@ -255,8 +257,8 @@ pub fn build_aps_response(req: &ApsBidRequest, base_host: &str) -> ApsBidRespons
             continue;
         };
 
-        // Generate bid components using fixed CPM pricing
-        let price = FIXED_BID_CPM;
+        // Generate bid components using the resolved CPM
+        let price = cpm;
         let impression_id = new_id();
         let crid = format!("{}-{}", new_id(), "mocktioneer");
         let size_str = format!("{width}x{height}");
@@ -341,7 +343,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let resp = build_openrtb_response(&req, "host.test", test_signature());
+        let resp = build_openrtb_response(&req, "host.test", test_signature(), FIXED_BID_CPM);
         let bid_id = &resp.seatbid[0].bid[0].id;
         assert_eq!(bid_id.len(), 32);
         assert!(
@@ -365,7 +367,7 @@ mod tests {
             user_agent: None,
             timeout: None,
         };
-        let resp = build_aps_response(&req, "mock.test");
+        let resp = build_aps_response(&req, "mock.test", FIXED_BID_CPM);
         let slot = &resp.contextual.slots[0];
 
         // Use decode_aps_price to verify the encoded price
@@ -386,7 +388,7 @@ mod tests {
             user_agent: None,
             timeout: None,
         };
-        let resp = build_aps_response(&req, "mock.test");
+        let resp = build_aps_response(&req, "mock.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 1);
         let slot = &resp.contextual.slots[0];
@@ -406,7 +408,7 @@ mod tests {
             user_agent: None,
             timeout: None,
         };
-        let resp = build_aps_response(&req, "mock.test");
+        let resp = build_aps_response(&req, "mock.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.status, Some("ok".to_owned()));
         assert_eq!(resp.contextual.slots.len(), 1);
@@ -433,7 +435,7 @@ mod tests {
             user_agent: None,
             timeout: None,
         };
-        let resp = build_aps_response(&req, "mock.test");
+        let resp = build_aps_response(&req, "mock.test", FIXED_BID_CPM);
 
         // Non-standard sizes should be skipped
         assert!(resp.contextual.slots.is_empty());
@@ -452,7 +454,7 @@ mod tests {
             user_agent: None,
             timeout: None,
         };
-        let resp = build_aps_response(&req, "mock.test");
+        let resp = build_aps_response(&req, "mock.test", FIXED_BID_CPM);
         let slot = &resp.contextual.slots[0];
 
         // Verify targeting keys list
@@ -485,7 +487,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let resp = build_openrtb_response(&req, "host.test", test_signature());
+        let resp = build_openrtb_response(&req, "host.test", test_signature(), FIXED_BID_CPM);
         let bid = &resp.seatbid[0].bid[0];
         // Non-standard should default to 300x250
         assert_eq!(bid.width, Some(300));
@@ -507,7 +509,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let resp = build_openrtb_response(&req, "host.test", test_signature());
+        let resp = build_openrtb_response(&req, "host.test", test_signature(), FIXED_BID_CPM);
         assert_eq!(resp.id, "r1");
         assert_eq!(resp.cur.as_deref(), Some("USD"));
         assert_eq!(resp.seatbid.len(), 1);
@@ -560,7 +562,7 @@ mod tests {
             }],
             ..Default::default()
         };
-        let resp = build_openrtb_response(&req, "host.test", test_signature());
+        let resp = build_openrtb_response(&req, "host.test", test_signature(), FIXED_BID_CPM);
         let bid = &resp.seatbid[0].bid[0];
         assert_eq!(bid.price.to_bits(), FIXED_BID_CPM.to_bits());
         assert!(bid.ext.is_none());
@@ -622,5 +624,43 @@ mod tests {
     fn standard_or_default_behavior() {
         assert_eq!(standard_or_default((333, 222)), (300, 250));
         assert_eq!(standard_or_default((320, 50)), (320, 50));
+    }
+
+    #[test]
+    fn openrtb_uses_supplied_cpm() {
+        let req = OpenRTBRequest {
+            id: "rc".to_owned(),
+            imp: vec![OpenrtbImp {
+                id: "1".to_owned(),
+                banner: Some(Banner {
+                    width: Some(300),
+                    height: Some(250),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        let resp = build_openrtb_response(&req, "host.test", test_signature(), 0.35);
+        assert!((resp.seatbid[0].bid[0].price - 0.35).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn aps_uses_supplied_cpm() {
+        let req = ApsBidRequest {
+            pub_id: "test".to_owned(),
+            slots: vec![ApsSlot {
+                slot_id: "slot1".to_owned(),
+                sizes: vec![[300, 250]],
+                slot_name: None,
+            }],
+            page_url: None,
+            user_agent: None,
+            timeout: None,
+        };
+        let resp = build_aps_response(&req, "mock.test", 0.35);
+        let slot = &resp.contextual.slots[0];
+        let price = decode_aps_price(slot.amznbid.as_ref().unwrap()).unwrap();
+        assert!((price - 0.35).abs() < f64::EPSILON);
     }
 }

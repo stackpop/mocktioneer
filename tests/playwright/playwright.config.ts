@@ -8,7 +8,8 @@ const adapter = process.env.ADAPTER || 'axum';
 
 const webServerCommands: Record<string, string> = {
   axum: 'cargo run -p mocktioneer-adapter-axum',
-  cloudflare: 'edgezero-cli serve --adapter cloudflare',
+  // In-repo CLI — no external `edgezero-cli` install needed.
+  cloudflare: 'cargo run -p mocktioneer-cli -- serve --adapter cloudflare',
 };
 
 export default defineConfig({

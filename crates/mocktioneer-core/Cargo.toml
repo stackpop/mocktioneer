@@ -30,6 +30,8 @@ js-sys = { workspace = true }
 
 [dev-dependencies]
 futures = { workspace = true }
+tempfile = { workspace = true }
+toml = { workspace = true }
 
 [lints]
 workspace = true

@@ -25,5 +25,10 @@ edgezero-adapter-fastly = { workspace = true, features = ["fastly"] }
 edgezero-core = { workspace = true }
 fastly = { workspace = true }
 
+# Contract tests seed the typed-config blob in-process (no Viceroy fixture).
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+async-trait = { workspace = true }
+serde_json = { workspace = true }
+
 [lints]
 workspace = true

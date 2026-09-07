@@ -26,6 +26,7 @@ Zero warnings required. Report any clippy lints or format violations.
 ```
 cargo build -p mocktioneer-adapter-fastly --features fastly --target wasm32-wasip1
 cargo build -p mocktioneer-adapter-cloudflare --features cloudflare --target wasm32-unknown-unknown
+cargo build --release -p mocktioneer-adapter-spin --features spin --target wasm32-wasip2
 ```
 
 Both WASM targets must compile. Report any errors with the exact compiler output.

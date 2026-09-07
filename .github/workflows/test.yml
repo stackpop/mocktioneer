@@ -35,7 +35,7 @@ jobs:
 
       - name: Retrieve Rust version
         id: rust-version
-        run: echo "rust-version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
+        run: echo "rust-version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Set up Rust tool chain
@@ -51,6 +51,24 @@ jobs:
 
       - name: Check feature compilation
         run: cargo check --workspace --all-targets --features "fastly cloudflare"
+
+      - name: Validate typed app config
+        run: |
+          # `mocktioneer.toml` is gitignored (per-env); the committed template is
+          # `mocktioneer.toml.example`. Materialise it so `config validate` (which
+          # reads the `<app-name>.toml` default path) has a file to check.
+          cp mocktioneer.toml.example mocktioneer.toml
+          cargo run -p mocktioneer-cli -- config validate --strict
+
+      - name: Seed a non-default cpm and assert it round-trips (axum)
+        run: |
+          printf 'bid_cpm = 0.35\n' > "${RUNNER_TEMP}/seed.toml"
+          cargo run -p mocktioneer-cli -- config push --adapter axum --yes --app-config "${RUNNER_TEMP}/seed.toml"
+          # edgezero #269 stores the typed config as a single blob envelope under
+          # the store key; bid_cpm lives at `<key> | fromjson | .data.bid_cpm`.
+          got="$(jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' .edgezero/local-config-mocktioneer_config.json)"
+          test "$got" = "0.35"
+          rm -f .edgezero/local-config-mocktioneer_config.json
 
   adapter-wasm-tests:
     name: ${{ matrix.adapter }} wasm tests
@@ -68,8 +86,8 @@ jobs:
             runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
             runner_value: viceroy run
           - adapter: spin
-            target: wasm32-wasip1
-            runner_env: CARGO_TARGET_WASM32_WASIP1_RUNNER
+            target: wasm32-wasip2
+            runner_env: CARGO_TARGET_WASM32_WASIP2_RUNNER
             runner_value: wasmtime run
     steps:
       - uses: actions/checkout@v6
@@ -89,7 +107,7 @@ jobs:
 
       - name: Retrieve Rust version
         id: rust-version
-        run: echo "rust-version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
+        run: echo "rust-version=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Set up Rust tool chain
@@ -183,8 +201,8 @@ jobs:
       - name: Retrieve tool versions
         id: tool-versions
         run: |
-          echo "rust=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
-          echo "node=$(grep '^nodejs ' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
+          echo "rust=$(grep '^rust ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+          echo "node=$(grep '^nodejs ' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
         shell: bash
 
       - name: Set up Rust tool chain

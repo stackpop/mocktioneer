@@ -168,6 +168,6 @@ Template rendering:
 
 ## Supported Sizes
 
-Mocktioneer supports 13 standard IAB ad sizes, each with a fixed CPM price. See the [full size list with pricing](/api/#supported-sizes) in the API reference.
+Mocktioneer supports 13 standard IAB ad sizes, each with a default CPM price (configurable via `bid_cpm` in mocktioneer.toml). See the [full size list with pricing](/api/#supported-sizes) in the API reference.
 
 Non-standard sizes return 404 for static assets or are coerced to 300x250 for auction responses. Use the [`/_/sizes`](/api/#sizes-endpoint) endpoint to get the current list programmatically.

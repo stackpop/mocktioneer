@@ -31,6 +31,9 @@ worker = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "=0.3.71"
+# Contract tests seed the typed-config blob in-process (no miniflare/KV fixture).
+async-trait = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

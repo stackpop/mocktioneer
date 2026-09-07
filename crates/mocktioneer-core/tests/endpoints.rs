@@ -1,14 +1,53 @@
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use edgezero_core::app::App;
+    use edgezero_core::blob_envelope::BlobEnvelope;
     use edgezero_core::body::Body;
+    use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
     use edgezero_core::http::{
         HeaderValue, Method, Request, Response, StatusCode, header, request_builder,
     };
+    use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    /// In-memory config store returning a blob envelope by key.
+    struct MapConfigStore(HashMap<String, String>);
+
+    #[async_trait(?Send)]
+    impl ConfigStore for MapConfigStore {
+        async fn get(&self, key: &str) -> Result<Option<String>, ConfigStoreError> {
+            Ok(self.0.get(key).cloned())
+        }
+    }
 
     fn app() -> App {
         mocktioneer_core::build_app()
+    }
+
+    /// Build a `ConfigRegistry` whose default `mocktioneer_config` store holds a
+    /// blob envelope for `{ "bid_cpm": <cpm> }` — what `config push` writes.
+    /// The auction/APS handlers use the fail-loud `AppConfig` extractor, so the
+    /// router needs this bound to serve those routes.
+    fn config_registry(bid_cpm: f64) -> ConfigRegistry {
+        let data = serde_json::json!({ "bid_cpm": bid_cpm });
+        let blob =
+            serde_json::to_string(&BlobEnvelope::new(data, "2026-01-01T00:00:00Z".to_owned()))
+                .expect("serialize envelope");
+        let store = MapConfigStore(
+            [("mocktioneer_config".to_owned(), blob)]
+                .into_iter()
+                .collect(),
+        );
+        StoreRegistry::single_id(
+            "mocktioneer_config".to_owned(),
+            ConfigStoreBinding {
+                handle: ConfigStoreHandle::new(Arc::new(store)),
+                default_key: "mocktioneer_config".to_owned(),
+            },
+        )
     }
 
     fn make_request(method: Method, uri: &str, body: Body) -> Request {
@@ -103,6 +142,7 @@ mod tests {
         request
             .headers_mut()
             .insert(header::HOST, HeaderValue::from_static("test.local"));
+        request.extensions_mut().insert(config_registry(0.20_f64));
         let response = dispatch(&app, request);
         assert_eq!(response.status(), StatusCode::OK);
         let content_type = response
@@ -283,7 +323,18 @@ mod tests {
     #[test]
     fn options_includes_allow_and_cors_headers() {
         let app = app();
-        for path in ["/openrtb2/auction", "/sync/start", "/sync/done", "/resolve"] {
+        for path in [
+            "/openrtb2/auction",
+            "/sync/start",
+            "/sync/done",
+            "/resolve",
+            // Introspection routes carry CORS preflight like every other route
+            // (regression: these OPTIONS triggers returned 405 before they were
+            // added alongside the GET introspection routes).
+            "/_mocktioneer/manifest",
+            "/_mocktioneer/config",
+            "/_mocktioneer/routes",
+        ] {
             let response = dispatch(&app, make_request(Method::OPTIONS, path, Body::empty()));
             assert_eq!(response.status(), StatusCode::NO_CONTENT, "{path}");
             let allow = response
@@ -304,5 +355,39 @@ mod tests {
                 "{path}"
             );
         }
+    }
+
+    #[test]
+    fn introspection_routes_serve_json() {
+        let app = app();
+
+        // `routes` — the live route table as [{ "method", "path" }]. Needs no
+        // config store.
+        let routes = dispatch(
+            &app,
+            make_request(Method::GET, "/_mocktioneer/routes", Body::empty()),
+        );
+        assert_eq!(routes.status(), StatusCode::OK);
+        let table: serde_json::Value = serde_json::from_slice(&body_bytes(routes)).unwrap();
+        let entries = table.as_array().expect("route table is a JSON array");
+        assert!(
+            entries
+                .iter()
+                .any(|entry| { entry["path"] == "/openrtb2/auction" && entry["method"] == "POST" })
+        );
+
+        // `manifest` — the compiled manifest as JSON. Needs no config store.
+        let manifest = dispatch(
+            &app,
+            make_request(Method::GET, "/_mocktioneer/manifest", Body::empty()),
+        );
+        assert_eq!(manifest.status(), StatusCode::OK);
+
+        // `config` — the effective app config; reads the default config store,
+        // so it needs the same seeded registry the auction tests use.
+        let mut request = make_request(Method::GET, "/_mocktioneer/config", Body::empty());
+        request.extensions_mut().insert(config_registry(0.20_f64));
+        let config = dispatch(&app, request);
+        assert_eq!(config.status(), StatusCode::OK);
     }
 }

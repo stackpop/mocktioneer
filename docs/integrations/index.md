@@ -50,7 +50,7 @@ Mocktioneer acts as a drop-in replacement for real bidders during development an
 
 - Same request always produces same response
 - No flaky tests due to bidder variability
-- Fixed $0.20 bids for predictable floor testing
+- Default $0.20 bids (configurable via `bid_cpm` in mocktioneer.toml) for predictable floor testing
 
 ### No External Dependencies
 
@@ -150,7 +150,7 @@ Test price handling and floor logic:
 }
 ```
 
-Mocktioneer always bids at a fixed `$0.20` CPM and does not evaluate `bidfloor` itself. Use this predictable price to test that your SSP or mediation layer correctly filters bids below the floor threshold.
+Mocktioneer bids at a default `$0.20` (configurable via `bid_cpm` in mocktioneer.toml) CPM and does not evaluate `bidfloor` itself. Use this predictable price to test that your SSP or mediation layer correctly filters bids below the floor threshold.
 
 ### Identity Pipeline Testing
 

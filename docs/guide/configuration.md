@@ -14,6 +14,9 @@ middleware = [
   "edgezero_core::middleware::RequestLogger",
   "mocktioneer_core::routes::Cors"
 ]
+
+[stores.config]
+ids = ["mocktioneer_config"]
 ```
 
 ## App Section
@@ -26,6 +29,23 @@ The `[app]` section defines the core application:
 | `entry`      | Path to the core crate                    |
 | `middleware` | List of middleware to apply to all routes |
 
+## Config Store
+
+The `[stores.config]` section declares the logical config store(s) backing the
+typed app config (`mocktioneer.toml`):
+
+```toml
+[stores.config]
+ids = ["mocktioneer_config"]
+```
+
+The `mocktioneer_config` store holds the typed config blob (see the
+`MocktioneerConfig` struct). Seed it per adapter with
+`mocktioneer-cli config push --adapter <name>`; the OpenRTB/APS handlers read it
+at runtime via the **fail-loud `AppConfig` extractor** — a `config push` is
+required before those endpoints serve (see [Typed App Config](#typed-app-config)
+below).
+
 ## HTTP Triggers
 
 Routes are defined as `[[triggers.http]]` blocks:
@@ -36,7 +56,7 @@ id = "openrtb_auction"
 path = "/openrtb2/auction"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_openrtb_auction"
-adapters = ["axum", "cloudflare", "fastly"]
+adapters = ["axum", "cloudflare", "fastly", "spin"]
 ```
 
 | Field      | Description                                |
@@ -64,8 +84,32 @@ adapters = ["axum", "cloudflare", "fastly"]
 | `/sync/start`              | GET     | `handle_sync_start`       | EC pixel sync initiation |
 | `/sync/done`               | GET     | `handle_sync_done`        | EC pixel sync callback   |
 | `/resolve`                 | GET     | `handle_resolve`          | EC pull sync resolution  |
+| `/_mocktioneer/manifest`   | GET     | `introspection::manifest` | Full manifest as JSON    |
+| `/_mocktioneer/config`     | GET     | `introspection::config`   | Effective app config     |
+| `/_mocktioneer/routes`     | GET     | `introspection::routes`   | Route table as JSON      |
 
 All routes also have OPTIONS handlers for CORS preflight.
+
+### Introspection Routes
+
+The `/_mocktioneer/{manifest,config,routes}` endpoints are **framework-supplied**
+handlers from `edgezero_core::introspection`, bound like any other route in
+`edgezero.toml`:
+
+- **`manifest`** — the full `edgezero.toml` manifest as JSON (baked at compile
+  time; `[environment.secrets]` values are redacted).
+- **`config`** — the effective app config from the default config store (the
+  pushed `bid_cpm` blob's `.data`), with any `#[secret]` fields left as
+  unresolved key-name references (secret-safe).
+- **`routes`** — the live route table as `[{ "method", "path" }]`.
+
+::: warning Unauthenticated
+These endpoints are unauthenticated wherever bound — restrict access at the
+network/middleware layer before exposing them publicly. `manifest` emits
+`[environment.variables]` values verbatim (only `[environment.secrets]` are
+redacted), so keep secrets out of `[environment.variables]`. Mocktioneer
+declares no `[environment]` section, so nothing sensitive is exposed today.
+:::
 
 ## Adapter Configuration
 
@@ -105,7 +149,7 @@ profile = "release"
 features = ["fastly"]
 
 [adapters.fastly.commands]
-build = "cargo build --release --target wasm32-wasip1 -p mocktioneer-adapter-fastly"
+build = "fastly compute build -C crates/mocktioneer-adapter-fastly"
 serve = "fastly compute serve -C crates/mocktioneer-adapter-fastly"
 deploy = "fastly compute deploy -C crates/mocktioneer-adapter-fastly"
 
@@ -128,14 +172,115 @@ profile = "release"
 features = ["cloudflare"]
 
 [adapters.cloudflare.commands]
-build = "cargo build --release --target wasm32-unknown-unknown -p mocktioneer-adapter-cloudflare"
-serve = "wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
-deploy = "wrangler publish --config crates/mocktioneer-adapter-cloudflare/wrangler.toml"
+build = "wrangler build --cwd crates/mocktioneer-adapter-cloudflare"
+serve = "wrangler dev --cwd crates/mocktioneer-adapter-cloudflare"
+deploy = "wrangler deploy --cwd crates/mocktioneer-adapter-cloudflare"
 
 [adapters.cloudflare.logging]
 level = "info"
 echo_stdout = true
 ```
+
+### Spin Adapter
+
+Spin targets `wasm32-wasip2` (spin-sdk 6). Its config store is KV-backed, so the
+`serve` command passes a `--runtime-config-file` declaring the KV label
+(`spin deploy` is plugin-mediated and provisions KV itself, so it takes no
+runtime-config flag):
+
+::: warning `spin up` currently blocked (upstream)
+The Spin adapter **compiles** to a `wasm32-wasip2` component and passes the
+router-level contract tests (run under `wasmtime`), but `spin up` on today's
+Spin runtimes (e.g. 3.6.3) fails to link: `spin-sdk 6.0.0` pulls
+`wasi:http@0.3.0-rc`, which no released Spin provides (they expose
+`wasi:http@0.2`). This is a spin-sdk/runtime ABI mismatch to be resolved
+upstream in EdgeZero's `spin-sdk` pin — the Fastly / Cloudflare / Axum adapters
+are unaffected.
+:::
+
+```toml
+[adapters.spin.adapter]
+crate = "crates/mocktioneer-adapter-spin"
+manifest = "crates/mocktioneer-adapter-spin/spin.toml"
+
+[adapters.spin.build]
+target = "wasm32-wasip2"
+profile = "release"
+features = ["spin"]
+
+[adapters.spin.commands]
+build = "spin build --from crates/mocktioneer-adapter-spin/spin.toml"
+serve = "spin up --from crates/mocktioneer-adapter-spin/spin.toml --runtime-config-file crates/mocktioneer-adapter-spin/runtime-config.toml"
+deploy = "spin deploy --from crates/mocktioneer-adapter-spin/spin.toml"
+
+[adapters.spin.logging]
+level = "info"
+echo_stdout = true
+```
+
+## Typed App Config
+
+`mocktioneer.toml` (repo root) maps 1:1 onto the `MocktioneerConfig` struct —
+there is no `[config]` wrapper:
+
+```toml
+bid_cpm = 0.20
+```
+
+`mocktioneer.toml` is **gitignored** (per-environment); the repo commits
+`mocktioneer.toml.example` as the template. Create your local copy first:
+
+```bash
+cp mocktioneer.toml.example mocktioneer.toml   # then edit bid_cpm as needed
+```
+
+Validate it, preview the diff against the live store, then push it:
+
+```bash
+cargo run -p mocktioneer-cli -- config validate --strict
+cargo run -p mocktioneer-cli -- config diff --adapter axum
+cargo run -p mocktioneer-cli -- config push --adapter axum --yes
+```
+
+`config push` writes the whole struct as a single **blob envelope** (canonical
+JSON + a SHA for drift detection) under the store's key — for axum that's
+`.edgezero/local-config-mocktioneer_config.json` as
+`{ "mocktioneer_config": "<envelope>" }`. The handlers read it back through the
+typed `AppConfig` extractor.
+
+### Reclaiming leaked chunks (`config gc`)
+
+A large config is split into chunk entries in the store; superseding it can leave
+orphaned chunks behind. `config gc` reclaims them. Unlike `validate`/`diff`/`push`
+it is **untyped** (it inspects the store, not `MocktioneerConfig`) and is a
+**dry-run by default** — it only deletes with `--yes` **and** an explicit
+`--older-than` safety window:
+
+```bash
+# Preview what would be reclaimed (deletes nothing)
+cargo run -p mocktioneer-cli -- config gc --adapter fastly
+# Actually reclaim chunks older than 7 days
+cargo run -p mocktioneer-cli -- config gc --adapter fastly --older-than 7d --yes
+```
+
+`--older-than` is your assertion that no root in the physical store changed within
+that window, so nothing a PoP may still be serving is deleted. Check the store id
+`gc` reports before passing `--yes`.
+
+::: warning Config is required at runtime
+The OpenRTB (`/openrtb2/auction`) and APS (`/e/dtb/bid`) endpoints read
+`bid_cpm` via the fail-loud `AppConfig` extractor. **A fresh deploy must run
+`config push` once** before those endpoints serve bids — until then they return
+an error (the static/creative/pixel endpoints are unaffected). `bid_cpm = 0.20`
+is the shipped default value, not a runtime fallback.
+:::
+
+Any key can be overridden via the `MOCKTIONEER__<KEY>` env overlay
+(e.g. `MOCKTIONEER__BID_CPM=0.35`). The overlay is applied **when the CLI loads
+`mocktioneer.toml`** (during `config validate` / `diff` / `push`), so it changes
+the value pushed into the config-store blob — set it before `config push`. It
+does **not** mutate config the running server has already loaded; re-push to
+roll out a change.
 
 ## Logging Configuration
 

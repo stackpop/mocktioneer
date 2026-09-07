@@ -9,11 +9,9 @@ npm install
 npx playwright install
 ```
 
-**Note:** The Cloudflare adapter requires `edgezero-cli` (not `edgezero`):
-
-```bash
-cargo install --git https://github.com/stackpop/edgezero.git edgezero-cli
-```
+**Note:** The Cloudflare web server is launched via the in-repo
+`mocktioneer-cli` (`cargo run -p mocktioneer-cli -- serve --adapter cloudflare`),
+so no external `edgezero-cli` install is required.
 
 ## Running Tests
 
@@ -45,9 +43,9 @@ npx playwright show-report
 
 The `ADAPTER` environment variable controls which adapter is tested:
 
-| Value            | Command                                   | Description               |
-| ---------------- | ----------------------------------------- | ------------------------- |
-| `axum` (default) | `cargo run -p mocktioneer-adapter-axum`   | Native Axum server        |
-| `cloudflare`     | `edgezero-cli serve --adapter cloudflare` | Cloudflare Workers (WASM) |
+| Value            | Command                                                | Description               |
+| ---------------- | ------------------------------------------------------ | ------------------------- |
+| `axum` (default) | `cargo run -p mocktioneer-adapter-axum`                | Native Axum server        |
+| `cloudflare`     | `cargo run -p mocktioneer-cli -- serve --adapter cloudflare` | Cloudflare Workers (WASM) |
 
 Both adapters run on `http://127.0.0.1:8787`.

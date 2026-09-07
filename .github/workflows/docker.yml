@@ -44,11 +44,11 @@ jobs:
 
       - name: Get Rust version from .tool-versions
         id: rust
-        run: echo "version=$(grep '^rust' .tool-versions | awk '{print $2}')" >> $GITHUB_OUTPUT
+        run: echo "version=$(grep '^rust' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
 
       - name: Get short SHA
         id: sha
-        run: echo "short=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+        run: echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -77,14 +77,49 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push
+      # Build once and load locally (no registry push yet) so the smoke test
+      # can gate publication — a broken image must never reach its final tag.
+      # Labels are applied HERE so the smoke-tested image is byte-for-byte what
+      # gets pushed below (the publish step only re-tags and pushes it).
+      - name: Build and load for smoke test
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
-          tags: ${{ steps.meta.outputs.tags }}
+          load: true
+          push: false
+          tags: mocktioneer:ci-smoke
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
           build-args: RUST_VERSION=${{ steps.rust.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Smoke test — reachable on mapped port and serves bids
+        run: |
+          cid="$(docker run -d -p 8787:8787 mocktioneer:ci-smoke)"
+          # Wait for the mapped host port — proves the container binds 0.0.0.0,
+          # not 127.0.0.1 (a loopback bind would make this fail).
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8787/ >/dev/null 2>&1 && break
+            sleep 2
+          done
+          curl -fsS http://127.0.0.1:8787/ >/dev/null
+          # The baked-in config blob should let the auction endpoint serve a bid.
+          code="$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8787/openrtb2/auction \
+            -H 'content-type: application/json' \
+            -d '{"id":"t","imp":[{"id":"1","banner":{"w":300,"h":250}}]}')"
+          echo "auction status: $code"
+          docker logs "$cid" 2>&1 | tail -20 || true
+          docker rm -f "$cid" >/dev/null 2>&1 || true
+          test "$code" = "200"
+
+      # Publish the EXACT image the smoke test validated — re-tag the loaded
+      # `mocktioneer:ci-smoke` and push, rather than rebuilding. No cache-hit
+      # assumption, and the pushed bytes are literally what was tested.
+      - name: Push validated image
+        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          for tag in ${{ steps.meta.outputs.tags }}; do
+            docker tag mocktioneer:ci-smoke "$tag"
+            docker push "$tag"
+          done

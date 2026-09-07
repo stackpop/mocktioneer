@@ -1,0 +1,15 @@
+[package]
+name = "mocktioneer-cli"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license.workspace = true
+
+[dependencies]
+mocktioneer-core = { workspace = true }
+edgezero-cli = { workspace = true }
+clap = { workspace = true }
+log = { workspace = true }
+
+[lints]
+workspace = true

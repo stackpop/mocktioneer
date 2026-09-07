@@ -1,10 +1,10 @@
 use mocktioneer_core::aps::{ApsBidRequest, ApsSlot};
-use mocktioneer_core::auction::build_aps_response;
+use mocktioneer_core::auction::{FIXED_BID_CPM, build_aps_response};
 
 #[cfg(test)]
 mod tests {
-    use super::build_aps_response;
     use super::{ApsBidRequest, ApsSlot};
+    use super::{FIXED_BID_CPM, build_aps_response};
 
     #[test]
     fn build_aps_response_single_slot() {
@@ -20,7 +20,7 @@ mod tests {
             timeout: Some(800),
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.status, Some("ok".to_owned()));
         assert_eq!(resp.contextual.slots.len(), 1);
@@ -73,7 +73,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 3);
         assert_eq!(resp.contextual.slots[0].slot_id, "header");
@@ -103,7 +103,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 0);
     }
@@ -129,7 +129,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 1);
         assert_eq!(resp.contextual.slots[0].slot_id, "standard");
@@ -149,7 +149,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "test.host");
+        let resp = build_aps_response(&req, "test.host", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 1);
         let slot = &resp.contextual.slots[0];
@@ -185,7 +185,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 1);
         assert_eq!(resp.contextual.slots[0].size, "970x250");
@@ -205,7 +205,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 1);
         assert_eq!(resp.contextual.slots[0].size, "300x250");
@@ -225,7 +225,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 1);
         assert_eq!(resp.contextual.slots[0].size, "970x250");
@@ -245,7 +245,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 0);
     }
@@ -260,7 +260,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 0);
         assert_eq!(resp.contextual.status, Some("ok".to_owned()));
@@ -280,7 +280,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         let contextual = &resp.contextual;
         assert_eq!(contextual.status, Some("ok".to_owned()));
@@ -315,7 +315,7 @@ mod tests {
             timeout: None,
         };
 
-        let resp = build_aps_response(&req, "mocktioneer.test");
+        let resp = build_aps_response(&req, "mocktioneer.test", FIXED_BID_CPM);
 
         assert_eq!(resp.contextual.slots.len(), 1);
     }

@@ -8,6 +8,14 @@ The Mocktioneer adapter is not yet merged into upstream Prebid.js. Use the Stack
 **[github.com/stackpop/Prebid.js](https://github.com/stackpop/Prebid.js)**
 :::
 
+::: tip Push the config first
+Mocktioneer's auction endpoint (`/openrtb2/auction`) only returns bids after the
+typed config has been pushed once (`mocktioneer-cli config push --adapter <name>`).
+Do this before pointing Prebid.js at your Mocktioneer instance, or the adapter
+will see errors instead of bids. See
+[Configuration › Typed App Config](/guide/configuration#typed-app-config).
+:::
+
 ## Installation
 
 Clone and build from the Stackpop fork:
@@ -74,7 +82,7 @@ params: {
 | ---------- | ------ | -------- | --------------------------- |
 | `endpoint` | string | No       | Custom auction endpoint URL |
 
-Mocktioneer always returns a fixed bid price of `$0.20` CPM.
+Mocktioneer returns a default bid price of `$0.20` CPM (configurable via `bid_cpm` in mocktioneer.toml).
 
 ## Example Page
 

@@ -15,6 +15,7 @@ cargo build --workspace --all-targets --all-features
 ```
 cargo build -p mocktioneer-adapter-fastly --features fastly --target wasm32-wasip1
 cargo build -p mocktioneer-adapter-cloudflare --features cloudflare --target wasm32-unknown-unknown
+cargo build --release -p mocktioneer-adapter-spin --features spin --target wasm32-wasip2
 ```
 
 ## Feature matrix

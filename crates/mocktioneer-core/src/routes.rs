@@ -7,7 +7,7 @@ use async_trait::async_trait;
 use edgezero_core::action;
 use edgezero_core::context::RequestContext;
 use edgezero_core::extractor::{
-    ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedQuery,
+    AppConfig, ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedQuery,
 };
 use edgezero_core::http::{
     HeaderMap, HeaderValue, Method, Response, StatusCode, header, response_builder,
@@ -23,6 +23,7 @@ use crate::aps::ApsBidRequest;
 use crate::auction::{
     build_aps_response, build_openrtb_response, is_standard_size, standard_sizes,
 };
+use crate::config::MocktioneerConfig;
 use crate::mediation::{MediationRequest, mediate_auction};
 use crate::openrtb::OpenRTBRequest;
 use crate::render::{
@@ -313,6 +314,7 @@ pub async fn handle_root(ForwardedHost(host): ForwardedHost) -> Result<Response,
 
 #[action]
 pub async fn handle_openrtb_auction(
+    AppConfig(cfg): AppConfig<MocktioneerConfig>,
     RequestContext(ctx): RequestContext,
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
@@ -342,7 +344,7 @@ pub async fn handle_openrtb_auction(
     log::info!("auction id={}, imps={}", req.id, req.imp.len());
 
     // Build response with embedded metadata (signature status + request + response preview)
-    let resp = build_openrtb_response(&req, &host, signature_status);
+    let resp = build_openrtb_response(&req, &host, signature_status, cfg.bid_cpm);
     let body = Body::json(&resp).map_err(|err| {
         log::error!("Failed to serialize OpenRTB response: {err}");
         EdgeError::internal(err)
@@ -468,6 +470,7 @@ pub async fn handle_pixel(
 
 #[action]
 pub async fn handle_aps_bid(
+    AppConfig(cfg): AppConfig<MocktioneerConfig>,
     ForwardedHost(host): ForwardedHost,
     ValidatedJson(req): ValidatedJson<ApsBidRequest>,
 ) -> Result<Response, EdgeError> {
@@ -477,7 +480,7 @@ pub async fn handle_aps_bid(
         req.slots.len()
     );
 
-    let resp = build_aps_response(&req, &host);
+    let resp = build_aps_response(&req, &host, cfg.bid_cpm);
     let body = Body::json(&resp).map_err(|err| {
         log::error!("Failed to serialize APS response: {err}");
         EdgeError::internal(err)
@@ -995,14 +998,31 @@ fn sanitize_for_log(input: &str, max_len: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auction::decode_aps_price;
+    use edgezero_core::blob_envelope::BlobEnvelope;
     use edgezero_core::body::Body;
+    use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
     use edgezero_core::context::RequestContext;
     use edgezero_core::error::EdgeError;
     use edgezero_core::http::{Method, Response, StatusCode, request_builder};
     use edgezero_core::params::PathParams;
     use edgezero_core::response::IntoResponse as _;
+    use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
     use std::collections::HashMap;
+    use std::sync::Arc;
+
+    /// In-memory `ConfigStore` for tests (mirrors app-demo's `MapConfigStore`).
+    struct MapConfigStore(HashMap<String, String>);
+
+    // `ConfigStore` is declared `#[async_trait(?Send)]` in edgezero-core, so
+    // the impl MUST use the same `(?Send)` mode or method signatures won't match.
+    #[async_trait(?Send)]
+    impl ConfigStore for MapConfigStore {
+        async fn get(&self, key: &str) -> Result<Option<String>, ConfigStoreError> {
+            Ok(self.0.get(key).cloned())
+        }
+    }
 
     fn response_from(result: Result<Response, EdgeError>) -> Response {
         match result {
@@ -1019,15 +1039,173 @@ mod tests {
             .to_vec()
     }
 
+    /// Assert the fail-loud compatibility contract for a bid route served with
+    /// no config store bound: `503 Service Unavailable`, a `Retry-After` header,
+    /// and a JSON body whose `error.kind` is `config_out_of_date`.
+    fn assert_config_out_of_date(response: Response) {
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(
+            response
+                .headers()
+                .get("retry-after")
+                .and_then(|value| value.to_str().ok()),
+            Some("60"),
+        );
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body_bytes(response)).expect("json error body");
+        assert_eq!(payload["error"]["kind"], "config_out_of_date");
+    }
+
+    /// A valid blob-envelope JSON string wrapping `{ "bid_cpm": <cpm> }`,
+    /// matching what `config push` writes for the typed config.
+    fn config_blob(bid_cpm: f64) -> String {
+        let data = serde_json::json!({ "bid_cpm": bid_cpm });
+        serde_json::to_string(&BlobEnvelope::new(data, "2026-01-01T00:00:00Z".to_owned()))
+            .expect("serialize envelope")
+    }
+
+    fn config_registry(bid_cpm: f64) -> ConfigRegistry {
+        let map: HashMap<String, String> =
+            [("mocktioneer_config".to_owned(), config_blob(bid_cpm))]
+                .into_iter()
+                .collect();
+        StoreRegistry::single_id(
+            "mocktioneer_config".to_owned(),
+            ConfigStoreBinding {
+                handle: ConfigStoreHandle::new(Arc::new(MapConfigStore(map))),
+                default_key: "mocktioneer_config".to_owned(),
+            },
+        )
+    }
+
     fn ctx(method: Method, uri: &str, body: Body, params: &[(&str, &str)]) -> RequestContext {
-        let mut builder = request_builder();
-        builder = builder.method(method).uri(uri);
-        let request = builder.body(body).expect("request");
+        ctx_with_cpm(method, uri, body, params, 0.20_f64)
+    }
+
+    /// A `RequestContext` whose default config store is bound but empty — i.e. a
+    /// deploy that declared `[stores.config]` but never ran `config push`. The
+    /// `AppConfig` extractor then fails loud with `503 config_out_of_date`, the
+    /// documented "must push before serving bids" compatibility contract.
+    fn ctx_without_pushed_config(method: Method, uri: &str, body: Body) -> RequestContext {
+        let mut request = request_builder()
+            .method(method)
+            .uri(uri)
+            .body(body)
+            .expect("request");
+        let empty = StoreRegistry::single_id(
+            "mocktioneer_config".to_owned(),
+            ConfigStoreBinding {
+                handle: ConfigStoreHandle::new(Arc::new(MapConfigStore(HashMap::new()))),
+                default_key: "mocktioneer_config".to_owned(),
+            },
+        );
+        request.extensions_mut().insert(empty);
+        RequestContext::new(request, PathParams::new(HashMap::new()))
+    }
+
+    /// Like [`ctx`] but seeds the default config store with a `bid_cpm` blob.
+    /// The auction/APS handlers use the fail-loud `AppConfig` extractor, so a
+    /// bound, valid blob must be present for them to run.
+    fn ctx_with_cpm(
+        method: Method,
+        uri: &str,
+        body: Body,
+        params: &[(&str, &str)],
+        bid_cpm: f64,
+    ) -> RequestContext {
+        let mut request = request_builder()
+            .method(method)
+            .uri(uri)
+            .body(body)
+            .expect("request");
+        request.extensions_mut().insert(config_registry(bid_cpm));
         let map = params
             .iter()
             .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
             .collect::<HashMap<_, _>>();
         RequestContext::new(request, PathParams::new(map))
+    }
+
+    // ---- bid_cpm typed-config wiring ----
+
+    #[test]
+    fn auction_uses_seeded_cpm() {
+        let body = serde_json::json!({
+            "id": "rc",
+            "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }]
+        });
+        let ctx = ctx_with_cpm(
+            Method::POST,
+            "/openrtb2/auction",
+            Body::json(&body).expect("json body"),
+            &[],
+            0.35_f64,
+        );
+        let response = response_from(block_on(handle_openrtb_auction(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body_bytes(response)).expect("json");
+        let price = payload["seatbid"][0]["bid"][0]["price"]
+            .as_f64()
+            .expect("price");
+        assert!((price - 0.35).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn auction_without_config_errors() {
+        // Fail-loud: with no config store bound the `AppConfig` extractor errors
+        // (out-of-the-box requires `config push` before serving auctions).
+        let body = serde_json::json!({
+            "id": "rc",
+            "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }]
+        });
+        let ctx = ctx_without_pushed_config(
+            Method::POST,
+            "/openrtb2/auction",
+            Body::json(&body).expect("json body"),
+        );
+        let response = response_from(block_on(handle_openrtb_auction(ctx)));
+        assert_config_out_of_date(response);
+    }
+
+    #[test]
+    fn aps_bid_uses_seeded_cpm() {
+        let body = serde_json::json!({
+            "pubId": "5555",
+            "slots": [{ "slotID": "slot1", "sizes": [[300_i32, 250_i32]] }]
+        });
+        let ctx = ctx_with_cpm(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::json(&body).expect("json body"),
+            &[],
+            0.35_f64,
+        );
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        assert_eq!(response.status(), StatusCode::OK);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&body_bytes(response)).expect("json");
+        let amznbid = payload["contextual"]["slots"][0]["amznbid"]
+            .as_str()
+            .expect("amznbid");
+        let price = decode_aps_price(amznbid).expect("decode price");
+        assert!((price - 0.35).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn aps_bid_without_config_errors() {
+        // Fail-loud parity with the OpenRTB path: store bound but not pushed.
+        let body = serde_json::json!({
+            "pubId": "5555",
+            "slots": [{ "slotID": "slot1", "sizes": [[300_i32, 250_i32]] }]
+        });
+        let ctx = ctx_without_pushed_config(
+            Method::POST,
+            "/e/dtb/bid",
+            Body::json(&body).expect("json body"),
+        );
+        let response = response_from(block_on(handle_aps_bid(ctx)));
+        assert_config_out_of_date(response);
     }
 
     #[test]
@@ -1478,7 +1656,7 @@ mod tests {
         let first = &sizes[0];
         assert!(first["width"].is_i64());
         assert!(first["height"].is_i64());
-        // CPM is no longer included — bid price is fixed at FIXED_BID_CPM
+        // CPM is not echoed in the response — bid price comes from config (default FIXED_BID_CPM)
         assert!(first.get("cpm").is_none());
     }
 

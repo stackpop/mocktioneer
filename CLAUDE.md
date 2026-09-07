@@ -6,7 +6,7 @@ Mocktioneer is a deterministic OpenRTB banner bidder for edge platforms. It lets
 you test client integrations (Prebid.js, Prebid Server, custom SDKs) without
 depending on third-party bidders or origin backends. Write once, deploy to
 Fastly Compute, Cloudflare Workers, or native Axum servers. The codebase is a
-Cargo workspace with 4 crates under `crates/`, a VitePress documentation site
+Cargo workspace with 6 crates under `crates/`, a VitePress documentation site
 under `docs/`, Playwright e2e tests under `tests/playwright/`, and CI workflows
 under `.github/workflows/`.
 
@@ -18,7 +18,8 @@ crates/
   mocktioneer-adapter-axum/       # Native Axum HTTP server
   mocktioneer-adapter-cloudflare/ # Cloudflare Workers bridge (wasm32-unknown-unknown)
   mocktioneer-adapter-fastly/     # Fastly Compute bridge (wasm32-wasip1)
-  mocktioneer-adapter-spin/       # Spin / Fermyon bridge (wasm32-wasip1)
+  mocktioneer-adapter-spin/       # Spin / Fermyon bridge (wasm32-wasip2)
+  mocktioneer-cli/                # Custom CLI: edgezero commands + typed config validate/push
 docs/                             # VitePress documentation site (Node.js)
 examples/                         # curl/shell scripts for endpoint demos
 tests/playwright/                 # Playwright e2e tests (creative visibility, sizes)
@@ -52,7 +53,12 @@ cargo run -p mocktioneer-adapter-axum
 # Run via EdgeZero CLI
 edgezero-cli serve --adapter cloudflare   # Cloudflare on :8787
 edgezero-cli serve --adapter fastly       # Fastly on :7676
-edgezero-cli serve --adapter spin         # Spin on :3000
+edgezero-cli serve --adapter spin         # Spin on :3000 — NOTE: `spin up` is
+                                          # currently blocked (spin-sdk 6.0.0
+                                          # imports wasi:http@0.3.0-rc, which no
+                                          # released Spin runtime provides).
+                                          # Build + wasmtime contract tests pass;
+                                          # live serve needs an upstream fix.
 
 # Playwright e2e tests
 cd tests/playwright && npm test
@@ -70,7 +76,7 @@ faster iteration since nearly all business logic lives there.
 | ---------- | ------------------------ | ---------------------------------------------------- |
 | Fastly     | `wasm32-wasip1`          | Requires Viceroy for local testing                   |
 | Cloudflare | `wasm32-unknown-unknown` | Requires `wrangler` for dev/deploy                   |
-| Spin       | `wasm32-wasip1`          | Requires `spin` for dev/deploy; tests via `wasmtime` |
+| Spin       | `wasm32-wasip2`          | Requires `spin` for dev/deploy; tests via `wasmtime` |
 | Axum       | Native (host triple)     | Standard Tokio runtime                               |
 
 ## Coding Conventions
@@ -154,7 +160,12 @@ through `render.rs`. Do not inline ad markup in handlers.
 
 ## Key Constants
 
-- `FIXED_BID_CPM: f64 = 0.20` — fixed price for all Mocktioneer-generated bids
+- `FIXED_BID_CPM: f64 = 0.20` — the auction/APS builders' default `cpm`
+  argument and the shipped value in `mocktioneer.toml`. At runtime the
+  OpenRTB/APS handlers read `bid_cpm` from the typed `MocktioneerConfig` blob via
+  the fail-loud `AppConfig` extractor (edgezero #269 blob model), so a deploy
+  must `config push` once before those endpoints serve — it is **not** a runtime
+  fallback
 - `STANDARD_SIZES` — 13 standard IAB sizes as a const array (300x250, 728x90, 320x50, etc.)
 
 ## CI Gates
@@ -165,8 +176,11 @@ Every PR must pass:
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 3. `cargo test --workspace --all-targets`
 4. `cargo check --workspace --all-targets --features "fastly cloudflare"`
-5. Playwright e2e tests (`tests/playwright/`)
-6. ESLint + Prettier on `docs/`
+5. `cp mocktioneer.toml.example mocktioneer.toml && cargo run -p mocktioneer-cli -- config validate --strict`
+   (`mocktioneer.toml` is gitignored; CI copies the template first, then validates
+   the default path — this is the exact `test.yml` invocation)
+6. Playwright e2e tests (`tests/playwright/`)
+7. ESLint + Prettier on `docs/`
 
 Docker image is built and pushed to `ghcr.io/stackpop/mocktioneer` on push to
 main and on releases.

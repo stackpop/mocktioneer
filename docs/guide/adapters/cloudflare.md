@@ -44,14 +44,43 @@ The Cloudflare adapter runs Mocktioneer on Cloudflare Workers, providing global 
 Run locally using Wrangler's local mode:
 
 ```bash
-# Using EdgeZero CLI
+# Using the CLI
 edgezero-cli serve --adapter cloudflare
+# or, in-repo (no external install):
+cargo run -p mocktioneer-cli -- serve --adapter cloudflare
 
 # Or directly
 wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
 ```
 
 This starts a local server that emulates the Workers environment.
+
+::: warning Config is KV-backed on Cloudflare
+Unlike Axum (local file) and Fastly, Cloudflare reads `bid_cpm` from a **KV
+namespace**, so `/openrtb2/auction` and `/e/dtb/bid` are fail-loud until the
+config blob is pushed into that namespace. The KV namespace must be bound in
+`wrangler.toml` as `[[kv_namespaces]] binding = "mocktioneer_config"`:
+
+- **Remote/deploy:** `mocktioneer-cli provision --adapter cloudflare` creates the
+  namespace and writes the binding into `wrangler.toml`, then
+  `config push --adapter cloudflare`.
+- **Local (`wrangler dev`):** `provision` is remote-only (it calls the Cloudflare
+  API). For a local-only KV, add the binding to `wrangler.toml` manually with a
+  placeholder id, then push to local state:
+
+  ```toml
+  [[kv_namespaces]]
+  binding = "mocktioneer_config"
+  id = "local-dev-placeholder"
+  ```
+
+  ```bash
+  cp mocktioneer.toml.example mocktioneer.toml
+  cargo run -p mocktioneer-cli -- config push --adapter cloudflare --local
+  ```
+
+Static/pixel/sizes endpoints work without any of this.
+:::
 
 ## Building
 

@@ -30,11 +30,24 @@ The Fastly adapter runs Mocktioneer on Fastly's Compute platform, providing glob
 
 ## Local Development
 
+::: tip Push the config first
+`/openrtb2/auction` and `/e/dtb/bid` are fail-loud — push the typed config to
+the Fastly config store before serving (static/pixel/sizes work without it):
+
+```bash
+cp mocktioneer.toml.example mocktioneer.toml
+cargo run -p mocktioneer-cli -- config push --adapter fastly --local
+```
+
+:::
+
 Run locally using Fastly's Viceroy runtime:
 
 ```bash
-# Using EdgeZero CLI
+# Using the CLI
 edgezero-cli serve --adapter fastly
+# or, in-repo (no external install):
+cargo run -p mocktioneer-cli -- serve --adapter fastly
 
 # Or directly
 fastly compute serve -C crates/mocktioneer-adapter-fastly
@@ -62,15 +75,44 @@ target/wasm32-wasip1/release/mocktioneer-adapter-fastly.wasm
 
 ### First-Time Setup
 
+`/openrtb2/auction` and `/e/dtb/bid` read `bid_cpm` from the **remote Fastly
+config store** via the fail-loud `AppConfig` extractor. Deploying alone is not
+enough — without the config store created, seeded and linked, those endpoints
+return `503 config_out_of_date`. Run the three steps in this order:
+
 ```bash
-edgezero-cli deploy --adapter fastly
+# 1. Create the remote config store and append [setup.config_stores.*] to fastly.toml
+cargo run -p mocktioneer-cli -- provision --adapter fastly
+
+# 2. Push the typed config blob into the store just created
+cp mocktioneer.toml.example mocktioneer.toml   # if you haven't already
+cargo run -p mocktioneer-cli -- config push --adapter fastly --yes
+
+# 3. Deploy — creating the service consumes [setup] and links the store to it
+cargo run -p mocktioneer-cli -- deploy --adapter fastly
 ```
 
-The CLI will prompt you to:
+The deploy will prompt you to:
 
 1. Create a new service or select existing
 2. Configure the domain
 3. Deploy the WASM bundle
+
+::: warning Already-deployed services skip `[setup]`
+Fastly consumes `[setup.config_stores.*]` **only when `deploy` creates a new
+service**. If `fastly.toml` already declares a `service_id`, the store is created
+in your account but is **not linked** to the service, so the runtime cannot open
+it. `provision` detects this and prints the exact one-shot command to finish the
+job — look up the store id with `fastly config-store list --json`, then:
+
+```bash
+fastly resource-link create --service-id=<SERVICE-ID> --resource-id=<STORE-ID> \
+  --version=latest --autoclone --name=mocktioneer_config
+```
+
+The link clones the active version, so live traffic is unaffected until you run
+`fastly service-version activate`.
+:::
 
 ### Subsequent Deployments
 
@@ -80,6 +122,32 @@ edgezero-cli deploy --adapter fastly
 
 # Or directly
 fastly compute deploy -C crates/mocktioneer-adapter-fastly
+```
+
+### Updating the Config
+
+`bid_cpm` lives in the config store, not the WASM bundle — after editing
+`mocktioneer.toml`, **re-push**; no redeploy is needed:
+
+```bash
+cargo run -p mocktioneer-cli -- config diff --adapter fastly   # preview
+cargo run -p mocktioneer-cli -- config push --adapter fastly --yes
+```
+
+### Deployment Lifecycle (staging)
+
+`mocktioneer-cli` also exposes the Fastly staging-lifecycle commands from
+EdgeZero for a safe deploy → verify → roll-forward-or-back loop:
+
+```bash
+# Capture the current live version BEFORE deploying (your rollback target)
+cargo run -p mocktioneer-cli -- active-version --adapter fastly
+
+# After deploying a staged version, probe its health (retries; non-zero on fail)
+cargo run -p mocktioneer-cli -- healthcheck --adapter fastly
+
+# Roll back to a previous version (or deactivate a staged one) if it's unhealthy
+cargo run -p mocktioneer-cli -- rollback --adapter fastly
 ```
 
 ## Configuration

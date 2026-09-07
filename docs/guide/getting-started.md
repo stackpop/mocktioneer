@@ -38,7 +38,30 @@ Or run it from a local EdgeZero checkout:
 cargo run --manifest-path /path/to/edgezero/Cargo.toml -p edgezero-cli --features cli -- --help
 ```
 
+Alternatively, this repo vendors `mocktioneer-cli` (built on the EdgeZero CLI
+library) — no external install needed, and it adds the typed config commands:
+
+```bash
+cargo run -p mocktioneer-cli -- --help
+# `mocktioneer.toml` is gitignored (created in Running Locally below); validate
+# the committed template so this works on a fresh checkout.
+cargo run -p mocktioneer-cli -- config validate --strict --app-config mocktioneer.toml.example
+```
+
 ## Running Locally
+
+> **Seed the app config first.** The OpenRTB (`/openrtb2/auction`) and APS
+> (`/e/dtb/bid`) endpoints read `bid_cpm` from the typed config via the
+> fail-loud `AppConfig` extractor, so they error until you push the config once
+> per adapter. `mocktioneer.toml` is gitignored (per-env); create it from the
+> committed template, then push:
+>
+> ```bash
+> cp mocktioneer.toml.example mocktioneer.toml   # then edit bid_cpm if desired
+> cargo run -p mocktioneer-cli -- config push --adapter axum --yes
+> ```
+>
+> The root, `/static/*`, `/pixel`, and `/_/sizes` endpoints work without it.
 
 ### Option 1: Native Axum Server (Recommended for Development)
 
@@ -50,10 +73,12 @@ cargo run -p mocktioneer-adapter-axum
 
 The server starts at `http://127.0.0.1:8787`.
 
-### Option 2: Using EdgeZero CLI
+### Option 2: Using the CLI
 
 ```bash
 edgezero-cli serve --adapter axum
+# or, in-repo (no external install):
+cargo run -p mocktioneer-cli -- serve --adapter axum
 ```
 
 ### Option 3: Fastly Local Development

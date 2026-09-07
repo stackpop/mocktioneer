@@ -1,14 +1,37 @@
 #![cfg(all(feature = "cloudflare", target_arch = "wasm32"))]
-#![expect(
-    deprecated,
-    reason = "exercise the low-level dispatch path while it remains public"
-)]
 
-use edgezero_adapter_cloudflare::request::dispatch;
+use async_trait::async_trait;
+use edgezero_adapter_cloudflare::request::CloudflareService;
+use edgezero_core::blob_envelope::BlobEnvelope;
+use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
 use mocktioneer_core::build_app;
+use std::collections::HashMap;
+use std::sync::Arc;
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
-use worker::wasm_bindgen::JsCast as _;
+use worker::wasm_bindgen::{JsCast as _, JsValue};
 use worker::{Context, Env, Method as CfMethod, Request as CfRequest, RequestInit};
+
+/// In-memory `ConfigStore` so the auction path can be seeded in-process, with no
+/// miniflare/workerd KV fixture. Mirrors the core-crate test double.
+struct MapConfigStore(HashMap<String, String>);
+
+#[async_trait(?Send)]
+impl ConfigStore for MapConfigStore {
+    async fn get(&self, key: &str) -> Result<Option<String>, ConfigStoreError> {
+        Ok(self.0.get(key).cloned())
+    }
+}
+
+/// A config handle holding the typed-config blob for `{ "bid_cpm": <cpm> }`.
+/// An injected handle is bound under default_key `"default"` by the Cloudflare
+/// service builder (`synthesise_store_registries`), so the blob lives there.
+fn seeded_config_handle(bid_cpm: f64) -> ConfigStoreHandle {
+    let data = serde_json::json!({ "bid_cpm": bid_cpm });
+    let blob = serde_json::to_string(&BlobEnvelope::new(data, "2026-01-01T00:00:00Z".to_owned()))
+        .expect("serialize envelope");
+    let store = MapConfigStore([("default".to_owned(), blob)].into_iter().collect());
+    ConfigStoreHandle::new(Arc::new(store))
+}
 
 // `run_in_browser` selects the wasm-bindgen browser harness. In CI this runs
 // headless in Firefox (via the geckodriver that ships on the ubuntu-latest
@@ -41,7 +64,10 @@ async fn root_dispatches_through_cloudflare_adapter() {
     let req = cf_request(CfMethod::Get, "/");
     let (env, ctx) = test_env_ctx();
 
-    let mut response = dispatch(&app, req, env, ctx).await.expect("cf response");
+    let mut response = CloudflareService::new(&app)
+        .dispatch(req, env, ctx)
+        .await
+        .expect("cf response");
 
     assert_eq!(response.status_code(), 200);
     let body = response.bytes().await.expect("body bytes");
@@ -59,7 +85,10 @@ async fn pixel_returns_gif_through_cloudflare_adapter() {
     let req = cf_request(CfMethod::Get, "/pixel?pid=cloudflare-contract");
     let (env, ctx) = test_env_ctx();
 
-    let response = dispatch(&app, req, env, ctx).await.expect("cf response");
+    let response = CloudflareService::new(&app)
+        .dispatch(req, env, ctx)
+        .await
+        .expect("cf response");
 
     assert_eq!(response.status_code(), 200);
     let content_type = response
@@ -68,4 +97,51 @@ async fn pixel_returns_gif_through_cloudflare_adapter() {
         .expect("content-type lookup")
         .expect("content-type header");
     assert_eq!(content_type, "image/gif");
+}
+
+fn cf_post_json(path: &str, body: &str) -> CfRequest {
+    let mut init = RequestInit::new();
+    init.with_method(CfMethod::Post);
+
+    let headers = worker::Headers::new();
+    headers.set("host", "test.local").expect("host header");
+    headers
+        .set("content-type", "application/json")
+        .expect("content-type header");
+    init.with_headers(headers);
+    init.with_body(Some(JsValue::from_str(body)));
+
+    let url = format!("https://test.local{path}");
+    CfRequest::new_with_init(&url, &init).expect("cf request")
+}
+
+#[wasm_bindgen_test]
+async fn auction_uses_seeded_cpm_through_cloudflare_adapter() {
+    let app = build_app();
+    let body = serde_json::json!({
+        "id": "rc",
+        "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }]
+    })
+    .to_string();
+    let req = cf_post_json("/openrtb2/auction", &body);
+    let (env, ctx) = test_env_ctx();
+
+    // Full path through the adapter: request translation -> config-store bind ->
+    // `AppConfig` extractor -> auction handler -> response translation.
+    let mut response = CloudflareService::new(&app)
+        .with_config_handle(seeded_config_handle(0.35_f64))
+        .dispatch(req, env, ctx)
+        .await
+        .expect("cf response");
+
+    assert_eq!(response.status_code(), 200);
+    let payload: serde_json::Value =
+        serde_json::from_slice(&response.bytes().await.expect("body bytes")).expect("json body");
+    let price = payload["seatbid"][0]["bid"][0]["price"]
+        .as_f64()
+        .expect("bid price");
+    assert!(
+        (price - 0.35_f64).abs() < f64::EPSILON,
+        "expected seeded cpm 0.35, got {price}",
+    );
 }

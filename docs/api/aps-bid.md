@@ -2,6 +2,18 @@
 
 The `/e/dtb/bid` endpoint accepts Amazon Publisher Services (APS) Transparent Ad Marketplace bid requests and returns bids in APS format.
 
+::: warning Requires a pushed config
+Like the OpenRTB endpoint, this reads `bid_cpm` from the typed app config via the
+fail-loud `AppConfig` extractor and returns an error until the config blob is
+pushed once for the target adapter:
+
+```bash
+cargo run -p mocktioneer-cli -- config push --adapter axum --yes
+```
+
+See [Configuration › Typed App Config](/guide/configuration#typed-app-config).
+:::
+
 ## Endpoint
 
 ```
