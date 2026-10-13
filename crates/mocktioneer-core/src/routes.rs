@@ -209,7 +209,7 @@ where
 impl Middleware for Cors {
     #[inline]
     async fn handle(&self, ctx: RequestContext, next: Next<'_>) -> Result<Response, EdgeError> {
-        let method = ctx.request().method().clone();
+        let method = ctx.method().clone();
         let mut response = if method == Method::OPTIONS {
             Ok(options_response())
         } else {
@@ -231,13 +231,13 @@ where
 
     if let Some((width, height)) = parse_size_param(&params.size, F::FORMAT.suffix()) {
         if !is_standard_size(width, height) {
-            return Err(F::handle_invalid(ctx.request().uri().path(), width, height));
+            return Err(F::handle_invalid(ctx.uri().path(), width, height));
         }
 
         return Ok(ValidatedSize(SizeDimensions { height, width }, PhantomData));
     }
 
-    Err(EdgeError::not_found(ctx.request().uri().path()))
+    Err(EdgeError::not_found(ctx.uri().path()))
 }
 
 fn parse_size_param(size: &str, suffix: &str) -> Option<(i64, i64)> {
@@ -1001,13 +1001,17 @@ mod tests {
     use crate::auction::decode_aps_price;
     use edgezero_core::blob_envelope::BlobEnvelope;
     use edgezero_core::body::Body;
-    use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
+    use edgezero_core::config_store::{
+        BoundedStoreRead, ConfigStore, ConfigStoreError, ConfigStoreHandle,
+        finish_bounded_config_read,
+    };
     use edgezero_core::context::RequestContext;
     use edgezero_core::error::EdgeError;
     use edgezero_core::http::{Method, Response, StatusCode, request_builder};
     use edgezero_core::params::PathParams;
     use edgezero_core::response::IntoResponse as _;
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
+    use edgezero_core::time::{Deadline, MonotonicClock};
     use futures::executor::block_on;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -1019,8 +1023,28 @@ mod tests {
     // the impl MUST use the same `(?Send)` mode or method signatures won't match.
     #[async_trait(?Send)]
     impl ConfigStore for MapConfigStore {
-        async fn get(&self, key: &str) -> Result<Option<String>, ConfigStoreError> {
-            Ok(self.0.get(key).cloned())
+        async fn get(
+            &self,
+            key: &str,
+        ) -> Result<Option<edgezero_core::ConfigValue>, ConfigStoreError> {
+            Ok(self.0.get(key).cloned().map(Into::into))
+        }
+
+        async fn get_bounded(
+            &self,
+            key: &str,
+            clock: &MonotonicClock,
+            deadline: Deadline,
+            max_backend_bytes: u64,
+            max_value_bytes: u64,
+        ) -> Result<BoundedStoreRead<edgezero_core::ConfigValue>, ConfigStoreError> {
+            finish_bounded_config_read(
+                self.get(key).await,
+                clock,
+                deadline,
+                max_backend_bytes,
+                max_value_bytes,
+            )
         }
     }
 

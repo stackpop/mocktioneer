@@ -1,0 +1,11 @@
+{
+  "name": "mocktioneer-celld-missing-config",
+  "main": "runtime/build/worker/shim.mjs",
+  "compatibility_date": "2026-10-13",
+  "kv_namespaces": [
+    {
+      "binding": "mocktioneer_config",
+      "id": "mocktioneer_config"
+    }
+  ]
+}

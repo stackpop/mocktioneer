@@ -24,7 +24,7 @@ fn make_request(method: Method, uri: &str) -> Request {
 }
 
 fn dispatch(request: Request) -> Response {
-    let app = build_app();
+    let app = build_app().expect("app build");
     block_on(app.router().oneshot(request)).expect("router result")
 }
 

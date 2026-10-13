@@ -4,11 +4,15 @@ mod tests {
     use edgezero_core::app::App;
     use edgezero_core::blob_envelope::BlobEnvelope;
     use edgezero_core::body::Body;
-    use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
+    use edgezero_core::config_store::{
+        BoundedStoreRead, ConfigStore, ConfigStoreError, ConfigStoreHandle,
+        finish_bounded_config_read,
+    };
     use edgezero_core::http::{
         HeaderValue, Method, Request, Response, StatusCode, header, request_builder,
     };
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
+    use edgezero_core::time::{Deadline, MonotonicClock};
     use futures::executor::block_on;
     use std::collections::HashMap;
     use std::sync::Arc;
@@ -18,13 +22,33 @@ mod tests {
 
     #[async_trait(?Send)]
     impl ConfigStore for MapConfigStore {
-        async fn get(&self, key: &str) -> Result<Option<String>, ConfigStoreError> {
-            Ok(self.0.get(key).cloned())
+        async fn get(
+            &self,
+            key: &str,
+        ) -> Result<Option<edgezero_core::ConfigValue>, ConfigStoreError> {
+            Ok(self.0.get(key).cloned().map(Into::into))
+        }
+
+        async fn get_bounded(
+            &self,
+            key: &str,
+            clock: &MonotonicClock,
+            deadline: Deadline,
+            max_backend_bytes: u64,
+            max_value_bytes: u64,
+        ) -> Result<BoundedStoreRead<edgezero_core::ConfigValue>, ConfigStoreError> {
+            finish_bounded_config_read(
+                self.get(key).await,
+                clock,
+                deadline,
+                max_backend_bytes,
+                max_value_bytes,
+            )
         }
     }
 
     fn app() -> App {
-        mocktioneer_core::build_app()
+        mocktioneer_core::build_app().expect("app build")
     }
 
     /// Build a `ConfigRegistry` whose default `mocktioneer_config` store holds a
