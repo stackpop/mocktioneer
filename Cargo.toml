@@ -5,6 +5,7 @@ members = [
   "crates/mocktioneer-adapter-cloudflare",
   "crates/mocktioneer-adapter-fastly",
   "crates/mocktioneer-adapter-spin",
+  "crates/mocktioneer-adapter-celld",
   "crates/mocktioneer-cli",
 ]
 resolver = "2"
@@ -28,12 +29,13 @@ axum = "0.8"
 base64 = "0.22"
 clap = { version = "4", features = ["derive"] }
 ed25519-dalek = "2.1"
-edgezero-adapter-axum = { git = "https://github.com/stackpop/edgezero.git", tag = "v0.0.7", package = "edgezero-adapter-axum", default-features = false }
-edgezero-adapter-cloudflare = { git = "https://github.com/stackpop/edgezero.git", tag = "v0.0.7", package = "edgezero-adapter-cloudflare", default-features = false }
-edgezero-adapter-fastly = { git = "https://github.com/stackpop/edgezero.git", tag = "v0.0.7", package = "edgezero-adapter-fastly", default-features = false }
-edgezero-adapter-spin = { git = "https://github.com/stackpop/edgezero.git", tag = "v0.0.7", package = "edgezero-adapter-spin", default-features = false }
-edgezero-cli = { git = "https://github.com/stackpop/edgezero.git", tag = "v0.0.7", package = "edgezero-cli" }
-edgezero-core = { git = "https://github.com/stackpop/edgezero.git", tag = "v0.0.7", package = "edgezero-core" }
+edgezero-adapter-axum = { git = "https://github.com/stackpop/edgezero.git", rev = "332092e931821fc89961f85276af214e960cf606", package = "edgezero-adapter-axum", default-features = false }
+edgezero-adapter-celld = { git = "https://github.com/stackpop/edgezero.git", rev = "332092e931821fc89961f85276af214e960cf606", package = "edgezero-adapter-celld", default-features = false }
+edgezero-adapter-cloudflare = { git = "https://github.com/stackpop/edgezero.git", rev = "332092e931821fc89961f85276af214e960cf606", package = "edgezero-adapter-cloudflare", default-features = false }
+edgezero-adapter-fastly = { git = "https://github.com/stackpop/edgezero.git", rev = "332092e931821fc89961f85276af214e960cf606", package = "edgezero-adapter-fastly", default-features = false }
+edgezero-adapter-spin = { git = "https://github.com/stackpop/edgezero.git", rev = "332092e931821fc89961f85276af214e960cf606", package = "edgezero-adapter-spin", default-features = false }
+edgezero-cli = { git = "https://github.com/stackpop/edgezero.git", rev = "332092e931821fc89961f85276af214e960cf606", package = "edgezero-cli" }
+edgezero-core = { git = "https://github.com/stackpop/edgezero.git", rev = "332092e931821fc89961f85276af214e960cf606", package = "edgezero-core" }
 fastly = "0.12.1"
 futures = { version = "0.3", features = ["std", "executor"] }
 futures-util = "0.3.32"
@@ -41,6 +43,7 @@ handlebars = "6"
 js-sys = "0.3"
 log = { version = "0.4", features = ["serde"] }
 mocktioneer-core = { path = "crates/mocktioneer-core" }
+mocktioneer-adapter-celld = { path = "crates/mocktioneer-adapter-celld" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 serde_repr = "0.1"
@@ -56,7 +59,7 @@ tracing = "0.1"
 url = "2"
 uuid = { version = "1", features = ["v7", "js"] }
 validator = { version = "0.20", features = ["derive"] }
-worker = { version = "0.8.3", features = ["http"] }
+worker = { version = "=0.8.5", default-features = false, features = ["http"] }
 
 [workspace.lints.clippy]
 # Mirrors the edgezero workspace strict-clippy gate. Every additional

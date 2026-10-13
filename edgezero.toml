@@ -17,21 +17,21 @@ id = "introspect_manifest"
 path = "/_mocktioneer/manifest"
 methods = ["GET"]
 handler = "edgezero_core::introspection::manifest"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "introspect_config"
 path = "/_mocktioneer/config"
 methods = ["GET"]
 handler = "edgezero_core::introspection::config"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "introspect_routes"
 path = "/_mocktioneer/routes"
 methods = ["GET"]
 handler = "edgezero_core::introspection::routes"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 # CORS preflight for the introspection routes (parity with every other route).
 [[triggers.http]]
@@ -39,161 +39,161 @@ id = "introspect_manifest_options"
 path = "/_mocktioneer/manifest"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "introspect_config_options"
 path = "/_mocktioneer/config"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "introspect_routes_options"
 path = "/_mocktioneer/routes"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "root"
 path = "/"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_root"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "root_options"
 path = "/"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "openrtb_auction"
 path = "/openrtb2/auction"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_openrtb_auction"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "openrtb_options"
 path = "/openrtb2/auction"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "static_img"
 path = "/static/img/{size}"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_static_img"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "static_img_options"
 path = "/static/img/{size}"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "static_creatives"
 path = "/static/creatives/{size}"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_static_creatives"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "static_creatives_options"
 path = "/static/creatives/{size}"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "click"
 path = "/click"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_click"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "click_options"
 path = "/click"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "pixel"
 path = "/pixel"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_pixel"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "pixel_options"
 path = "/pixel"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "aps_bid"
 path = "/e/dtb/bid"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_aps_bid"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "aps_bid_options"
 path = "/e/dtb/bid"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "aps_win"
 path = "/aps/win"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_aps_win"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "aps_win_options"
 path = "/aps/win"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "adserver_mediate"
 path = "/adserver/mediate"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_adserver_mediate"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "adserver_mediate_options"
 path = "/adserver/mediate"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "sizes"
 path = "/_/sizes"
 methods = ["GET"]
 handler = "mocktioneer_core::routes::handle_sizes"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 [[triggers.http]]
 id = "sizes_options"
 path = "/_/sizes"
 methods = ["OPTIONS"]
 handler = "mocktioneer_core::routes::handle_options"
-adapters = ["axum", "cloudflare", "fastly", "spin"]
+adapters = ["axum", "cloudflare", "fastly", "spin", "celld"]
 
 # Edge Cookie (EC) sync endpoints
 
@@ -310,3 +310,19 @@ serve = "spin up --from crates/mocktioneer-adapter-spin/spin.toml --runtime-conf
 [adapters.spin.logging]
 level = "info"
 echo_stdout = true
+
+[adapters.celld.adapter]
+crate = "crates/mocktioneer-adapter-celld"
+manifest = "crates/mocktioneer-adapter-celld/celld/normal/wrangler.json"
+
+[adapters.celld.build]
+target = "wasm32-unknown-unknown"
+profile = "release"
+features = ["celld"]
+
+[adapters.celld.commands]
+build = "worker-build --release"
+serve = "celld dev crates/mocktioneer-adapter-celld/celld/normal/wrangler.json --host 127.0.0.1 --port 9876"
+
+[adapters.celld.logging]
+level = "info"

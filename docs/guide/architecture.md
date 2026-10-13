@@ -48,10 +48,7 @@ mocktioneer-core/
 Each adapter crate is minimal - it just wires up the EdgeZero runtime:
 
 ```rust
-// mocktioneer-adapter-axum/src/main.rs
-fn main() {
-    edgezero_adapter_axum::serve(mocktioneer_core::build_app());
-}
+let app = mocktioneer_core::build_app()?;
 ```
 
 The adapter crates handle platform-specific concerns:

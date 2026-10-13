@@ -1,10 +1,9 @@
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use ed25519_dalek::{Signature, Verifier as _, VerifyingKey};
-use edgezero_core::body::Body;
 use edgezero_core::context::RequestContext;
-use edgezero_core::http::{Method, StatusCode, Uri};
-use edgezero_core::proxy::ProxyRequest;
-use futures_util::StreamExt as _;
+use edgezero_core::http::{StatusCode, Uri};
+use edgezero_core::outbound::OutboundRequest;
+use edgezero_core::{EdgeError, ResponseLimitReason};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{LazyLock, Mutex};
@@ -19,6 +18,7 @@ const TS_FRESHNESS_WINDOW_MS: u64 = 5 * 60 * 1000;
 
 /// Maximum JWKS response body size (64 KiB).
 const MAX_JWKS_BODY_BYTES: usize = 64 * 1024;
+const MAX_JWKS_BODY_BYTES_U64: u64 = 64 * 1024;
 
 static JWKS_CACHE: LazyLock<Mutex<HashMap<String, JwksCache>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -79,31 +79,6 @@ fn jwks_body_too_large_error() -> VerificationError {
     ))
 }
 
-async fn collect_jwks_body(body: Body) -> Result<Vec<u8>, VerificationError> {
-    match body {
-        Body::Once(bytes) => {
-            if bytes.len() > MAX_JWKS_BODY_BYTES {
-                return Err(jwks_body_too_large_error());
-            }
-            Ok(bytes.to_vec())
-        }
-        Body::Stream(mut stream) => {
-            let mut collected = Vec::new();
-            while let Some(next_chunk) = stream.next().await {
-                let chunk = next_chunk.map_err(|err| {
-                    VerificationError::HttpError(format!("Stream read failed: {err}"))
-                })?;
-                if collected.len().saturating_add(chunk.len()) > MAX_JWKS_BODY_BYTES {
-                    return Err(jwks_body_too_large_error());
-                }
-                collected.extend_from_slice(&chunk);
-            }
-
-            Ok(collected)
-        }
-    }
-}
-
 async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, VerificationError> {
     let host = validate_jwks_host(domain)?;
     let jwks_url = format!("https://{host}/.well-known/trusted-server.json");
@@ -114,24 +89,39 @@ async fn fetch_jwks(ctx: &RequestContext, domain: &str) -> Result<JwksResponse, 
         .parse::<Uri>()
         .map_err(|err| VerificationError::HttpError(format!("Invalid JWKS URL: {err}")))?;
 
-    let proxy_request = ProxyRequest::new(Method::GET, uri);
-    let proxy_handle = ctx
-        .proxy_handle()
-        .ok_or_else(|| VerificationError::HttpError("Proxy not available".to_owned()))?;
-
-    let resp = proxy_handle
-        .forward(proxy_request)
+    let client = ctx
+        .http_client()
+        .ok_or_else(|| VerificationError::HttpError("HTTP client not available".to_owned()))?;
+    let request = OutboundRequest::get(uri.to_string())
+        .map_err(|err| VerificationError::HttpError(format!("Invalid JWKS request: {err}")))?;
+    let upstream_response = client
+        .send(request)
         .await
         .map_err(|err| VerificationError::HttpError(format!("JWKS fetch failed: {err}")))?;
 
-    if resp.status() != StatusCode::OK {
+    if upstream_response.status() != StatusCode::OK {
         return Err(VerificationError::HttpError(format!(
             "JWKS server returned status: {}",
-            resp.status()
+            upstream_response.status()
         )));
     }
 
-    let body_bytes = collect_jwks_body(resp.into_body()).await?;
+    let body_bytes = upstream_response
+        .into_bytes_bounded(MAX_JWKS_BODY_BYTES_U64)
+        .await
+        .map_err(|error| {
+            if matches!(
+                &error,
+                EdgeError::ResponseTooLarge {
+                    reason: ResponseLimitReason::BufferedBody,
+                    ..
+                }
+            ) {
+                jwks_body_too_large_error()
+            } else {
+                VerificationError::HttpError(format!("JWKS body read failed: {error}"))
+            }
+        })?;
     let response: TrustedServerResponse = serde_json::from_slice(&body_bytes)
         .map_err(|err| VerificationError::HttpError(format!("JWKS parse failed: {err}")))?;
     Ok(response.jwks)
@@ -484,7 +474,8 @@ pub async fn verify_request_id_signature(
 
 #[cfg(test)]
 mod tests {
-    use edgezero_core::http::request_builder;
+    use edgezero_core::body::Body;
+    use edgezero_core::http::{Method, request_builder};
     use edgezero_core::params::PathParams;
     use futures::executor::block_on;
     use std::collections::HashMap;
@@ -973,11 +964,27 @@ mod tests {
     }
 
     #[test]
-    fn collect_jwks_body_rejects_oversized_once_body() {
-        let body = Body::from_bytes(vec![0_u8; MAX_JWKS_BODY_BYTES + 1]);
-        let err = block_on(collect_jwks_body(body)).unwrap_err();
-        assert!(matches!(err, VerificationError::HttpError(_)));
-        assert!(err.to_string().contains("JWKS response body exceeds"));
+    fn bounded_outbound_jwks_body_rejects_oversized_response() {
+        use edgezero_core::body::Body;
+        use edgezero_core::http::{HeaderMap, Method};
+        use edgezero_core::outbound::OutboundResponse;
+
+        let response = OutboundResponse::new(
+            Method::GET,
+            StatusCode::OK,
+            HeaderMap::new(),
+            Body::from_bytes(vec![0_u8; MAX_JWKS_BODY_BYTES + 1]),
+            edgezero_core::MonotonicClock::default(),
+        );
+        let error = block_on(response.into_bytes_bounded(MAX_JWKS_BODY_BYTES_U64))
+            .expect_err("oversized JWKS response must be rejected");
+        assert!(matches!(
+            error,
+            EdgeError::ResponseTooLarge {
+                reason: ResponseLimitReason::BufferedBody,
+                ..
+            }
+        ));
     }
 
     #[test]

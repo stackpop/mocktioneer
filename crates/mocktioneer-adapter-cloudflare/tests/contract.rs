@@ -60,7 +60,7 @@ fn test_env_ctx() -> (Env, Context) {
 
 #[wasm_bindgen_test]
 async fn root_dispatches_through_cloudflare_adapter() {
-    let app = build_app();
+    let app = build_app().expect("app build");
     let req = cf_request(CfMethod::Get, "/");
     let (env, ctx) = test_env_ctx();
 
@@ -81,7 +81,7 @@ async fn root_dispatches_through_cloudflare_adapter() {
 
 #[wasm_bindgen_test]
 async fn pixel_returns_gif_through_cloudflare_adapter() {
-    let app = build_app();
+    let app = build_app().expect("app build");
     let req = cf_request(CfMethod::Get, "/pixel?pid=cloudflare-contract");
     let (env, ctx) = test_env_ctx();
 
@@ -117,7 +117,7 @@ fn cf_post_json(path: &str, body: &str) -> CfRequest {
 
 #[wasm_bindgen_test]
 async fn auction_uses_seeded_cpm_through_cloudflare_adapter() {
-    let app = build_app();
+    let app = build_app().expect("app build");
     let body = serde_json::json!({
         "id": "rc",
         "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }]

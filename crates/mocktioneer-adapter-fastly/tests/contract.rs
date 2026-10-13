@@ -40,7 +40,7 @@ fn fastly_request(method: FastlyMethod, path: &str) -> FastlyRequest {
 
 #[test]
 fn root_dispatches_through_fastly_adapter() {
-    let app = build_app();
+    let app = build_app().expect("app build");
     let req = fastly_request(FastlyMethod::GET, "/");
 
     let mut response = FastlyService::new(&app)
@@ -59,7 +59,7 @@ fn root_dispatches_through_fastly_adapter() {
 
 #[test]
 fn pixel_returns_gif_through_fastly_adapter() {
-    let app = build_app();
+    let app = build_app().expect("app build");
     let req = fastly_request(FastlyMethod::GET, "/pixel?pid=fastly-contract");
 
     let response = FastlyService::new(&app)
@@ -76,7 +76,7 @@ fn pixel_returns_gif_through_fastly_adapter() {
 
 #[test]
 fn auction_uses_seeded_cpm_through_fastly_adapter() {
-    let app = build_app();
+    let app = build_app().expect("app build");
     let body = serde_json::json!({
         "id": "rc",
         "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }]
