@@ -1,6 +1,6 @@
 # Architecture
 
-Mocktioneer is built on [EdgeZero](https://github.com/stackpop/edgezero), an adapter-agnostic framework for edge computing. This architecture allows the same application logic to run across multiple platforms.
+Mocktioneer is built on [EdgeZero](https://github.com/IABTechLab/edgezero), an adapter-agnostic framework for edge computing. This architecture allows the same application logic to run across multiple platforms.
 
 ## Workspace Layout
 
