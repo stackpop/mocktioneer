@@ -183,19 +183,20 @@ echo_stdout = true
 
 ### Spin Adapter
 
-Spin targets `wasm32-wasip2` (spin-sdk 6). Its config store is KV-backed, so the
+Spin targets `wasm32-wasip2` (spin-sdk 7). Its config store is KV-backed, so the
 `serve` command passes a `--runtime-config-file` declaring the KV label
 (`spin deploy` is plugin-mediated and provisions KV itself, so it takes no
 runtime-config flag):
 
-::: warning `spin up` currently blocked (upstream)
-The Spin adapter **compiles** to a `wasm32-wasip2` component and passes the
-router-level contract tests (run under `wasmtime`), but `spin up` on today's
-Spin runtimes (e.g. 3.6.3) fails to link: `spin-sdk 6.0.0` pulls
-`wasi:http@0.3.0-rc`, which no released Spin provides (they expose
-`wasi:http@0.2`). This is a spin-sdk/runtime ABI mismatch to be resolved
-upstream in EdgeZero's `spin-sdk` pin — the Fastly / Cloudflare / Axum adapters
-are unaffected.
+::: tip Requires Spin 4.1 or newer
+`spin-sdk 7` imports `wasi:http@0.3.0`, which Spin 4.0.x and earlier do not
+provide — `spin up` on those fails to link with `a matching implementation was
+not found in the linker`. Spin 4.1.0 ships that interface and boots the adapter.
+
+Spin is not pinned in `.tool-versions` (no widely used asdf plugin), so install
+it separately from [spinframework.dev/install](https://spinframework.dev/install).
+Note that `cargo build` and the wasmtime-hosted contract tests both pass against
+a component that cannot boot, so only a real `spin up` catches a runtime skew.
 :::
 
 ```toml
