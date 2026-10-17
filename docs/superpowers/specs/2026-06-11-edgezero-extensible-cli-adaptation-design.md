@@ -2,7 +2,7 @@
 
 - **Date:** 2026-06-11
 - **Branch:** `feature/edgezero-extensible-cli` (off `main`)
-- **Upstream:** [stackpop/edgezero#269](https://github.com/stackpop/edgezero/pull/269)
+- **Upstream:** [IABTechLab/edgezero#269](https://github.com/IABTechLab/edgezero/pull/269)
   — "EdgeZero CLI Extensions". Head `feature/extensible-cli`, base **`main`**
   (rebased off `chore/strict-clippy`), **OPEN / unmerged** (re-verified via
   `gh pr view 269` on 2026-06-15: state OPEN, base `main`, updated

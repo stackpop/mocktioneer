@@ -4,7 +4,7 @@
 [net]
 git-fetch-with-cli = true
 
-[patch."https://github.com/stackpop/edgezero.git"]
+[patch."https://github.com/IABTechLab/edgezero.git"]
 edgezero-adapter-axum = { path = "../edgezero/crates/edgezero-adapter-axum" }
 edgezero-adapter-cloudflare = { path = "../edgezero/crates/edgezero-adapter-cloudflare" }
 edgezero-adapter-fastly = { path = "../edgezero/crates/edgezero-adapter-fastly" }
