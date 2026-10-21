@@ -73,56 +73,44 @@ target/wasm32-wasip1/release/mocktioneer-adapter-fastly.wasm
 
 ## Deployment
 
-### First-Time Setup
+::: warning Breaking change in EdgeZero v0.0.10
+Mocktioneer declares the `mocktioneer_config` store, so Fastly deployments now
+use EdgeZero's managed lifecycle and require `--application-release`. The old
+checkout-based `provision` → `config push` → bare `deploy --adapter fastly`
+sequence is no longer supported.
 
-`/openrtb2/auction` and `/e/dtb/bid` read `bid_cpm` from the **remote Fastly
-config store** via the fail-loud `AppConfig` extractor. Deploying alone is not
-enough — without the config store created, seeded and linked, those endpoints
-return `503 config_out_of_date`. Run the three steps in this order:
-
-```bash
-# 1. Create the remote config store and append [setup.config_stores.*] to fastly.toml
-cargo run -p mocktioneer-cli -- provision --adapter fastly
-
-# 2. Push the typed config blob into the store just created
-cp mocktioneer.toml.example mocktioneer.toml   # if you haven't already
-cargo run -p mocktioneer-cli -- config push --adapter fastly --yes
-
-# 3. Deploy — creating the service consumes [setup] and links the store to it
-cargo run -p mocktioneer-cli -- deploy --adapter fastly
-```
-
-The deploy will prompt you to:
-
-1. Create a new service or select existing
-2. Configure the domain
-3. Deploy the WASM bundle
-
-::: warning Already-deployed services skip `[setup]`
-Fastly consumes `[setup.config_stores.*]` **only when `deploy` creates a new
-service**. If `fastly.toml` already declares a `service_id`, the store is created
-in your account but is **not linked** to the service, so the runtime cannot open
-it. `provision` detects this and prints the exact one-shot command to finish the
-job — look up the store id with `fastly config-store list --json`, then:
-
-```bash
-fastly resource-link create --service-id=<SERVICE-ID> --resource-id=<STORE-ID> \
-  --version=latest --autoclone --name=mocktioneer_config
-```
-
-The link clones the active version, so live traffic is unaffected until you run
-`fastly service-version activate`.
+Application-release packaging is deferred. This repository currently provides
+no workflow or command to produce the required bundle. A production deployment
+requires a separately prepared release following
+[EdgeZero's application-release contract](https://github.com/IABTechLab/edgezero/blob/v0.0.10/docs/guide/deploy-action-adoption.md).
 :::
 
-### Subsequent Deployments
+### Deploying a Prepared Application Release
+
+The release contains `release.json`, the prebuilt Fastly package, the application
+CLI archive, `edgezero.toml`, and its referenced Fastly manifest. EdgeZero verifies
+their hashes and the exact release member set before deployment. Adding the flag
+to a source checkout alone does not satisfy that contract.
+
+With a verified release extracted at `$RELEASE_ROOT`, an existing Compute service
+ID, and `FASTLY_API_TOKEN` configured, deploy from a checkout matching the release's
+source revision:
 
 ```bash
-# Using EdgeZero CLI
-edgezero-cli deploy --adapter fastly
-
-# Or directly
-fastly compute deploy -C crates/mocktioneer-adapter-fastly
+EDGEZERO_MANIFEST="$RELEASE_ROOT/edgezero.toml" \
+  cargo run --locked -p mocktioneer-cli -- deploy --adapter fastly \
+  --service-id "$FASTLY_SERVICE_ID" --application-release "$RELEASE_ROOT"
 ```
+
+Managed deployment uploads the prebuilt package, reconciles store links, and
+activates the service version. Create the service and provision and seed its
+stores beforehand. `/openrtb2/auction` and `/e/dtb/bid` return
+`503 config_out_of_date` when their config blob is missing.
+
+Keep the extracted release unchanged: run `provision` from the mutable source
+checkout, and keep config files and extracted CLI binaries outside `$RELEASE_ROOT`.
+Provisioning modifies `fastly.toml`; modifying a packaged manifest invalidates
+the release. Use a new prepared release for subsequent deployments.
 
 ### Updating the Config
 
@@ -137,17 +125,17 @@ cargo run -p mocktioneer-cli -- config push --adapter fastly --yes
 ### Deployment Lifecycle (staging)
 
 `mocktioneer-cli` also exposes the Fastly staging-lifecycle commands from
-EdgeZero for a safe deploy → verify → roll-forward-or-back loop:
+EdgeZero for a deploy → verify → roll-forward-or-back loop. Staging deployment
+has the same application-release requirement. Inspect each command's options
+before selecting the service version and domain to probe or roll back:
 
 ```bash
 # Capture the current live version BEFORE deploying (your rollback target)
-cargo run -p mocktioneer-cli -- active-version --adapter fastly
+cargo run -p mocktioneer-cli -- active-version --adapter fastly \
+  --service-id "$FASTLY_SERVICE_ID"
 
-# After deploying a staged version, probe its health (retries; non-zero on fail)
-cargo run -p mocktioneer-cli -- healthcheck --adapter fastly
-
-# Roll back to a previous version (or deactivate a staged one) if it's unhealthy
-cargo run -p mocktioneer-cli -- rollback --adapter fastly
+cargo run -p mocktioneer-cli -- healthcheck --help
+cargo run -p mocktioneer-cli -- rollback --help
 ```
 
 ## Configuration
@@ -248,10 +236,12 @@ fastly compute serve --verbose -C crates/mocktioneer-adapter-fastly
 
 ### Deployment Failures
 
-```bash
-# Validate the package
-fastly compute validate -C crates/mocktioneer-adapter-fastly
+`managed Fastly deployment requires --application-release` means the deploy
+needs the prepared bundle described above. A raw WASM binary or source checkout
+is insufficient. Digest or extra-member errors require a fresh extraction of
+the original verified release.
 
+```bash
 # Check service status
 fastly service describe --service-id <SERVICE_ID>
 ```

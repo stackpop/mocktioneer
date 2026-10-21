@@ -92,8 +92,10 @@ edgezero-cli serve --adapter spin        # needs a Spin 4.1+ runtime
 edgezero-cli build --adapter fastly
 ```
 
-The CLI reads `edgezero.toml` and executes the appropriate commands for each adapter.
-If you don't have `edgezero-cli`, use the direct adapter commands on the pages below.
+The CLI reads `edgezero.toml` for adapter commands and configuration. Fastly
+deployment with declared stores requires a verified application release; see
+the [Fastly breaking change and deployment prerequisites](./fastly#deployment).
+Direct build and serve commands are also listed on the adapter pages below.
 
 ### In-repo `mocktioneer-cli`
 
@@ -101,7 +103,7 @@ This repository also vendors a thin `mocktioneer-cli` built on the EdgeZero CLI
 library — no separate install needed:
 
 ```bash
-# serve / build / deploy (same as edgezero-cli)
+# Serve / build without a separate CLI install.
 cargo run -p mocktioneer-cli -- serve --adapter cloudflare
 
 # typed config (lives only here — validated against MocktioneerConfig)

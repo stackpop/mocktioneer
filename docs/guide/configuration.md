@@ -159,6 +159,10 @@ level = "info"
 echo_stdout = false
 ```
 
+For this manifest, Fastly deployment uses EdgeZero's managed lifecycle and
+requires `--application-release`; the CLI does not execute the `commands.deploy`
+entry. See the [Fastly deployment prerequisites](./adapters/fastly#deployment).
+
 ### Cloudflare Adapter
 
 ```toml
