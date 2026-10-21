@@ -27,9 +27,9 @@ tests/playwright/                 # Playwright e2e tests (creative visibility, s
 
 ## Toolchain & Versions
 
-- **Rust**: 1.95.0 (from `.tool-versions`)
-- **Node.js**: 24.12.0 (for docs site and Playwright tests)
-- **Fastly CLI**: v13.0.0
+- **Rust**: 1.98.1 (from `.tool-versions`)
+- **Node.js**: 24.20.0 (for docs site and Playwright tests)
+- **Fastly CLI**: v16.0.0
 - **Edition**: 2024
 - **Resolver**: 2
 - **License**: Apache-2.0
@@ -53,12 +53,14 @@ cargo run -p mocktioneer-adapter-axum
 # Run via EdgeZero CLI
 edgezero-cli serve --adapter cloudflare   # Cloudflare on :8787
 edgezero-cli serve --adapter fastly       # Fastly on :7676
-edgezero-cli serve --adapter spin         # Spin on :3000 — NOTE: `spin up` is
-                                          # currently blocked (spin-sdk 6.0.0
-                                          # imports wasi:http@0.3.0-rc, which no
-                                          # released Spin runtime provides).
-                                          # Build + wasmtime contract tests pass;
-                                          # live serve needs an upstream fix.
+edgezero-cli serve --adapter spin         # Spin on :3000 — needs Spin >= 4.1
+                                          # (spin-sdk 7 imports wasi:http@0.3.0,
+                                          # which Spin 4.0.x does not provide).
+                                          # Spin isn't in `.tool-versions`;
+                                          # install from spinframework.dev.
+                                          # Build + wasmtime contract tests pass
+                                          # even when the runtime is too old, so
+                                          # only a real `spin up` catches skew.
 
 # Playwright e2e tests
 cd tests/playwright && npm test

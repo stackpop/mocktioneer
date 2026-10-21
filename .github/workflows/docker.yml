@@ -42,9 +42,22 @@ jobs:
         with:
           ref: ${{ inputs.ref || github.ref }}
 
+      # The official `rust` image does not publish every patch release as its
+      # own tag (1.98.1 has no `-slim-bookworm` variant, while the `1.98` alias
+      # tracks the newest published patch). Fall back to the minor alias when
+      # the exact patch tag is absent so a toolchain bump in `.tool-versions`
+      # can't break the image build on a tag that was never pushed.
       - name: Get Rust version from .tool-versions
         id: rust
-        run: echo "version=$(grep '^rust' .tool-versions | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          version="$(grep '^rust ' .tool-versions | awk '{print $2}')"
+          test -n "$version"
+          if ! docker manifest inspect "rust:${version}-slim-bookworm" >/dev/null 2>&1; then
+            echo "rust:${version}-slim-bookworm is not published; using rust:${version%.*}-slim-bookworm"
+            version="${version%.*}"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Get short SHA
         id: sha
