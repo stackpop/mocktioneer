@@ -1,11 +1,14 @@
 """Offline regression tests for the byte-preserving wire comparator."""
 
 import copy
+import hashlib
 import importlib.util
 import inspect
 import json
 from pathlib import Path
+import subprocess
 import sys
+import tempfile
 import unittest
 
 
@@ -42,6 +45,130 @@ class WireContractTests(unittest.TestCase):
 
     def compare(self, case, before, after):
         return self.wire.compare_response(case, before, after)
+
+    def capture_pair(self, root, scenario="seeded"):
+        corpus = {"cases": [
+            {"id": "one", "scenario": "seeded", "method": "GET", "path": "/one", "headers": []},
+            {"id": "two", "scenario": "seeded", "method": "POST", "path": "/two", "headers": [],
+             "body": "{}", "body_pad_to": 4, "target_pad": 2, "extra_headers": 1},
+            {"id": "unseeded", "scenario": "unseeded", "method": "GET", "path": "/unseeded", "headers": []},
+        ]}
+        corpus_bytes = json.dumps(corpus).encode()
+        requests = {
+            "one": ({"method": "GET", "path": "/one", "headers": []}, b""),
+            "two": ({"method": "POST", "path": "/twoxx", "headers": ["X-Wire-000: x"]}, b"{}  "),
+            "unseeded": ({"method": "GET", "path": "/unseeded", "headers": []}, b""),
+        }
+        ids = [case["id"] for case in corpus["cases"] if case["scenario"] == scenario]
+        directories = [Path(root) / name for name in ("before", "after")]
+        for directory in directories:
+            directory.mkdir()
+            (directory / "requests.json").write_bytes(corpus_bytes)
+            (directory / "capture.json").write_text(json.dumps({
+                "scenario": scenario, "base_url": self.wire.BASE_URL,
+                "corpus_sha256": hashlib.sha256(corpus_bytes).hexdigest(), "cases": ids,
+            }))
+            for case_id in ids:
+                dest = directory / case_id
+                dest.mkdir()
+                request, body = requests[case_id]
+                (dest / "request.json").write_text(json.dumps(request))
+                (dest / "request.body").write_bytes(body)
+                (dest / "curl.exit").write_text("0\n")
+                (dest / "response.headers").write_bytes(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n")
+                (dest / "response.body").write_bytes(b"ok")
+        return directories
+
+    def compare_captures(self, directories):
+        return subprocess.run([sys.executable, str(HERE / "wire_contract.py"), "compare",
+                               "--before", str(directories[0]), "--after", str(directories[1])],
+                              capture_output=True, text=True)
+
+    def change_manifest(self, directories, **changes):
+        for directory in directories:
+            path = directory / "capture.json"
+            manifest = json.loads(path.read_text())
+            manifest.update(changes)
+            path.write_text(json.dumps(manifest))
+
+    def test_cli_compare_accepts_complete_scenarios(self):
+        for scenario, count in [("seeded", 2), ("unseeded", 1)]:
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as root:
+                result = self.compare_captures(self.capture_pair(root, scenario))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.count("PASS "), count)
+
+    def test_cli_compare_rejects_invalid_case_lists(self):
+        for ids in [[], ["one"], ["one", "one", "two"], ["two", "one"],
+                    ["one", "two", "extra"], ["unseeded"]]:
+            with self.subTest(ids=ids), tempfile.TemporaryDirectory() as root:
+                directories = self.capture_pair(root)
+                self.change_manifest(directories, cases=ids)
+                result = self.compare_captures(directories)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("case list", result.stderr)
+                self.assertNotIn("PASS ", result.stdout)
+
+    def test_cli_compare_rejects_invalid_manifest_metadata(self):
+        for changes, error in [({"corpus_sha256": "0" * 64}, "digest"),
+                               ({"scenario": "unknown"}, "scenario"),
+                               ({"base_url": "http://127.0.0.1:9999"}, "base URL")]:
+            with self.subTest(changes=changes), tempfile.TemporaryDirectory() as root:
+                directories = self.capture_pair(root)
+                self.change_manifest(directories, **changes)
+                result = self.compare_captures(directories)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(error, result.stderr)
+
+    def test_cli_compare_rejects_duplicate_corpus_ids(self):
+        with tempfile.TemporaryDirectory() as root:
+            directories = self.capture_pair(root)
+            for directory in directories:
+                path = directory / "requests.json"
+                corpus = json.loads(path.read_text())
+                corpus["cases"].append(corpus["cases"][0])
+                path.write_text(json.dumps(corpus))
+            self.change_manifest(directories, corpus_sha256=hashlib.sha256(
+                (directories[0] / "requests.json").read_bytes()).hexdigest())
+            result = self.compare_captures(directories)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("duplicate", result.stderr)
+
+    def test_cli_compare_rejects_empty_scenario(self):
+        with tempfile.TemporaryDirectory() as root:
+            directories = self.capture_pair(root)
+            for directory in directories:
+                (directory / "requests.json").write_text('{"cases": []}')
+            self.change_manifest(directories, cases=[], corpus_sha256=hashlib.sha256(
+                (directories[0] / "requests.json").read_bytes()).hexdigest())
+            result = self.compare_captures(directories)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("case list", result.stderr)
+
+    def test_cli_compare_checks_requests_against_corpus(self):
+        for field, value in [("method", "GET"), ("path", "/two"), ("headers", []), ("body", b"{}")]:
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as root:
+                directories = self.capture_pair(root)
+                for directory in directories:
+                    if field == "body":
+                        (directory / "two/request.body").write_bytes(value)
+                    else:
+                        path = directory / "two/request.json"
+                        request = json.loads(path.read_text())
+                        request[field] = value
+                        path.write_text(json.dumps(request))
+                result = self.compare_captures(directories)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("request", result.stderr)
+                self.assertIn("corpus", result.stderr)
+
+    def test_cli_compare_rejects_missing_response_files(self):
+        with tempfile.TemporaryDirectory() as root:
+            directories = self.capture_pair(root)
+            (directories[1] / "two/response.body").unlink()
+            result = self.compare_captures(directories)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("FAIL two", result.stderr)
 
     def test_identical_bytes_pass_and_dates_are_masked(self):
         a = self.response(headers=[b"Date: Tue, 20 Oct 2026 01:00:00 GMT"])

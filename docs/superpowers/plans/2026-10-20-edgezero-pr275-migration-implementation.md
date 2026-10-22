@@ -445,3 +445,11 @@ Document checks: Markdown parse, all nine shell-block syntax checks, fence/link 
 - Verified implementation commit `fe8ee46` was pushed without rewriting history.
 - Existing Task [#130](https://github.com/stackpop/mocktioneer/issues/130) and draft PR [#131](https://github.com/stackpop/mocktioneer/pull/131) are reused instead of creating duplicates. The issue remains open, assigned to the current user and marked In progress; the PR links it for closure on merge.
 - GitHub rejected the requested base change because PR #131 belongs to a stack. The existing stacked base is preserved; main-only PR CI and upstream release qualification remain explicit pending gates. No stack dissolution, unrelated branch update, deployment or merge was performed.
+
+
+### Self-review follow-up (2026-10-22)
+
+- Fixed a P2 wire-verification gap: matching manifests could omit all requests and still succeed. Comparison now validates each archive's recomputed corpus digest, complete ordered nonempty scenario case list and unique corpus IDs. Recorded request method/path/headers and generated body bytes must match the saved corpus, independently of whether the two captures agree.
+- Added seven real CLI regression tests. The old implementation produced 15 failing subcases; the fix passes all **32 comparator tests**. An independent reviewer reran the suite and approved the change.
+- Existing historical evidence remains valid: all **85 seeded + 2 unseeded** candidate comparisons and the independent baseline repeats pass under the stricter validation. Archived corpora remain self-contained; they do not need to match the current checkout's corpus.
+- Fresh native workspace tests (**198**), strict Clippy, rustfmt and the feature check pass. Application runtime and provider code are unchanged.

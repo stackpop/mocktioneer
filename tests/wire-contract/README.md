@@ -45,6 +45,13 @@ Capture uses `curl --http1.1 --raw -sS -D ... -o ...`; no output passes through
 saved with every capture, so different scenarios or request lists cannot be
 compared accidentally.
 
+Before comparing responses, the comparator recomputes each saved corpus digest
+and requires its complete, ordered scenario case list. Empty, missing, duplicate
+or extra case IDs fail. Recorded methods, paths, headers and body bytes must
+match the saved corpus and its deterministic generators, even when both
+captures contain the same incorrect request. Historical captures are validated
+against their saved corpus rather than the current checkout's request list.
+
 ```sh
 python3 tests/wire-contract/wire_contract.py compare \
   --before /tmp/mocktioneer-wire/before/seeded --after /tmp/mocktioneer-wire/after/seeded

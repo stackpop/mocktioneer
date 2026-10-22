@@ -394,18 +394,49 @@ def read_response(directory, case_id):
     return Response((dest / "response.headers").read_bytes(), (dest / "response.body").read_bytes())
 
 
+def read_capture(directory):
+    manifest = json.loads((directory / "capture.json").read_text())
+    corpus_bytes = (directory / "requests.json").read_bytes()
+    corpus = json.loads(corpus_bytes)
+    require(isinstance(manifest, dict), "invalid capture manifest")
+    require(manifest.get("scenario") in ("seeded", "unseeded"), "invalid capture scenario")
+    require(manifest.get("base_url") == BASE_URL, "invalid capture base URL")
+    require(manifest.get("corpus_sha256") == hashlib.sha256(corpus_bytes).hexdigest(),
+            "capture corpus digest does not match requests.json")
+    require(isinstance(corpus, dict) and isinstance(corpus.get("cases"), list)
+            and all(isinstance(case, dict) for case in corpus["cases"]), "invalid captured corpus")
+    definitions = corpus["cases"]
+    ids = [case.get("id") for case in definitions]
+    require(all(isinstance(case_id, str) and case_id for case_id in ids), "invalid corpus case ID")
+    require(len(ids) == len(set(ids)), "duplicate corpus case ID")
+    require(all(case.get("scenario") in ("seeded", "unseeded") for case in definitions),
+            "invalid corpus scenario")
+    expected = [case["id"] for case in definitions if case["scenario"] == manifest["scenario"]]
+    require(expected and manifest.get("cases") == expected,
+            "capture case list must match the complete, ordered scenario corpus")
+    return manifest, corpus_bytes, dict(zip(ids, definitions))
+
+
 def compare(args):
     before, after = Path(args.before), Path(args.after)
-    a, b = [json.loads((directory / "capture.json").read_text()) for directory in (before, after)]
+    a, corpus_a, cases = read_capture(before)
+    b, corpus_b, _ = read_capture(after)
     require(a == b, "capture scenario, base URL, corpus digest or case list differs")
-    require((before / "requests.json").read_bytes() == (after / "requests.json").read_bytes(), "captured corpus differs")
-    cases = {case["id"]: case for case in json.loads((before / "requests.json").read_text())["cases"]}
+    require(corpus_a == corpus_b, "captured corpus differs")
     failures = 0
     for case_id in a["cases"]:
         try:
+            case = cases[case_id]
+            path, headers, body = request_bytes(case)
+            for directory in (before, after):
+                dest = directory / case_id
+                require(json.loads((dest / "request.json").read_text()) == {
+                    "method": case["method"], "path": path, "headers": headers,
+                }, "recorded request metadata differs from corpus")
+                require((dest / "request.body").read_bytes() == body,
+                        "recorded request body differs from corpus")
             for filename in ("request.json", "request.body"):
                 require((before / case_id / filename).read_bytes() == (after / case_id / filename).read_bytes(), "request bytes differ")
-            case = cases[case_id]
             reference = case.get("reference")
             changes = compare_response(case, read_response(before, case_id), read_response(after, case_id),
                                        read_response(before, reference) if reference else None,
