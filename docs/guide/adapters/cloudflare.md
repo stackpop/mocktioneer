@@ -50,7 +50,7 @@ edgezero-cli serve --adapter cloudflare
 cargo run -p mocktioneer-cli -- serve --adapter cloudflare
 
 # Or directly
-wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
+wrangler dev --cwd crates/mocktioneer-adapter-cloudflare
 ```
 
 This starts a local server that emulates the Workers environment.
@@ -108,12 +108,24 @@ target/wasm32-unknown-unknown/release/mocktioneer_adapter_cloudflare.wasm
    name = "mocktioneer-adapter-cloudflare"
    main = "build/worker/shim.mjs"
    compatibility_date = "2023-05-01"
+   compatibility_flags = ["enable_request_signal", "enable_weak_ref", "internal_stream_byob_return_view"]
 
    [build]
    command = "worker-build --release"
    ```
 
-2. Deploy:
+2. Provision the real KV binding, then push the config blob:
+
+   ```bash
+   cargo run -p mocktioneer-cli -- provision --adapter cloudflare
+   cp mocktioneer.toml.example mocktioneer.toml
+   cargo run -p mocktioneer-cli -- config push --adapter cloudflare --yes
+   ```
+
+   Provisioning writes `binding = "mocktioneer_config"` and the namespace ID
+   into `wrangler.toml`. Keep production namespace IDs out of commits.
+
+3. Deploy:
    ```bash
    wrangler deploy --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
    ```
@@ -160,16 +172,35 @@ The `crates/mocktioneer-adapter-cloudflare/wrangler.toml` contains Workers-speci
 name = "mocktioneer-adapter-cloudflare"
 main = "build/worker/shim.mjs"
 compatibility_date = "2023-05-01"
+compatibility_flags = ["enable_request_signal", "enable_weak_ref", "internal_stream_byob_return_view"]
 
 [vars]
 # Environment variables
 ENVIRONMENT = "production"
 
+# Added by provision; replace the placeholder for your own environment.
 [[kv_namespaces]]
-# KV store bindings if needed
-# binding = "MY_KV"
-# id = "xxx"
+binding = "mocktioneer_config"
+id = "your-kv-namespace-id"
 ```
+
+All three compatibility flags are required for the request/config lifecycle.
+Without `enable_weak_ref`, bounded KV reads cannot use `FinalizationRegistry`;
+`AppConfig` returns 503 `service_unavailable` without `Retry-After`, even when
+KV is bound. A missing KV binding produces the same status/kind. Variables such
+as `EDGEZERO__STORES__CONFIG__*` only rename which binding is looked up; they do
+not create the binding.
+
+With the retained `2023-05-01` date, `internal_stream_byob_return_view` is also
+required: it makes the final KV byte-stream read return the empty view expected
+by the bounded reader. Without it, even a valid pushed config returns 503.
+See Cloudflare's [BYOB compatibility flag](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#returning-empty-uint8array-on-final-byob-read).
+
+JWKS fetches retain `PlatformDefault` outbound caching. `Bypass` would require
+a later compatibility date or `cache_option_enabled`; keep the committed
+`2023-05-01` date and its flags together. Outbound HTTP is Native, while inbound,
+outbound, and config-read deadlines remain BestEffort. See the
+[capability table](./#capability-support).
 
 ## Custom Domains
 
@@ -248,7 +279,7 @@ cargo build --release --target wasm32-unknown-unknown -p mocktioneer-adapter-clo
 wrangler --version
 
 # Run with verbose output
-wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml --local
+wrangler dev --cwd crates/mocktioneer-adapter-cloudflare --local
 ```
 
 ### Deployment Failures
@@ -272,27 +303,15 @@ Cloudflare Workers has these limits:
 | Script size | 1 MB   | 10 MB  |
 | Subrequests | 50     | 1000   |
 
-Mocktioneer typically uses:
-
-- < 5ms CPU time per request
-- < 10 MB memory
-- No subrequests
+Bid routes read Workers KV, and signed trusted-server requests can make an
+outbound JWKS subrequest. The local cache's 2 MiB owned-allocation budget does
+not bound total Worker memory. Check current provider limits for your plan;
+this migration does not qualify hosted provider behavior.
 
 ## Workers KV Integration
 
-If you need persistent storage, add KV bindings:
-
-```toml
-[[kv_namespaces]]
-binding = "MOCKTIONEER_KV"
-id = "your-kv-namespace-id"
-```
-
-Create the namespace:
-
-```bash
-wrangler kv:namespace create "MOCKTIONEER_KV"
-```
+The required config namespace is `mocktioneer_config`; follow the provisioning
+and push steps above. Additional KV bindings do not replace that config binding.
 
 ## Next Steps
 

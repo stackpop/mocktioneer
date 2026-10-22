@@ -4,12 +4,15 @@ Deterministic OpenRTB banner bidder for edge platforms. Test client integrations
 
 ## Features
 
-- **Multi-platform** - Runs on Fastly Compute, Cloudflare Workers, and native Axum from a single codebase
+- **Multi-platform** - Runs on Fastly Compute, Cloudflare Workers, Spin 4.1+, and native Axum from a single codebase
 - **Deterministic** - Same input always produces the same output
 - **OpenRTB 2.x & APS TAM** - Full banner support with predictable pricing
-- **Zero dependencies** - All routes render from embedded assets
+- **Embedded assets** - Creatives render locally; bid routes require pushed config, and signed requests can fetch trusted-server keys
 
 ## Quick Start
+
+Use Rust 1.98.1; docs and browser tests use Node.js 24.20.0. Edge runtime
+versions are listed in [Getting Started](https://stackpop.github.io/mocktioneer/guide/getting-started).
 
 ```bash
 # Clone
@@ -51,7 +54,10 @@ Full documentation is available at **[stackpop.github.io/mocktioneer](https://st
 | `GET /_/sizes`                      | Supported sizes              |
 | `GET /_mocktioneer/{manifest,config,routes}` | Introspection (manifest / config / route table) |
 
-See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for all endpoints.
+See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for all endpoints,
+request limits, deadlines, and config-error responses. Auction and APS requests
+are capped at 1 MiB; at the audited EdgeZero pin, overflow returns 400
+`bad_request` with `request body too large`.
 
 ## Development
 

@@ -21,4 +21,4 @@ If `CLAUDE.md` is unavailable, these are the minimum rules:
 6. Use matchit `{id}` syntax, never legacy `:id`.
 7. Use `#[action]` macro for handlers, import types from `edgezero_core`.
 8. Don't add Tokio deps to the core crate — WASM compatibility first.
-9. Preserve determinism — no randomness, no time-dependent logic.
+9. Preserve determinism — no randomness or time-dependent pricing; signature timestamp freshness is the replay-prevention exception.

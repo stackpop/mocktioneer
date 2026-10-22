@@ -16,7 +16,7 @@ When developing and testing ad tech integrations, you face several challenges:
 Mocktioneer provides:
 
 - **Deterministic responses** - Same input always produces the same output
-- **Zero external dependencies** - Everything runs locally or at the edge
+- **Embedded creatives** - Assets render locally or at the edge; bid routes use pushed config, and signed requests may fetch trusted-server keys
 - **OpenRTB 2.x banner support** - Works with standard OpenRTB banner clients
 - **APS TAM compatibility** - Test Amazon Publisher Services integrations
 - **Predictable creatives** - SVG banners with size and bid information for visual verification
@@ -46,7 +46,7 @@ Mocktioneer provides:
 
 | Feature               | Description                                                                                    |
 | --------------------- | ---------------------------------------------------------------------------------------------- |
-| Multi-platform        | Runs on Fastly, Cloudflare, and native Axum                                                    |
+| Multi-platform        | Runs on Fastly, Cloudflare, Spin 4.1+, and native Axum                                         |
 | Manifest-driven       | Single `edgezero.toml` configures everything                                                   |
 | Deterministic pricing | Returns a configurable CPM for generated bids (`bid_cpm` in mocktioneer.toml; default `$0.20`) |
 | Standard sizes        | Supports common IAB ad sizes                                                                   |
@@ -61,6 +61,11 @@ Mocktioneer provides:
 4. **Return response** - Send OpenRTB-compliant response with creative URLs
 
 The creative URLs point back to Mocktioneer's static asset endpoints, which render SVG images showing the ad size and bid price.
+
+Auction and APS bodies are capped at 1 MiB; mediation keeps the 8 MiB default.
+All three POST routes have a 10-second body-read budget. Config reads and some
+platform deadlines are BestEffort; see the [API limits](/api/#request-limits-and-deadlines)
+and [adapter capabilities](./adapters/#capability-support) before relying on them.
 
 ## Next Steps
 

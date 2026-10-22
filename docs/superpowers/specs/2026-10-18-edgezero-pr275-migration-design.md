@@ -6,11 +6,14 @@
 - **Upstream:** [IABTechLab/edgezero#275](https://github.com/IABTechLab/edgezero/pull/275),
   "implement portable outbound HTTP and request lifecycle contracts". **Draft,
   open, unmerged.**
-  - Head: `docs/outbound-http-spec` at `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`,
-    base `main`.
+  - Audited implementation pin: `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`.
+  - Preflight head on 2026-10-21: `852ec74bbb72139dca2809f3537689bb1ee5f0c6`,
+    base `main`. Final pre-handoff refresh observed `619c69bd2b2b24f35210c482b560cb46b1b96888`;
+    PR #275 remains draft/open/unmerged. Neither newer revision is adopted (§11).
   - It contains release `v0.0.10` and the IABTechLab transfer (#419). Nothing on
     edgezero `main` is missing from it.
-- **Status:** design, awaiting approval. Blocked on the open questions in §0.
+- **Status:** implemented and locally verified on 2026-10-21; upstream merge/release remains gated. Execution is tracked in
+  the [implementation plan](../plans/2026-10-20-edgezero-pr275-migration-implementation.md).
 - **Revision history:**
   - **R1:** initial draft.
   - **R2:** self-review. A throwaway compile probe of every target against
@@ -28,29 +31,41 @@
       drift rejection check (§9)
     - the Cloudflare KV binding prerequisite (§9, §10)
     - the `/_mocktioneer/config` scope note (§6.3, §11)
+  - **R4:** resolves the R3 review findings:
+    - buffered JWKS error ordering and the five-second outbound timeout are
+      explicit wire changes (§5.6, §7)
+    - the cache budget charges owned parsed allocations (§6.2)
+    - framing requirements distinguish normalized headers from raw input and
+      cover every ordinary empty response (§5.8, §7, §8)
+    - the wire diff uses separate seeded and unseeded server startups (§8)
+    - Fastly uses the pinned Viceroy HTTP server, and the local Cloudflare
+      workerd smoke is required (§9)
+  - **R5:** records the user's 2026-10-20 clarification: the related project
+    does not depend on mocktioneer, and no outbound batch fan-out is needed.
+    Removes the corresponding downstream compatibility conditions.
+  - **R6:** incorporates the remaining decoding, normalized-head test and docs-CI
+    review corrections; clarifies shared framing versus provider delivery tests;
+    records execution approval and freezes the audited implementation pin.
+  - **R7:** execution confirms the exact F10 header-group permutation, adds the
+    required legacy-date BYOB compatibility flag, fixes direct Wrangler command
+    CWD, and records completed verification in the implementation plan.
 
-## 0. Open questions (block approval)
+## 0. Confirmed scope (2026-10-20)
 
-1. **How does the trusted-server-related project use mocktioneer?** Either as a
-   Cargo dependency on mocktioneer crates, or as a running service or Docker
-   image.
-   - **If it is a Cargo dependency:**
-     - mocktioneer's edgezero pin must be the same URL and the same `rev` as
-       that project's. Otherwise Cargo builds two `edgezero-core`s and the types
-       don't unify.
-     - `mocktioneer_core::build_app()` stays as a public function (§5.2).
-     - The branch needs a stable commit the other project can pin before #275
-       merges. That rules out rebasing and history rewrites.
-   - **If it is a service:** only wire behavior matters (§7), and the merge-timing
-     rule in §3 decides when it can be deployed.
-2. **Does that project need mocktioneer to exercise the batch fan-out API**
-   (`send_all_until` / `start_batch_until`)? This spec leaves it out (§2).
+1. **The related project does not depend on mocktioneer.** There is no
+   cross-project Cargo source-identity requirement, public-helper compatibility
+   requirement, or need to provide it with a stable mocktioneer commit. Remove
+   `mocktioneer_core::build_app()` as proposed in §5.2. Mocktioneer's own wire
+   compatibility and merge/release requirements still apply.
+2. **No outbound batch fan-out is needed.** `send_all_until` and
+   `start_batch_until` adoption remain out of scope (§2). Test clients implement
+   the required trait method without adding a production fan-out feature.
 
 ## 1. Intent
 
 Mocktioneer moves onto the edgezero version in #275 and adopts the new APIs
-where they do real work. This is not the smallest port that compiles. A project
-related to trusted-server needs mocktioneer on this edgezero version.
+where they do real work. The related trusted-server project does not depend on
+mocktioneer and imposes no downstream integration requirements on this migration.
 
 The cut is hard **for the edgezero API**:
 
@@ -63,9 +78,10 @@ Deploy-side changes ship in the same release.
 The hard cut does **not** extend to mocktioneer's own wire contract. Bid output
 and responses stay the same, except for the changes listed in §7.
 
-Decided by the user: adopt the new APIs, the hard cutoff, and the motivating
-downstream project. Everything marked **(my call)** was decided while writing
-this spec. Appendix A collects those calls for confirmation.
+Decided by the user: adopt the new APIs and the hard cutoff, with no dependency
+from the related project and no batch fan-out requirement. Everything marked
+**(my call)** was decided while writing this spec. Appendix A collects those
+calls for confirmation.
 
 ## 2. Goals, non-goals, anti-goals
 
@@ -89,10 +105,10 @@ this spec. Appendix A collects those calls for confirmation.
    byte-identical to the pre-migration build, except for the changes in §7. §8
    gives the procedure that proves it.
 
-### Non-goals (my call, each with its reason)
+### Non-goals
 
-- **The outbound batch API.** Nothing in mocktioneer fans out; mediation runs in
-  process. This depends on open question 2.
+- **The outbound batch API (confirmed by the user).** Nothing in mocktioneer
+  fans out; mediation runs in process (§0.2).
 - **App-owned egress completion tokens** (`ResponseEgressCompletion::new`,
   `late_bound`, `join`, typed `IngressGrant`s). Mocktioneer holds nothing that
   must be released when a response ends. It uses
@@ -157,7 +173,7 @@ this spec. Appendix A collects those calls for confirmation.
   - Every workflow triggers only on `pull_request: branches: [main]`, so a PR
     stacked on #118's branch would get no CI.
   - Until #118 merges, the diff also contains #118's commits.
-- **Merge timing (my call, depends on §0.1):** follow the #118 precedent. Do not
+- **Merge timing (my call):** follow the #118 precedent. Do not
   merge before #275 merges, then re-pin to the edgezero tag that ships it (§11).
 
 ## 4. Current state
@@ -254,11 +270,9 @@ the compile probe.
   - Core tests use `PlatformMetadata::default()`.
   - Cloudflare service tests use `edgezero_adapter_cloudflare::CLOUDFLARE_PLATFORM`.
 - **`mocktioneer_core::build_app()` (`lib.rs:14-18`):**
-  - If §0.1 says Cargo dependency: keep it as
-    `pub fn build_app() -> Result<App, EdgeError>`, building with
-    `PlatformMetadata::default()`.
-  - Otherwise: delete it and its unused `Hooks as _` import (`lib.rs:12`)
-    **(my call)**.
+  - Delete it and its unused `Hooks as _` import (`lib.rs:12`), following the
+    confirmed absence of a downstream dependency (§0.1). Build directly with
+    `App::build::<MocktioneerApp>(platform)?` at the existing call sites.
 - `Hooks::configure` now returns `Result<(), EdgeError>`. See §6.3.
 
 ### 5.3 Adapter entrypoints
@@ -280,10 +294,15 @@ the compile probe.
 ### 5.4 Platform config
 
 - **`wrangler.toml`:** add
-  `compatibility_flags = ["enable_request_signal", "enable_weak_ref"]`.
+  `compatibility_flags = ["enable_request_signal", "enable_weak_ref", "internal_stream_byob_return_view"]`.
   - Without `enable_weak_ref`, bounded KV reads see no `FinalizationRegistry`.
     `AppConfig` then returns 503 `service_unavailable` with no `Retry-After`.
-    Only edgezero's tests check this flag; the CLI does not.
+    The CLI does not validate this compatibility flag; the real workerd check is required.
+  - Real workerd verification found that the retained 2023 date also needs
+    `internal_stream_byob_return_view`. Its legacy internal-stream EOF returns
+    undefined, while the bounded KV reader requires an empty returned view.
+    Adding only this flag changed the same seeded auction from 503 to 200.
+    This matches Cloudflare's [documented compatibility behavior](https://developers.cloudflare.com/workers/configuration/compatibility-flags/#returning-empty-uint8array-on-final-byob-read).
   - Keep `compatibility_date = "2023-05-01"` **(my call)**. Note that this date
     rules out `OutboundCachePolicy::Bypass` on Cloudflare (§6.1).
 - **`edgezero.toml`:** add `[capabilities]` (§6.1) and `class = "bid"` on three
@@ -339,9 +358,25 @@ adoption step.
     because the restriction lints deny `as` casts.
   - The cache policy is §6.1.
 - **Send and read:**
-  - `client.send(req).await`.
-  - Require a 200, then `resp.into_bytes_bounded(MAX_JWKS_BODY_BYTES).await`,
+  - `max_response_bytes` selects **buffered** mode. `client.send(req).await`
+    performs response framing checks, decoding and bounded collection before
+    returning a response. Body failures can therefore occur before mocktioneer
+    sees the status. This ordering is accepted in F12 (§7).
+  - Recognized gzip, Brotli and deflate responses are decoded before the final
+    64 KiB buffered cap is applied. Old Axum did not decode these responses;
+    other old adapters did not decode deflate. Encoded JWKS may now verify
+    successfully. Axum and Fastly also default `Accept-Encoding` to `identity`
+    when absent. These negotiation/decoding differences are accepted in F12.
+  - Map any send-time `ResponseTooLarge` to `jwks_body_too_large_error`, and
+    every other send error to `JWKS fetch failed: {detail}` using the sanitizing
+    rule below.
+  - After a successful send, require a 200. A non-200 response gets the status
+    reason without parsing its JSON. Then read a 200 with
+    `resp.into_bytes_bounded(MAX_JWKS_BODY_BYTES).await`,
     then `serde_json::from_slice::<TrustedServerResponse>`.
+  - The second bounded read is defensive: standard clients return an already
+    buffered body for this request. If a custom client returns a stream, a
+    non-limit drain error still uses `Stream read failed: {detail}`.
   - Do **not** use `json_bounded`. It replaces serde's message with a fixed
     "failed to decode upstream JSON", which would change the parse-failure
     reason.
@@ -352,10 +387,10 @@ adoption step.
   | --- | --- | --- |
   | URL build | `HTTP error: Invalid JWKS URL: {detail}` | Prefix kept. The detail becomes edgezero's text; unreachable in practice, because the host is pre-validated. |
   | No client | `HTTP error: Proxy not available` | Kept verbatim **(my call)**, even though the proxy API is gone. |
-  | Transport | `HTTP error: JWKS fetch failed: {detail}` | Prefix kept. The detail becomes edgezero's fixed per-adapter text (§7). |
-  | Non-200 | `HTTP error: JWKS server returned status: {status}` | Unchanged. |
-  | Over cap | `HTTP error: JWKS response body exceeds 65536 byte limit` | Unchanged. Match `EdgeError::ResponseTooLarge { .. }` with `matches!`, both from `send()` (declared length) and from `into_bytes_bounded()`. `EdgeError` is non-exhaustive, so a wildcard match trips clippy. Keep `jwks_body_too_large_error`. |
-  | Body read, other errors | `HTTP error: Stream read failed: {detail}` | Prefix kept for stage visibility; the detail text changes **(my call)**. |
+  | Send, including buffered body failures | `HTTP error: JWKS fetch failed: {detail}` | Includes transport, decoding, body-read and timeout errors from `send()`. On Fastly and Cloudflare, failures previously observed while draining a response can move here from `Stream read failed:` (F12). |
+  | Non-200 after a successful send | `HTTP error: JWKS server returned status: {status}` | String unchanged. Send-time failures take precedence; a payload-bearing non-200 can fail collection before this check (F12). |
+  | Over cap | `HTTP error: JWKS response body exceeds 65536 byte limit` | String unchanged. Match `EdgeError::ResponseTooLarge { .. }` with `matches!`, both from `send()` (declared-length checks or bounded collection) and from the defensive `into_bytes_bounded()`. Keep `jwks_body_too_large_error`. |
+  | Defensive body drain, other errors | `HTTP error: Stream read failed: {detail}` | Only for a custom client returning a stream despite buffered mode. Standard adapter body errors occur during `send()` and use its prefix. The detail text changes **(my call)**. |
   | Parse | `HTTP error: JWKS parse failed: {serde}` | Unchanged. |
   | Cache lock | `HTTP error: Cache lock poisoned: {detail}` | Removed. A poisoned lock becomes a cache miss (§6.2). |
 
@@ -383,13 +418,22 @@ adoption step.
   - Build responses with
     `OutboundResponse::new(method, status, headers, body, clock, ContentTypeProvenance::Unknown)`.
   - Insert `HttpClient::with_client(stub)` into the request extensions.
+  - Capture the request and assert buffered response mode, a 65536-byte limit,
+    and a five-second timeout. On success the stub returns a buffered body.
+    Model buffered body failures as errors returned by `send`, rather than
+    returning a stream that postpones the failure until application collection.
   - Cover:
     - success
     - a missing client
-    - a non-200 status
-    - an over-cap body, both declared and streamed
+    - a non-200 status, including a malformed JSON body that must not be parsed
+    - send-time over-cap failures from declared-length checks and cumulative
+      chunk collection, including a payload-bearing non-200 response
     - a transport error
+    - a buffered body-read or decode error, which uses `JWKS fetch failed:`
+    - a typed timeout error and its reason mapping (C7)
     - a parse error
+    - the defensive custom-client stream-drain error, tested separately from
+      the standard buffered-client cases
   - Each case asserts its full reason string.
 
 ### 5.7 Test doubles and contract tests
@@ -415,13 +459,17 @@ adoption step.
   2. a `globalThis.FixedLengthStream` polyfill (a `TransformStream` subclass)
      **(my call)**.
      - With a declared `Content-Length`, #275's Cloudflare egress uses the
-       Workers-only `FixedLengthStream`. The browser runner lacks it, and every
-       mocktioneer response declares a length.
+       Workers-only `FixedLengthStream`. The browser runner lacks it; the root,
+       pixel and auction responses exercised by the three base contracts all
+       declare a length.
      - Without the polyfill, all three tests return 500. With it they pass, as
        the probe showed.
      - The alternative was dropping mocktioneer's explicit `Content-Length`. It
        was rejected because it changes headers.
-     - The manual `wrangler dev` check (§9) covers the real Workers path.
+     - Install the polyfill only when the native global is absent, and only in
+       browser tests. Never replace a real `FixedLengthStream`.
+     - The required local `wrangler dev` check (§9) covers the real Workers
+       path. Passing the polyfilled tests cannot substitute for that check.
 - **Spin contract tests:** use `App::build`. `oneshot` is unchanged.
 - **The existing cache-seeding test** (`verification.rs` ~925-939, which inserts
   `Instant::now()`) moves to the new cache API (§6.2).
@@ -437,13 +485,32 @@ adoption step.
 ### 5.8 Empty-body framing (my call)
 
 #275 streams responses that have no `Content-Length` on Fastly and Cloudflare.
-Two mocktioneer responses have an empty body and no length:
+Ordinary mocktioneer responses with an empty `Body::Once` currently lack an
+explicit length, including:
 
-- the 500 at `routes.rs:748-751`
-- the 302 at `routes.rs:754`
+- `/sync/start`'s 400 and 403 (`routes.rs:706, 716`)
+- its empty 500 and 302 (`routes.rs:748-754`)
+- `/resolve`'s 401s (`routes.rs:839, 843`)
 
 Today they go out with `Content-Length: 0`; after the cut they may go out
-chunked. Set `Content-Length: 0` on both explicitly. Axum already sends 0.
+chunked. Extend the shared `build_response` helper to set `Content-Length: 0`
+for empty buffered responses whose status permits it, rather than patching
+individual call sites. Axum already sends 0 for these ordinary empty responses.
+
+Keep the bodyless rules: no `Content-Length` on 1xx or 204 responses, and do
+not replace a HEAD/304 representation length with zero merely because egress
+suppresses its body. A 205 may carry a zero length. Cover ordinary empty
+responses and these exceptions in helper tests. Exercise empty 400/403/401/302/500
+responses through Fastly and Cloudflare egress contracts, constructing responses
+for statuses whose route branches are unavailable on that runtime. On Fastly,
+`ResponseEgressEnvelope::begin()` already calls shared `prepare_response_egress`;
+assert the resulting prepared frame before completing the attempt. This proves
+shared framing, not the private provider writer. Cloudflare tests exercise its
+service response conversion. The required live smokes establish real delivery. Native
+smokes cover reachable empty 400 and 302 responses; the Axum wire diff covers
+the configured auth/allowlist branches. Cloudflare cannot exercise those 403/401
+route branches because `std::env::var` is unsupported there. Do not assume that
+Viceroy inherits arbitrary host variables into the guest.
 
 ## 6. New APIs adopted
 
@@ -455,12 +522,20 @@ chunked. Set `Content-Length: 0` on both explicitly. Axum already sends 0.
     compatibility date before 2024-11-11 and without the `cache_option_enabled`
     flag, the Workers runtime throws on that field. Every signed Cloudflare
     auction would then fail verification.
-  - Mocktioneer keeps its own 10-minute cache, so a provider cache adds nothing
-    that needs bypassing.
+  - This preserves the previous Fastly and Cloudflare cache policy. It does
+    not make provider caching irrelevant: a stale provider response can refill
+    mocktioneer's cache after its 10-minute TTL expires. That TTL bounds local
+    cache residency, not the maximum delay before a rotated key becomes visible.
+    A provider-independent freshness policy would need a separate decision.
   - Record this as an upstream issue (§11). edgezero's capability table marks
     `outbound-cache-bypass` Native, and its own template uses the same 2023 date.
 - **Budget:** `.timeout(5 s)` only. Combining `.timeout` with `.deadline` is
   redundant, because the earlier of the two wins.
+  - This is a chosen wire change (C7): v0.0.10 used a 30 s Axum timeout and a
+    15 s Fastly first-byte timeout. A previously successful slow JWKS fetch can
+    now produce a failed-verification reason in the auction's `adm`.
+  - Outbound deadlines are Native on Axum and BestEffort on Cloudflare, Fastly
+    and Spin. The configured budget does not promise finite provider teardown.
 - **Manifest:**
 
   ```toml
@@ -500,17 +575,40 @@ chunked. Set `Content-Length: 0` on both explicitly. Axum already sends 0.
       `is_valid_public_dns_hostname`, so it is at most 253 bytes. Use that value
       as both the cache key and the fetch host.
   - Cap the cache at 32 entries **(my call)**.
-  - **Retained-byte budget** `MAX_JWKS_CACHE_BYTES = 2 MiB` **(my call)**.
-    - Count it as the sum of key bytes plus each entry's raw JWKS body length,
-      which is already capped at 64 KiB.
-    - An insert that would exceed the budget evicts entries until it fits.
+  - **Owned-allocation charge budget** `MAX_JWKS_CACHE_BYTES = 2 MiB`
+    **(my call)**. The cache retains parsed values, so charging the serialized
+    response length would undercount many small keys. Charge each entry as:
+
+    ```text
+    canonical_host.capacity()
+    + jwks.keys.capacity() * size_of::<JwkKey>()
+    + sum(key.kid.capacity() + key.x.capacity())
+    ```
+
+    - Use checked multiplication and addition. Overflow makes an entry
+      uncacheable.
+    - This charges owned string and vector allocation capacities, including
+      spare capacity. It excludes map buckets, fixed container structs, mutex
+      metadata, allocator overhead, and transient fetch/parser buffers or
+      request-local clones. The 32-entry cap bounds container population; this
+      is not a total-memory or RSS guarantee.
+    - Under the insertion lock, remove any existing entry for the same host and
+      subtract its charge first. If the replacement alone exceeds the budget
+      or its charge overflows, use the fetched JWKS for the current request
+      without caching it or evicting unrelated entries.
+    - Otherwise remove expired entries, then evict the oldest until both the
+      entry cap and charge budget permit insertion. Update the entries and
+      charge total atomically under the same lock. Replacements, expiry and
+      eviction must subtract the removed entries' charges.
   - Entries are cached before any key lookup or signature check. An attacker who
     controls an HTTPS endpoint can therefore fill the cache with unverified or
     empty key sets without holding a valid signature. The entry cap and the byte
     budget are what bound this.
   - Evict expired entries first, then the oldest.
   - Treat `checked_duration_since` returning `None` as expired.
-  - Treat a poisoned lock as a miss.
+  - Treat a poisoned lock as a miss. Bypass both cache lookup and insertion
+    when the lock is poisoned; a successful fetch must still reach signature
+    verification without failing on a second lock acquisition.
   - Release the lock before awaiting the fetch, as today.
 - **Why now and not later:** the cache outlives requests today on Axum, the
   Cloudflare isolate and Spin. Spin's WASI P3 components are subject to instance
@@ -521,9 +619,15 @@ chunked. Set `Content-Length: 0` on both explicitly. Axum already sends 0.
   - Cover:
     - hits inside the TTL, and a refetch after it
     - the entry cap and eviction order
-    - the byte budget
+    - the allocation charge budget: exact-boundary insertion, one byte over,
+      vector/string spare capacity, and arithmetic overflow
+    - a near-64 KiB document with many small keys, whose parsed allocation
+      charge exceeds its serialized length
+    - replacement, expiry and eviction accounting, and successful verification
+      when an uncacheable fetched value is not inserted
     - a clock that goes backwards
-    - a poisoned lock
+    - a poisoned lock, including successful verification after bypassing both
+      lookup and insertion
   - **Alias regression test:** whitespace-padded, mixed-case and trailing-dot
     variants of one host, plus one roughly 1 MiB whitespace-padded variant,
     occupy exactly one entry whose key is at most 253 bytes.
@@ -572,9 +676,12 @@ fn configure_app(app: &mut App) -> Result<(), EdgeError> {
 - **The read deadline** is absolute from request start and governs only body
   reads.
   - The auction and APS handlers extract `AppConfig` before the body.
-  - The 2 s config timeout keeps a slow config backend from consuming the 10 s
-    bid budget. Without it, that backend would surface as a misleading 408. A
-    test asserts `CONFIG_READ_TIMEOUT < BID_READ_BUDGET`.
+  - The 2 s config timeout lets extraction classify an observed expiry as a
+    config-read 503 rather than proceeding to a body-read 408. Config deadlines
+    are BestEffort everywhere: a synchronous provider call, including Fastly's,
+    can consume more than 2 s before expiry is observed. It is not a guarantee
+    that 8 s of the bid budget remains. A test asserts
+    `CONFIG_READ_TIMEOUT < BID_READ_BUDGET`.
 - **What this changes:**
   - The size limits keep edgezero's defaults.
   - `ConfigExtractionLimits` applies only to `AppConfig` extraction. The
@@ -627,14 +734,14 @@ regression.
 | F2 | Config error wording changes. Missing blob uses `; run` instead of `— run`. The deserialization message drops its hint. `ConfigStoreError` maps to fixed text. Status, kind and `Retry-After` for missing-blob, deserialization and validation failures are unchanged. |
 | F3 | A declared but unopenable config store returns 503 `service_unavailable` with no `Retry-After` on Cloudflare (no KV binding) and on Axum (unreadable or malformed snapshot). It was 500. Fastly stays 500. An oversized Axum snapshot fails startup. |
 | F4 | 405 carries a sorted, deduplicated `Allow`. |
-| F5 | Head validation runs before routing, so these responses carry no CORS headers. It returns 414 for a target over 8192 bytes, 431 for more than 100 headers or 64 KiB of headers, and 400 for framing faults (CL and TE together, a duplicate or malformed CL, a non-chunked TE). On Fastly and Cloudflare the 8192 bytes count the absolute URL. |
+| F5 | Normalized head validation runs before routing, so its error responses carry no CORS headers. Visible target lengths over 8192 bytes return 414; more than 100 normalized headers or 64 KiB of normalized headers returns 431. Framing ambiguity that survives host parsing returns 400. On Fastly and Cloudflare the target length counts the absolute URL. Raw framing rejection is not guaranteed; see below. |
 | F6 | An inbound body read past the read deadline returns 408 (default 30 s). |
 | F7 | JSON bodies are capped at 8 MiB by default. Over the cap returns 400 "request body too large". |
 | F8 | Axum now parses JSON bodies without `Content-Type: application/json`, as Prebid's `text/plain` posts send them. They were rejected with 400 on Axum before; the other adapters already accepted them. |
 | F9 | Axum is HTTP/1 only. It caps connections at 256 and closes connections with no response after a 10 s head-read or idle timeout. Hyper enforces raw head limits. |
-| F10 | Egress strips hop-by-hop headers, canonicalizes `Content-Length`, and applies the 204/205/304/HEAD body rules. Responses with no length may stream on Fastly and Cloudflare; §5.8 covers mocktioneer's two cases. |
+| F10 | Egress strips hop-by-hop headers, canonicalizes `Content-Length`, and applies the 204/205/304/HEAD body rules. Removing/reinserting the length group moves the last application header group into its former slot and appends the canonical length. Duplicate values retain their order; host-added `Date` stays in place. With C6, ordinary empty responses insert length before other application fields, then undergo this same permutation. Responses with no length may stream on Fastly and Cloudflare; §5.8 preserves zero-length framing for all ordinary empty mocktioneer responses. |
 | F11 | The JWKS fetch no longer follows redirects. Axum and Cloudflare used to follow them. A redirecting JWKS URL now fails verification closed. |
-| F12 | In a `JWKS fetch failed: ` or `Stream read failed: ` reason, the detail text after the prefix changes to edgezero's fixed per-adapter messages. |
+| F12 | Outbound error details change to the sanitized per-adapter messages in §5.6. Buffered fetching can move body-read and decode failures from `Stream read failed:` to `JWKS fetch failed:`. Send-time framing, size, body and timeout failures take precedence over the non-200 status reason, because the status is checked only after `send` succeeds. Size failures keep the legacy JWKS size-limit reason. Recognized gzip/Brotli/deflate decoding and Axum/Fastly default `Accept-Encoding: identity` negotiation are accepted changes, including formerly invalid encoded JWKS now verifying successfully. The 65536-byte final buffered cap applies after recognized decoding. |
 | F13 | `/_mocktioneer/manifest` gains a `capabilities` object, which is always serialized, and `class` on the three bid triggers. |
 
 **Chosen by this spec:**
@@ -642,11 +749,21 @@ regression.
 | # | Change |
 | --- | --- |
 | C1 | Bid routes get a 10 s body-read budget instead of 30 s (§6.3). |
-| C2 | A config read slower than 2 s returns 503 `service_unavailable` (§6.3). |
+| C2 | An observed expiry of the 2 s config extraction deadline returns 503 `service_unavailable`. Config deadlines remain BestEffort (§6.3). |
 | C3 | Auction and APS bodies over 1 MiB return 400 (§6.4). |
 | C4 | A poisoned JWKS cache lock is a miss, not a `Cache lock poisoned` failure (§6.2). |
-| C5 | The JWKS cache is capped at 32 entries and keyed by canonical host (§6.2). |
-| C6 | `Content-Length: 0` is set explicitly on two empty responses (§5.8). |
+| C5 | The JWKS cache is capped at 32 entries and a 2 MiB owned-allocation charge, and keyed by canonical host (§6.2). An uncacheable value can still verify the current request. |
+| C6 | `Content-Length: 0` is set explicitly on every ordinary empty buffered response whose status permits it (§5.8). |
+| C7 | The JWKS outbound budget is 5 s. An observed expiry yields a failed-verification reason in `adm`, while the auction still returns 200. A previously successful slower fetch may now fail. Enforcement is Native on Axum and BestEffort on the other adapters (§6.1). |
+
+**F5 scope:** these are checks of the head visible to edgezero, not a raw-wire
+parser contract. Raw ingress framing validation is Unsupported on every
+adapter. Axum's Hyper parser collapses identical duplicate `Content-Length`
+fields and removes `Content-Length` when `Transfer-Encoding` is present before
+edgezero sees the request. Such raw inputs need not produce a 400 and can reach
+a matched handler with its usual CORS headers. A host may also reject a request
+before application dispatch. Characterize these cases separately; enforcing
+stricter raw rejection would require upstream work outside this migration.
 
 ### 7.1 Config-error matrix (`AppConfig` on the auction and APS routes)
 
@@ -667,7 +784,7 @@ messages are public, including on 500s; only `Internal`, `BadGateway`,
 | `sha256` mismatch | `IntegrityMismatch` | 500 | `internal` | no | As above. |
 | `version` ≠ 1 | `UnsupportedVersion` | 500 | `internal` | no | As above. |
 | Store unavailable: Cloudflare with no KV binding or no `FinalizationRegistry`, or an unreadable Axum snapshot | `BackendUnavailable` | 503 | `service_unavailable` | no | Was 500, because the registry was dropped (F3). |
-| Read slower than 2 s | `DeadlineExceeded` | 503 | `service_unavailable` | no | New (C2). |
+| Observed expiry of the 2 s config deadline | `DeadlineExceeded` | 503 | `service_unavailable` | no | New (C2). |
 | Fastly store open failure | `BackendFailure` | 500 | `internal` | no | Same status. |
 | Blob over 8 MiB, depth over 64, or more than 8192 nodes | `ValueTooLarge`, `StructuralLimit` | 500 | `internal` | no | New. Unreachable with the shipped config. |
 | Invalid key | `InvalidKey` | 400 | `bad_request` | no | Unreachable: the key is fixed. |
@@ -694,14 +811,27 @@ exact message.
   - The CI config-push check: `jq '.mocktioneer_config | fromjson | .data.bid_cpm'`
     over `.edgezero/local-config-mocktioneer_config.json` returns 0.35.
 - **Wire-diff procedure** (run by the builder, with results attached to the PR):
-  1. **Baseline:**
-     - `git worktree add <dir> e6c2982`
-     - `cp mocktioneer.toml.example mocktioneer.toml`
-     - `cargo run -p mocktioneer-cli -- config push --adapter axum --yes`
-     - `cargo run -p mocktioneer-adapter-axum`
-  2. **Candidate:** the same steps on the branch head.
-  3. **Environment:** clean for both runs, with `FASTLY_*`, `MOCKTIONEER_*` and
-     `EDGEZERO__*` unset. Do not bump the crate version; `info_html` embeds it.
+  1. **Revisions:** create a disposable baseline worktree with
+     `git worktree add <baseline-dir> e6c2982`, and a separate disposable
+     candidate worktree at the branch head.
+     Run each server and CLI from that revision's repository root, using the
+     same fixed host and port for both revisions.
+  2. **Startup scenarios:** capture both scenarios separately for each revision.
+     Stop the server between scenarios; both versions snapshot config at
+     startup, so deleting or pushing the file while a process runs cannot
+     switch its scenario.
+
+     | Scenario | Config before startup | Requests |
+     | --- | --- | --- |
+     | Seeded | Copy `mocktioneer.toml.example` to `mocktioneer.toml`, then run `cargo run -p mocktioneer-cli -- config push --adapter axum --yes`. | The main corpus. |
+     | Unseeded | Confirm `.edgezero/local-config-mocktioneer_config.json` is absent; do not push config. | Missing-config auction and APS cases, which return 503. |
+
+     Start each scenario with `cargo run -p mocktioneer-adapter-axum` only after
+     its config state is prepared. Keep all config files in these disposable
+     worktrees; do not remove an operator's existing local config.
+  3. **Environment:** remove ambient `FASTLY_*`, `MOCKTIONEER_*` and
+     `EDGEZERO__*` overrides from both server environments, then apply the
+     fixed values in step 4. Do not bump the crate version; `info_html` embeds it.
   4. **Environment:** pin `MOCKTIONEER_TS_DOMAINS` and `MOCKTIONEER_PULL_TOKEN`
      to the same fixed values in both runs. This lets the successful `/sync/start`
      redirect and `/resolve` paths run.
@@ -716,15 +846,16 @@ exact message.
      - **`/click`:** with and without parameters.
      - **`/pixel`:** a fixed `pid`, and a missing `pid`.
      - **`/aps/win`.**
-     - **`/e/dtb/bid`:** valid, validator failure, malformed JSON.
+     - **`/e/dtb/bid`:** valid, validator failure, malformed JSON, and missing
+       config in the unseeded scenario.
      - **`/openrtb2/auction`:**
        - one impression, several impressions, multi-format, a non-standard size
        - with eids and Edge Cookie fields, and unsigned
        - a `trusted_server` block that fails before any JWKS fetch with
          deterministic text, such as missing fields. Exclude anything whose
          reason embeds the time drift.
-       - malformed JSON, a validator failure, and no config, which must return
-         503 from §7.1
+       - malformed JSON, a validator failure, and missing config in the
+         unseeded scenario, which must return 503 from §7.1
      - **`/adserver/mediate`:**
        - one bidder and several bidders
        - a price tie, where the first bidder wins
@@ -738,8 +869,18 @@ exact message.
        (401).
      - **OPTIONS** on every path, a 405 on every path (F4), and an unknown-path
        404.
-     - **The F5 cases:** a 9 KB target, more than 100 headers, CL and TE
-       together.
+     - **The F5 overages:** a 9 KB target and more than 100 headers. Test
+       framing faults that remain visible in a normalized head separately
+       through adapter validation, or explicitly call
+       `head.validate_normalized(app.ingress_head_limits())` before admission.
+       Admitted dispatch alone skips this validation. Do not assume raw
+       requests preserve these faults.
+     - **Raw framing characterization:** use a TCP client for identical
+       duplicate `Content-Length: 0` fields and for CL plus chunked TE with a
+       complete terminating chunk. Record parser acceptance/rejection and the
+       observed response for each revision. A high-level HTTP client may
+       rewrite these inputs. Do not require a universal 400; F5's normalized
+       checks cannot recover framing removed by the host parser.
      - **The size caps:** C3 (a 1.1 MiB auction or APS body) and F7 (a 9 MiB
        mediation body).
      - A JSON POST without `Content-Type` (F8).
@@ -764,9 +905,21 @@ exact message.
      Never mask mtkid. It is a deterministic `SHA-256("mtkid:" || host)`,
      truncated to 32 hex characters, so a loose 32-hex pattern would hide
      regressions in it.
-  8. **Pass condition:** the masked diff is empty except for responses that the
-     corpus predicts from §7 and §7.1, and each of those is annotated with its
-     number.
+     **Existing validation-order exception:** the APS empty-slots and mediation
+     empty-impressions validator messages contain a `HashMap` parameter display
+     whose `min`/`value` order varies even between repeated baseline requests.
+     For those two named cases only, the comparator accepts the two exact
+     observed message bodies, with their fixed paths, values, status and kind.
+     Every header and all other body bytes remain protected. Mutations to either
+     parameter, the field name, kind or surrounding text must fail. This is a
+     characterization of baseline nondeterminism, not an additional migration
+     wire change or permission to normalize arbitrary validation errors.
+
+  8. **Pass condition:** for each startup scenario, the masked diff is empty
+     except for responses that the corpus predicts from §7 and §7.1, and each
+     difference is annotated with its number. Attach the raw-framing
+     characterization separately and identify any host-parser differences under
+     F5/F9; do not count it as proof of raw framing validation.
 
 ## 9. Verification
 
@@ -783,12 +936,17 @@ exact message.
     - edgezero's CI now uses `wasmtime run -W component-model-async=y -S p3=y -S http=y`.
     - Adopt those flags in `test.yml` only if 48.0.2 needs them.
 - **Playwright:** all tests (41 at base) against a live Axum server.
-- **Docs:** lint, format and build.
+- **Docs:** lint, format and build. Add `npm run build` to the existing
+  `format-docs` PR job in `.github/workflows/format.yml`; the current docs
+  deployment workflow builds only after a main push or manual dispatch.
 - **The new tests from §5.6, §5.7, §6.1 to §6.4 and §7.1.** This includes the
   Cloudflare wasm JWKS flow test from §6.2, which runs in the Cloudflare
   contract job.
 
-**Local, by the builder, with results in the PR:**
+**Required local checks, by the builder, with results in the PR:**
+
+If a required local check fails or cannot run, report verification as incomplete.
+Passing CI does not substitute for these checks.
 
 - The §8 wire diff.
 - **Docker:**
@@ -799,12 +957,62 @@ exact message.
 - **The Fastly production entrypoint:** contract tests call `FastlyService`,
   not `main()`, so they never exercise the new `run_app()` raw-ABI response
   path.
-  1. Build the wasip1 release.
-  2. Run it under Viceroy 0.21.0 (`viceroy run` or `fastly compute serve`).
-     Use a temporary, uncommitted `[local_server.config_stores.mocktioneer_config]`
-     entry that holds the pushed envelope.
+  1. From the repository root, confirm the standalone `viceroy --version`
+     reports 0.21.0 and build the wasip1 release:
+
+     ```sh
+     cargo build --locked --release -p mocktioneer-adapter-fastly \
+       --features fastly --target wasm32-wasip1
+     ```
+
+  2. Copy the adapter's `fastly.toml` to a temporary, uncommitted manifest.
+     Under `[local_server.config_stores.mocktioneer_config]`, set
+     `format = "inline-toml"`; in its `.contents` table, set the
+     `mocktioneer_config` key to the serialized pushed envelope. Set
+     `MOCKTIONEER_SMOKE_CONFIG` to this temporary manifest's absolute path, then
+     start the HTTP listener from the repository root:
+
+     ```sh
+     viceroy serve --config "$MOCKTIONEER_SMOKE_CONFIG" --addr 127.0.0.1:7676 \
+       target/wasm32-wasip1/release/mocktioneer-adapter-fastly.wasm
+     ```
+
+     `viceroy run` executes once and exits; it is not the HTTP server for this
+     check. `fastly compute serve` may select a different bundled Viceroy, so it
+     does not establish the required 0.21.0 runtime evidence.
   3. Check that `/` returns 200 with its body and `Content-Length`, that an
      auction returns the seeded price, and that `/pixel` returns `image/gif`.
+     Also check reachable empty `/sync/start` responses: a malformed hostname
+     returns 400, and an allowed hostname returns 302; both carry
+     `Content-Length: 0`. Capture the redirect without following it. Use the
+     synthetic egress contract cases in §5.8 for 403/401; do not require guest
+     environment-variable support to run this smoke.
+
+- **Cloudflare:** `wrangler dev` with the new flags serves an auction from
+  seeded config. This is the only check of the real `FixedLengthStream` path
+  and of `enable_weak_ref` in workerd, so it is required even when the browser
+  contracts pass with their polyfill.
+  1. Temporarily add the following to `wrangler.toml`, and do not commit it:
+
+     ```toml
+     [[kv_namespaces]]
+     binding = "mocktioneer_config"
+     id = "local-dev-placeholder"
+     ```
+
+  2. Run `cp mocktioneer.toml.example mocktioneer.toml`.
+  3. Run `cargo run -p mocktioneer-cli -- config push --adapter cloudflare --local`.
+  4. Run `wrangler dev --cwd crates/mocktioneer-adapter-cloudflare`.
+  5. Verify an auction's 200 status, seeded price, complete body and matching
+     declared length. Check the empty 400 from a syntactically invalid
+     `/sync/start` hostname and the empty 302 for an allowed hostname for
+     `Content-Length: 0` as well. Capture the redirect without following it.
+     No polyfill may be installed in this Workers run.
+  6. Record Wrangler and workerd versions and the results. A skipped or failed
+     smoke leaves verification incomplete; a browser result is not proof that
+     the real Workers path works.
+
+  These are the steps in `docs/guide/adapters/cloudflare.md:58-80`.
 
 **Manual, best effort, with results recorded:**
 
@@ -816,22 +1024,6 @@ exact message.
     so it differs from `[capabilities.outbound].hosts`.
     `mocktioneer-cli build --adapter spin` must fail with "Spin outbound host
     drift". Then revert.
-- **Cloudflare:** `wrangler dev` with the new flags serves an auction from
-  seeded config. This is the only check of the real `FixedLengthStream` path
-  and of `enable_weak_ref` in workerd.
-  1. Temporarily add the following to `wrangler.toml`, and do not commit it:
-
-     ```toml
-     [[kv_namespaces]]
-     binding = "mocktioneer_config"
-     id = "local-dev-placeholder"
-     ```
-
-  2. Run `cp mocktioneer.toml.example mocktioneer.toml`.
-  3. Run `cargo run -p mocktioneer-cli -- config push --adapter cloudflare --local`.
-  4. Run `wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml`.
-
-  These are the steps in `docs/guide/adapters/cloudflare.md:58-80`.
 
 **Unverified, and recorded as such in the PR:**
 
@@ -853,7 +1045,8 @@ exact message.
   - The `EDGEZERO__STORES__CONFIG__*` Worker vars only rename which binding is
     looked up. They do not create one.
   - Deploy with the new `compatibility_flags`. Without `enable_weak_ref`, every
-    `AppConfig` route returns 503 even with a binding.
+    `AppConfig` route returns 503 even with a binding. The retained date also
+    requires `internal_stream_byob_return_view` for successful bounded KV reads.
 - **Fastly:** dynamic backends must stay enabled. This is unchanged from v0.0.10.
   - Without them, the JWKS fetch gets a typed 502 internally. The auction still
     returns 200, and signed requests get a `Failed` reason in `adm`.
@@ -871,9 +1064,12 @@ exact message.
 
 - **The draft is moving.** `f6c708cc` sits on a draft branch.
   - A force-push leaves it unreferenced, and a later GC breaks `cargo fetch`.
-  - If #275's head moves, re-pin and rerun §9 in full.
-  - If §0.1 is a Cargo dependency, coordinate the new rev with the other
-    project.
+  - This implementation stays on the audited `f6c708cc` pin. The observed
+    `852ec74b` head adds new outbound policy APIs, provider changes and 413
+    payload-overflow responses; it is a separate adoption review, not an
+    automatic tracking update. The current 400 overflow contract stays intact.
+  - Before adopting any newer revision, review its implementation/API/wire delta,
+    update this spec and the plan, and rerun §9 in full.
 - **Re-pin when #275 ships:**
   1. Diff the CHANGELOG and public API from the rev to the tag.
   2. Rerun §9, including the wire diff.
@@ -883,8 +1079,12 @@ exact message.
   - F8: Axum accepts `text/plain` JSON.
   - C1 and C3: the new 400s and 408s on bid routes.
   - F11: no redirects for JWKS.
+  - F12 and C7: recognized content decoding and negotiation, buffered JWKS
+    error ordering and the five-second outbound budget, which can change
+    signature results in `adm`.
 - **The Cloudflare `FixedLengthStream` polyfill** could hide a real Workers
-  failure. It is mitigated only by the manual `wrangler dev` check.
+  failure. The required local `wrangler dev` check is the completion gate for
+  that path; skipped or failed checks leave verification incomplete.
 - **Upstream issues to record** for the user to file:
   1. Cloudflare `OutboundCachePolicy::Bypass` throws before compatibility date
      2024-11-11 without `cache_option_enabled`. edgezero's capability table marks
@@ -908,12 +1108,14 @@ exact message.
   - `:117` "validation returns 400" is wrong at both versions; it is 422
 - **`AGENTS.md`, `README.md`:** any version or behavior text the cut changes.
 - **`docs/api/`:**
-  - `index.md`: the error table (F1, F4, F5, F7, F8, C1–C3)
+  - `index.md`: the error table (F1, F4, F5, F7, F8, C1–C3), with F5 limited
+    to normalized-head checks rather than a raw framing guarantee
   - `openrtb-auction.md` (~226-250): the JWKS fetch without redirects, and the
-    1 MiB cap
+    1 MiB cap; the buffered error precedence and five-second JWKS budget
   - `aps-bid.md`: the 1 MiB cap
   - `sync.md`, `resolve.md`: check every status and redirect statement
-- **`docs/integrations/trusted-server.md`:** the JWKS fetch behavior (F11, F12).
+- **`docs/integrations/trusted-server.md`:** the JWKS fetch behavior (F11, F12,
+  C7), and the distinction between the local cache TTL and provider freshness.
 - **`docs/guide/`:**
   - `configuration.md`: the wrangler flags, the outbound capability, and the
     Axum restart, which is not new
@@ -926,8 +1128,14 @@ exact message.
   - inbound read deadlines are Native on Axum and BestEffort elsewhere
   - config-read deadlines and response egress are BestEffort everywhere
   - ingress admission is Native everywhere
+  - raw ingress framing validation is Unsupported everywhere; normalized-head
+    checks do not strengthen that classification
 
 ### 12.2 Errors in edgezero's docs not to copy (at `f6c708cc`)
+
+- The generated Cloudflare template retains the 2023 date with only two flags.
+  Bounded KV reads also require `internal_stream_byob_return_view` at that date
+  (§5.4). Keep this as a local upstream follow-up; no remote issue was filed.
 
 - `ctx.request()` no longer exists, but several pages still use it:
   - `handlers.md:192-194, 650`
@@ -955,7 +1163,7 @@ One PR against `main`, with one commit per unit. Each commit ends green.
 2. **The forced migration (§5):** the repin and lock, the dependency edits, the
    entrypoints, `wrangler.toml`, the handler accessors, the JWKS port and its
    reason-string tests, the test doubles, the contract-suite shims, and empty-body
-   framing. No adoption beyond what #275 forces.
+   framing. Include §5's specified port policy and wire-preservation fixes.
 3. **The JWKS cache:** the portable clock and the bound (§6.2).
 4. **The JWKS policy and manifest (§6.1).**
 5. **The `configure` hook and the bid class (§6.3).**
@@ -966,7 +1174,9 @@ One PR against `main`, with one commit per unit. Each commit ends green.
 
 - Fine-tuning `JWKS_FETCH_TIMEOUT`, `BID_READ_BUDGET`, `CONFIG_READ_TIMEOUT`
   and `MAX_BID_REQUEST_BYTES` within the reasons given. Any change must keep
-  `CONFIG_READ_TIMEOUT < BID_READ_BUDGET`.
+  `CONFIG_READ_TIMEOUT < BID_READ_BUDGET` and update the corresponding §7 wire
+  contract, tests and documentation together, including C7 if the five-second
+  JWKS budget changes.
 - Whether to share the test doubles (`MapConfigStore`, `complete_envelope`, the
   stub client) in one test-support module or keep a copy per crate. Prefer the
   smaller diff.
@@ -1006,8 +1216,9 @@ One PR against `main`, with one commit per unit. Each commit ends green.
 
 These change what gets built or how it ships:
 
-1. **Merge timing:** after #275 merges, then re-pin (§3). Depends on §0.1.
-2. **`build_app`:** delete it, unless §0.1 is a Cargo dependency (§5.2).
+1. **Merge timing:** after #275 merges, then re-pin (§3).
+2. **`build_app`:** delete it (§5.2), following the user's confirmation that the
+   related project does not depend on mocktioneer (§0.1).
 3. **PR target:** `main`, so CI runs (§3).
 4. **No live deploys** in this PR (§2).
 5. **App reuse deferred** (§2). This is the biggest departure from "adopt the
@@ -1018,15 +1229,22 @@ These change what gets built or how it ships:
 8. **2 s config read timeout** (§6.3).
 9. **1 MiB cap** on auction and APS; mediation stays at 8 MiB (§6.4).
 10. **`PlatformDefault` cache policy** instead of `Bypass` (§6.1).
-11. **Reason strings:** keep `"Proxy not available"` and the stage prefixes
-    verbatim (§5.6).
-12. **JWKS cache:** 32 entries, a 2 MiB retained-byte budget, canonical-host
-    keys computed before the lookup, and a poisoned lock treated as a miss
-    (§6.2).
+11. **Reason strings:** keep `"Proxy not available"` and the strings in §5.6;
+    accept the decoding, negotiation, buffered error-stage and precedence changes
+    listed in F12.
+12. **JWKS cache:** 32 entries, a 2 MiB owned-allocation charge budget,
+    canonical-host keys computed before the lookup, and a poisoned lock
+    bypassed for lookup and insertion (§6.2).
 13. **The Cloudflare `FixedLengthStream` test polyfill** (§5.7).
-14. **Explicit `Content-Length: 0`** on two empty responses (§5.8).
+14. **Explicit `Content-Length: 0`** on all ordinary empty buffered responses
+    whose status permits it (§5.8).
 15. **Keep `compatibility_date = "2023-05-01"`** (§5.4).
 16. **Internal-kind transport errors** get the fixed detail `internal error` in
     signature reasons, so provider diagnostics can't reach `adm` (§5.6).
 17. **The wire diff pins `MOCKTIONEER_TS_DOMAINS` and `MOCKTIONEER_PULL_TOKEN`**
-    to fixed values, so the success paths run (§8).
+    to fixed values, so the success paths run, and captures separate seeded and
+    unseeded server startups (§8).
+18. **Five-second JWKS outbound budget** with provider-specific enforcement
+    limits (C7).
+19. **Required local Cloudflare workerd smoke** despite the browser test
+    polyfill (§9).

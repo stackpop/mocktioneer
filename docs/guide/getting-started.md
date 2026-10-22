@@ -6,12 +6,16 @@ Get up and running with Mocktioneer quickly.
 
 Before you begin, ensure you have:
 
-- **Rust** (stable toolchain)
-- **Fastly CLI** (optional, for Fastly adapter): `brew install fastly/tap/fastly`
+- **Rust 1.98.1** (see `.tool-versions`)
+- **Node.js 24.20.0** (for docs and browser tests)
+- **Fastly CLI 16.0.0 / Viceroy 0.21.0** (optional, for Fastly adapter): `brew install fastly/tap/fastly`
 - **Wrangler** (optional, for Cloudflare adapter): `npm install -g wrangler`
 - **WASM targets** (for edge adapters):
   - Fastly: `rustup target add wasm32-wasip1`
   - Cloudflare: `rustup target add wasm32-unknown-unknown`
+  - Spin: `rustup target add wasm32-wasip2`
+- **Spin CLI 4.1+** (optional): install separately; no asdf Spin plugin is configured
+- **Wasmtime 48.0.2** (for Spin contract tests)
 
 ## Installation
 
@@ -29,7 +33,7 @@ The EdgeZero CLI provides a unified interface for all adapters, but it is mainta
 If you have access to the EdgeZero repo:
 
 ```bash
-cargo install --git https://github.com/IABTechLab/edgezero.git edgezero-cli --features cli
+cargo install --git https://github.com/IABTechLab/edgezero.git --rev f6c708ccb5be19ba9fa92575db3c08c0f17e0d72 edgezero-cli --features cli
 ```
 
 Or run it from a local EdgeZero checkout:
@@ -71,7 +75,8 @@ The fastest way to get started:
 cargo run -p mocktioneer-adapter-axum
 ```
 
-The server starts at `http://127.0.0.1:8787`.
+The server starts at `http://127.0.0.1:8787`. Restart it after each later config
+push; Axum snapshots the config at startup.
 
 ### Option 2: Using the CLI
 
@@ -91,11 +96,27 @@ fastly compute serve -C crates/mocktioneer-adapter-fastly
 
 ### Option 4: Cloudflare Local Development
 
+First follow the [Cloudflare KV setup](./adapters/cloudflare#local-development).
+The committed compatibility flags `enable_request_signal`, `enable_weak_ref`
+and `internal_stream_byob_return_view` are required; a store-name variable alone does not create the KV binding.
+
 ```bash
 edgezero-cli serve --adapter cloudflare
 # Or directly:
-wrangler dev --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
+wrangler dev --cwd crates/mocktioneer-adapter-cloudflare
 ```
+
+### Option 5: Spin Local Development
+
+Use Spin CLI 4.1 or newer:
+
+```bash
+cargo run -p mocktioneer-cli -- serve --adapter spin
+```
+
+The CLI checks that the outbound hosts in `edgezero.toml` and `spin.toml` match.
+Direct `spin build`/`spin up` commands skip that drift check. See
+[Spin configuration](./configuration#spin-adapter) for config-store setup.
 
 ## Verify Installation
 

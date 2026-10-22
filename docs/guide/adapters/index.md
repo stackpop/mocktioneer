@@ -46,6 +46,26 @@ flowchart TD
     class axumRt,fastlyRt,cfRt,spinRt runtime;
 ```
 
+## Capability Support
+
+The audited EdgeZero revision declares this support:
+
+| Capability                     | Axum        | Fastly      | Cloudflare  | Spin        |
+| ------------------------------ | ----------- | ----------- | ----------- | ----------- |
+| Outbound HTTP                  | Native      | BestEffort  | Native      | Native      |
+| Inbound body-read deadlines    | Native      | BestEffort  | BestEffort  | BestEffort  |
+| Outbound HTTP deadlines        | Native      | BestEffort  | BestEffort  | BestEffort  |
+| Config-read deadlines          | BestEffort  | BestEffort  | BestEffort  | BestEffort  |
+| Response egress                | BestEffort  | BestEffort  | BestEffort  | BestEffort  |
+| Ingress admission              | Native      | Native      | Native      | Native      |
+| Raw ingress framing validation | Unsupported | Unsupported | Unsupported | Unsupported |
+
+BestEffort budgets do not guarantee provider cancellation or teardown by the
+deadline. Normalized-head checks do not establish raw-wire framing validation:
+host parsing may reject or normalize input first. This table describes framework
+capabilities; hosted provider qualification has not been performed for this
+migration. See [API limits](/api/#request-limits-and-deadlines).
+
 ## Choosing an Adapter
 
 ### For Development
@@ -80,7 +100,7 @@ The EdgeZero CLI provides a unified interface for all adapters. It's maintained 
 
 ```bash
 # Install (requires access to EdgeZero repo)
-cargo install --git https://github.com/IABTechLab/edgezero.git edgezero-cli --features cli
+cargo install --git https://github.com/IABTechLab/edgezero.git --rev f6c708ccb5be19ba9fa92575db3c08c0f17e0d72 edgezero-cli --features cli
 
 # Serve any adapter
 edgezero-cli serve --adapter axum
@@ -93,6 +113,8 @@ edgezero-cli build --adapter fastly
 ```
 
 The CLI reads `edgezero.toml` and executes the appropriate commands for each adapter.
+For Spin, its build/serve/deploy gate also checks outbound hosts against
+`spin.toml`; direct `spin build`/`spin up` commands do not.
 If you don't have `edgezero-cli`, use the direct adapter commands on the pages below.
 
 ### In-repo `mocktioneer-cli`

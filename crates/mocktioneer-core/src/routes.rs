@@ -7,7 +7,8 @@ use async_trait::async_trait;
 use edgezero_core::action;
 use edgezero_core::context::RequestContext;
 use edgezero_core::extractor::{
-    AppConfig, ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedQuery,
+    AppConfig, ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedJsonWithin,
+    ValidatedQuery,
 };
 use edgezero_core::http::{
     HeaderMap, HeaderValue, Method, Response, StatusCode, header, response_builder,
@@ -30,6 +31,8 @@ use crate::render::{
     SignatureStatus, creative_html, extract_ec_hash, info_html, render_svg, render_template_str,
 };
 use crate::verification::verify_request_id_signature;
+
+const MAX_BID_REQUEST_BYTES: usize = 1024 * 1024;
 
 const CLICK_TMPL: &str = include_str!("../static/templates/click.html.hbs");
 const MTKID_COOKIE_NAME: &str = "mtkid";
@@ -209,7 +212,7 @@ where
 impl Middleware for Cors {
     #[inline]
     async fn handle(&self, ctx: RequestContext, next: Next<'_>) -> Result<Response, EdgeError> {
-        let method = ctx.request().method().clone();
+        let method = ctx.method().clone();
         let mut response = if method == Method::OPTIONS {
             Ok(options_response())
         } else {
@@ -231,13 +234,13 @@ where
 
     if let Some((width, height)) = parse_size_param(&params.size, F::FORMAT.suffix()) {
         if !is_standard_size(width, height) {
-            return Err(F::handle_invalid(ctx.request().uri().path(), width, height));
+            return Err(F::handle_invalid(ctx.uri().path(), width, height));
         }
 
         return Ok(ValidatedSize(SizeDimensions { height, width }, PhantomData));
     }
 
-    Err(EdgeError::not_found(ctx.request().uri().path()))
+    Err(EdgeError::not_found(ctx.uri().path()))
 }
 
 fn parse_size_param(size: &str, suffix: &str) -> Option<(i64, i64)> {
@@ -275,7 +278,9 @@ fn apply_cors(headers: &mut HeaderMap) {
 fn build_response(status: StatusCode, body: Body) -> Response {
     let mut builder = response_builder().status(status);
     if let Body::Once(bytes) = &body
-        && !bytes.is_empty()
+        && !status.is_informational()
+        && status != StatusCode::NO_CONTENT
+        && (status != StatusCode::NOT_MODIFIED || !bytes.is_empty())
     {
         builder = builder.header(header::CONTENT_LENGTH, bytes.len().to_string());
     }
@@ -317,7 +322,7 @@ pub async fn handle_openrtb_auction(
     AppConfig(cfg): AppConfig<MocktioneerConfig>,
     RequestContext(ctx): RequestContext,
     ForwardedHost(host): ForwardedHost,
-    ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
+    ValidatedJsonWithin(req): ValidatedJsonWithin<OpenRTBRequest, MAX_BID_REQUEST_BYTES>,
 ) -> Result<Response, EdgeError> {
     // Capture signature verification status for metadata
     let signature_status =
@@ -472,7 +477,7 @@ pub async fn handle_pixel(
 pub async fn handle_aps_bid(
     AppConfig(cfg): AppConfig<MocktioneerConfig>,
     ForwardedHost(host): ForwardedHost,
-    ValidatedJson(req): ValidatedJson<ApsBidRequest>,
+    ValidatedJsonWithin(req): ValidatedJsonWithin<ApsBidRequest, MAX_BID_REQUEST_BYTES>,
 ) -> Result<Response, EdgeError> {
     log::info!(
         "APS auction pubId={}, slots={}",
@@ -1001,12 +1006,16 @@ mod tests {
     use crate::auction::decode_aps_price;
     use edgezero_core::blob_envelope::BlobEnvelope;
     use edgezero_core::body::Body;
-    use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
+    use edgezero_core::config_store::{
+        BoundedStoreRead, ConfigStore, ConfigStoreError, ConfigStoreHandle, ConfigValue,
+        finish_bounded_config_read,
+    };
     use edgezero_core::context::RequestContext;
     use edgezero_core::error::EdgeError;
     use edgezero_core::http::{Method, Response, StatusCode, request_builder};
     use edgezero_core::params::PathParams;
     use edgezero_core::response::IntoResponse as _;
+    use edgezero_core::response_egress_framing::prepare_response_egress;
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
     use std::collections::HashMap;
@@ -1019,8 +1028,151 @@ mod tests {
     // the impl MUST use the same `(?Send)` mode or method signatures won't match.
     #[async_trait(?Send)]
     impl ConfigStore for MapConfigStore {
-        async fn get(&self, key: &str) -> Result<Option<String>, ConfigStoreError> {
-            Ok(self.0.get(key).cloned())
+        async fn get(&self, key: &str) -> Result<Option<ConfigValue>, ConfigStoreError> {
+            Ok(self.0.get(key).cloned().map(Into::into))
+        }
+
+        async fn get_bounded(
+            &self,
+            key: &str,
+            clock: &edgezero_core::MonotonicClock,
+            deadline: edgezero_core::Deadline,
+            max_backend_bytes: u64,
+            max_value_bytes: u64,
+        ) -> Result<BoundedStoreRead<ConfigValue>, ConfigStoreError> {
+            if deadline.is_expired_at(clock.now()) {
+                return Err(ConfigStoreError::DeadlineExceeded);
+            }
+            finish_bounded_config_read(
+                Ok(self.0.get(key).cloned()),
+                clock,
+                deadline,
+                max_backend_bytes,
+                max_value_bytes,
+            )
+        }
+    }
+
+    #[test]
+    fn empty_response_framing_respects_status() {
+        for status in [
+            StatusCode::BAD_REQUEST,
+            StatusCode::UNAUTHORIZED,
+            StatusCode::FORBIDDEN,
+            StatusCode::FOUND,
+            StatusCode::INTERNAL_SERVER_ERROR,
+            StatusCode::RESET_CONTENT,
+        ] {
+            let response = build_response(status, Body::empty());
+            assert_eq!(
+                response.headers().get(header::CONTENT_LENGTH),
+                Some(&HeaderValue::from_static("0"))
+            );
+        }
+        for status in [
+            StatusCode::CONTINUE,
+            StatusCode::NO_CONTENT,
+            StatusCode::NOT_MODIFIED,
+        ] {
+            let response = build_response(status, Body::empty());
+            assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
+        }
+        for status in [StatusCode::CONTINUE, StatusCode::NO_CONTENT] {
+            let response = build_response(status, Body::from("suppressed"));
+            assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
+        }
+        let representation = build_response(StatusCode::NOT_MODIFIED, Body::from("representation"));
+        assert_eq!(
+            representation.headers().get(header::CONTENT_LENGTH),
+            Some(&HeaderValue::from_static("14"))
+        );
+        for (method, status) in [
+            (Method::HEAD, StatusCode::OK),
+            (Method::GET, StatusCode::NOT_MODIFIED),
+        ] {
+            let prepared = prepare_response_egress(
+                &method,
+                build_response(status, Body::from("representation")),
+            )
+            .expect("representation length is valid when the body is suppressed");
+            assert_eq!(prepared.declared_length(), Some(14));
+            assert!(!prepared.transmits_body());
+            assert!(
+                matches!(prepared.into_response().body(), Body::Once(bytes) if bytes.is_empty())
+            );
+        }
+    }
+
+    #[test]
+    fn auction_and_aps_accept_exact_cap_and_reject_one_byte_over() {
+        for (path, payload) in [
+            (
+                "/openrtb2/auction",
+                r#"{"id":"r","imp":[{"id":"1","banner":{"w":300,"h":250}}]}"#,
+            ),
+            (
+                "/e/dtb/bid",
+                r#"{"pubId":"p","slots":[{"slotID":"s","sizes":[[300,250]]}]}"#,
+            ),
+        ] {
+            for size in [1024 * 1024, 1024 * 1024 + 1] {
+                let mut bytes = payload.as_bytes().to_vec();
+                bytes.resize(size, b' ');
+                let request = ctx(Method::POST, path, Body::from_bytes(bytes), &[]);
+                let response = response_from(block_on(async {
+                    if path == "/e/dtb/bid" {
+                        handle_aps_bid(request).await
+                    } else {
+                        handle_openrtb_auction(request).await
+                    }
+                }));
+                if size == 1024 * 1024 {
+                    assert_eq!(response.status(), StatusCode::OK);
+                } else {
+                    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+                    let error_payload: serde_json::Value =
+                        serde_json::from_slice(&body_bytes(response)).unwrap();
+                    assert_eq!(error_payload["error"]["kind"], "bad_request");
+                    assert_eq!(error_payload["error"]["message"], "request body too large");
+                }
+            }
+            let request = ctx_without_pushed_config(
+                Method::POST,
+                path,
+                Body::from_bytes(vec![b' '; 1024 * 1024 + 1]),
+            );
+            let response = response_from(block_on(async {
+                if path == "/e/dtb/bid" {
+                    handle_aps_bid(request).await
+                } else {
+                    handle_openrtb_auction(request).await
+                }
+            }));
+            assert_config_out_of_date(response);
+        }
+    }
+
+    #[test]
+    fn mediation_keeps_the_eight_mebibyte_default_cap() {
+        let json = r#"{"id":"m","imp":[{"id":"1","banner":{"w":300,"h":250}}],"ext":{"bidder_responses":[{"bidder":"a","bids":[]}]}}"#;
+        for size in [1024 * 1024 + 1, 8 * 1024 * 1024, 8 * 1024 * 1024 + 1] {
+            let mut bytes = json.as_bytes().to_vec();
+            bytes.resize(size, b' ');
+            let request = ctx(
+                Method::POST,
+                "/adserver/mediate",
+                Body::from_bytes(bytes),
+                &[],
+            );
+            let response = response_from(block_on(handle_adserver_mediate(request)));
+            assert_eq!(
+                response.status(),
+                if size > 8 * 1024 * 1024 {
+                    StatusCode::BAD_REQUEST
+                } else {
+                    StatusCode::OK
+                }
+            );
         }
     }
 

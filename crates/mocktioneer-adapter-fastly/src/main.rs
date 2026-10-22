@@ -7,13 +7,12 @@
 )]
 
 #[cfg(target_arch = "wasm32")]
-use fastly::{Error, Request, Response};
+use fastly::Error;
 #[cfg(target_arch = "wasm32")]
 use mocktioneer_core::MocktioneerApp;
 #[cfg(target_arch = "wasm32")]
-#[fastly::main]
-pub fn main(req: Request) -> Result<Response, Error> {
-    edgezero_adapter_fastly::run_app::<MocktioneerApp>(req)
+pub fn main() -> Result<(), Error> {
+    edgezero_adapter_fastly::run_app::<MocktioneerApp>()
 }
 
 #[cfg(not(target_arch = "wasm32"))]

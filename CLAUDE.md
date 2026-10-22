@@ -30,6 +30,9 @@ tests/playwright/                 # Playwright e2e tests (creative visibility, s
 - **Rust**: 1.98.1 (from `.tool-versions`)
 - **Node.js**: 24.20.0 (for docs site and Playwright tests)
 - **Fastly CLI**: v16.0.0
+- **Viceroy**: 0.21.0
+- **Wasmtime**: 48.0.2
+- **Spin CLI**: 4.1+ (install separately; no asdf Spin plugin is configured)
 - **Edition**: 2024
 - **Resolver**: 2
 - **License**: Apache-2.0
@@ -98,7 +101,9 @@ All handlers live in `mocktioneer-core/src/routes.rs`. New routes must be added
 to both the handler module and `edgezero.toml`:
 
 ```rust
-use edgezero_core::{action, Json, Path, Query, Response, EdgeError};
+use edgezero_core::{action, EdgeError};
+use edgezero_core::extractor::Json;
+use edgezero_core::http::Response;
 
 #[action]
 async fn my_handler(
@@ -114,7 +119,8 @@ Use `{id}` brace syntax for path parameters (matchit 0.8+), **not** `:id`.
 
 Use the `validator` crate with `#[derive(Validate)]` on request structs.
 Custom validation functions for complex rules (e.g., size format). Failed
-validation returns 400 Bad Request with error details.
+validation returns 422 Unprocessable Entity with error details. Malformed JSON
+and query deserialization failures return 400 Bad Request.
 
 ### Error Handling
 
@@ -182,7 +188,9 @@ Every PR must pass:
    (`mocktioneer.toml` is gitignored; CI copies the template first, then validates
    the default path — this is the exact `test.yml` invocation)
 6. Playwright e2e tests (`tests/playwright/`)
-7. ESLint + Prettier on `docs/`
+7. ESLint + Prettier + `npm run build` on `docs/`
+8. Offline wire-contract comparator tests:
+   `python3 -m unittest discover -s tests/wire-contract -p 'test_*.py' -v`
 
 Docker image is built and pushed to `ghcr.io/stackpop/mocktioneer` on push to
 main and on releases.

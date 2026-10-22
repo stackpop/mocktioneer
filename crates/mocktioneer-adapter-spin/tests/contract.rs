@@ -3,7 +3,7 @@
 //! Spin's `Request` is a WASI handle that can only be constructed by
 //! the Spin runtime, so we cannot exercise the full `dispatch(req)` path the
 //! way the Fastly and Cloudflare contract tests do. Instead, these tests
-//! prove that `MocktioneerApp::build_app()` and `router().oneshot(...)` work
+//! prove that `App::build::<MocktioneerApp>(platform)` and `router().oneshot(...)` work
 //! end-to-end under `wasm32-wasip2` via the `wasmtime` runner — the same
 //! integration surface the Spin adapter's `run_app` calls into.
 
@@ -12,7 +12,7 @@
 use edgezero_core::body::Body;
 use edgezero_core::http::{Method, Request, Response, StatusCode, header, request_builder};
 use futures::executor::block_on;
-use mocktioneer_core::build_app;
+use mocktioneer_core::MocktioneerApp;
 
 fn make_request(method: Method, uri: &str) -> Request {
     request_builder()
@@ -24,7 +24,10 @@ fn make_request(method: Method, uri: &str) -> Request {
 }
 
 fn dispatch(request: Request) -> Response {
-    let app = build_app();
+    let app = edgezero_core::app::App::build::<MocktioneerApp>(
+        edgezero_core::PlatformMetadata::default(),
+    )
+    .expect("build app");
     block_on(app.router().oneshot(request)).expect("router result")
 }
 
