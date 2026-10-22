@@ -381,7 +381,7 @@ The six source pins, trait signatures, entrypoints and test fixtures depend on e
 **Modify:** design/plan completion notes and the project's existing release documentation as appropriate. No deployment or merge is executed by this task.
 
 - [x] Request independent review of runtime/core, provider/build and wire-contract changes using the repository's multi-agent workflow. Have a verification reviewer inspect actual logs and counts. Resolve concrete defects and rerun affected checks; don't treat this plan's review as review of unwritten code.
-- [x] Prepare the PR against `main` so existing workflows trigger. Until #118 merges, identify its inherited commits; afterward reconcile the base. Describe concrete behavior changes, verification evidence and every incomplete required check.
+- [ ] Target the PR at `main` so existing workflows trigger after prerequisite #118 lands. Publication encountered GitHub's stack-membership restriction and preserves the existing base. The PR description identifies its dependency, complete local verification, and pending GitHub/release checks.
 - [ ] Keep merge/release blocked until upstream #275 merges and all required evidence exists. At release repinning, diff the audited implementation/API/CHANGELOG against the shipping tag, update all six pins/lock consistently, and rerun the entire Task 8 matrix, including wire comparison. No cross-project Cargo selector coordination is required.
 - [x] Include the operating checklist: Cloudflare provision real KV binding then config push and deploy flags; Fastly dynamic backends; Axum/Docker restart after config push; Spin 4.1+; unchanged blob-envelope format and config rollback compatibility. Preserve the pre-migration artifact/config capture so rollback is concrete. Do not include provider IDs or credentials in the PR.
 - [x] List accepted wire changes (including successful decoded JWKS behavior), unverified hosted outbound behavior and upstream follow-ups. Mark the migration complete only after required checks pass; leave an unavailable required runtime/Docker check open explicitly.
@@ -433,9 +433,15 @@ Document checks: Markdown parse, all nine shell-block syntax checks, fence/link 
 
 **Validation:** Native 198; target contracts 4/5/2; Playwright 41; comparator 25; 87 before/after wire cases; strict Clippy/fmt/features/config and docs checks; live Docker, Fastly, workerd and Spin checks all passed. Config push 0.35 roundtrip and Spin host-drift rejection passed. All evidence is local in the execution directory above.
 
-**Release/operations:** Keep merge/release gated on upstream #275 merging and review the shipping tag before repinning all six sources and rerunning Task 8. Cloudflare needs a real KV binding, all three flags and config push; Fastly needs dynamic backends; Axum/Docker need restart after config push; Spin needs 4.1+. Blob envelope format is unchanged; retain the baseline artifact/config snapshot for rollback. The branch inherits the still-open PR #118 base; PR #131 targets `main` so PR workflows run and explicitly identifies that inherited work. Issue #130 tracks the migration and is linked for closure on merge.
+**Release/operations:** Keep merge/release gated on upstream #275 merging and review the shipping tag before repinning all six sources and rerunning Task 8. Cloudflare needs a real KV binding, all three flags and config push; Fastly needs dynamic backends; Axum/Docker need restart after config push; Spin needs 4.1+. Blob envelope format is unchanged; retain the baseline artifact/config snapshot for rollback. The branch inherits the still-open PR #118 base; GitHub rejected retargeting PR #131 because it belongs to the existing stack. It retains base `worktree-deps-rust-1.98-align-ez366`; target `main` after #118 lands so the main-only PR workflows run. No other stack or branch was modified. Issue #130 tracks the migration and is linked for closure on merge.
 
 - [x] Prepare the verified implementation for the requested publication using existing Task #130 and draft PR #131; preserve the merge/release gate.
 - [ ] Complete the upstream merge/shipping-tag adoption gate and rerun the release matrix.
 
 - Final upstream metadata refresh: #275 is still draft/open/unmerged; head advanced to `619c69bd2b2b24f35210c482b560cb46b1b96888`. This work continues to pin audited `f6c708cc`; no latest-head adoption is implied.
+
+### Publication result (2026-10-21)
+
+- Verified implementation commit `fe8ee46` was pushed without rewriting history.
+- Existing Task [#130](https://github.com/stackpop/mocktioneer/issues/130) and draft PR [#131](https://github.com/stackpop/mocktioneer/pull/131) are reused instead of creating duplicates. The issue remains open, assigned to the current user and marked In progress; the PR links it for closure on merge.
+- GitHub rejected the requested base change because PR #131 belongs to a stack. The existing stacked base is preserved; main-only PR CI and upstream release qualification remain explicit pending gates. No stack dissolution, unrelated branch update, deployment or merge was performed.
