@@ -36,8 +36,8 @@
       "corpus_scope": "not exercised: timeout cases are nondeterministic; contract tests cover budgets"
     },
     "F7": {
-      "contract": "default JSON body cap is 8MiB; excess -> 400 request body too large",
-      "corpus_scope": "mediation-over-8mib: only exact error payload, status and Content-Length change; C8 preserves existing CORS"
+      "contract": "default JSON body cap is 8MiB; F14 sets the overflow status and kind",
+      "corpus_scope": "mediation-over-8mib: only exact error payload, status and Content-Length change; F14 requires 413 payload_too_large and C8 preserves existing CORS. Saved corpora without F14 retain the exact historical 400 bad_request contract."
     },
     "F8": {
       "contract": "Axum parses JSON without application/json Content-Type",
@@ -63,6 +63,10 @@
       "contract": "manifest capabilities and bid trigger class fields",
       "corpus_scope": "introspection excluded from wire corpus"
     },
+    "F14": {
+      "contract": "inbound byte overflow -> 413 payload_too_large with message request body too large and no Retry-After; byte caps, malformed JSON 400, validation 422 and deadline expiry 408 unchanged",
+      "corpus_scope": "Only auction-over-1mib, aps-over-1mib and mediation-over-8mib with transition body-cap and an explicit F14 flag: 200 success (verified against its baseline small-body reference) or exact old 400 bad_request -> exact 413 payload_too_large; only status, literal body and Content-Length may change. Complete existing CORS and all other ordered headers/cookies stay exact. Exact 200/400/413 repeats remain comparable; 200 -> 400 is rejected. Saved corpora without F14 retain their historical contracts."
+    },
     "C1": {
       "contract": "bid-route body-read budget is 10 seconds",
       "corpus_scope": "contract tests; no timing mask or wire exception"
@@ -72,8 +76,8 @@
       "corpus_scope": "contract tests; no timing mask or wire exception"
     },
     "C3": {
-      "contract": "auction and APS JSON bodies over 1MiB -> 400 request body too large",
-      "corpus_scope": "over-1mib cases: only exact error payload, status and Content-Length change; C8 preserves existing CORS"
+      "contract": "auction and APS JSON bodies over 1MiB are rejected; F14 sets the overflow status and kind",
+      "corpus_scope": "over-1mib cases: only exact error payload, status and Content-Length change; F14 requires 413 payload_too_large and C8 preserves existing CORS. Saved corpora without F14 retain the exact historical 400 bad_request contract."
     },
     "C4": {
       "contract": "poisoned JWKS cache lock is a miss",
@@ -1356,7 +1360,8 @@
       "differences": [
         "C3",
         "C8",
-        "F10"
+        "F10",
+        "F14"
       ],
       "body_pad_to": 1153434,
       "transition": "body-cap",
@@ -1379,7 +1384,8 @@
       "differences": [
         "C3",
         "C8",
-        "F10"
+        "F10",
+        "F14"
       ],
       "body_pad_to": 1153434,
       "transition": "body-cap",
@@ -1402,7 +1408,8 @@
       "differences": [
         "F7",
         "C8",
-        "F10"
+        "F10",
+        "F14"
       ],
       "body_pad_to": 9437184,
       "transition": "body-cap",

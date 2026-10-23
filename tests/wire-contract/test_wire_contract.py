@@ -35,6 +35,7 @@ class WireContractTests(unittest.TestCase):
         if not isinstance(body, bytes):
             body = json.dumps(body, separators=(",", ":")).encode()
         reason = {200: "OK", 204: "No Content", 400: "Bad Request", 404: "Not Found", 405: "Method Not Allowed",
+                  413: "Payload Too Large",
                   414: "URI Too Long", 422: "Unprocessable Entity", 503: "Service Unavailable"}[status]
         lines = [f"HTTP/1.1 {status} {reason}".encode(), *headers]
         return self.wire.Response(b"\r\n".join(lines) + b"\r\n\r\n", body)
@@ -432,15 +433,136 @@ class WireContractTests(unittest.TestCase):
         with self.assertRaises(self.wire.ContractError):
             self.wire.compare_response(current_case, before, after, reference_before=before)
 
+    def body_cap_f14(self, name="auction-over-1mib"):
+        number = "F7" if name == "mediation-over-8mib" else "C3"
+        case = {"id": name, "differences": [number, "C8", "F10", "F14"],
+                "transition": "body-cap", "mask": "auction"}
+        body = json.dumps(self.auction(), separators=(",", ":")).encode()
+        cookies = [b"set-cookie: a=1", b"set-cookie: b=2"]
+        before = self.response(body, 200, [b"content-length: " + str(len(body)).encode(),
+                                         b"content-type: application/json", *cookies, *CORS_HEADERS])
+        errors = []
+        for status, kind in [(400, "bad_request"), (413, "payload_too_large")]:
+            body = self.wire.error_body(status, kind, "request body too large")
+            errors.append(self.response(body, status, [CORS_HEADERS[2], b"content-type: application/json",
+                                                       *cookies, *CORS_HEADERS[:2],
+                                                       b"content-length: " + str(len(body)).encode()]))
+        return case, before, *errors
+
+    def test_f14_body_caps_accept_success_and_previous_error_baselines(self):
+        for name in ["auction-over-1mib", "aps-over-1mib", "mediation-over-8mib"]:
+            case, success, old_error, new_error = self.body_cap_f14(name)
+            for before in [success, old_error]:
+                with self.subTest(name=name, before=before.status):
+                    changes = self.wire.compare_response(case, before, new_error, reference_before=success)
+                    self.assertTrue(any("F14" in change for change in changes), changes)
+
+    def test_f14_body_caps_accept_exact_baseline_and_candidate_repeats(self):
+        for name in ["auction-over-1mib", "aps-over-1mib", "mediation-over-8mib"]:
+            case, *responses = self.body_cap_f14(name)
+            for response in responses:
+                with self.subTest(name=name, status=response.status):
+                    self.assertEqual(self.compare(case, response, response), [])
+
+    def test_f14_body_cap_rejects_old_status_after_success_and_reverse_transitions(self):
+        case, success, old_error, new_error = self.body_cap_f14()
+        for before, after in [(success, old_error), (old_error, success),
+                              (new_error, success), (new_error, old_error)]:
+            with self.subTest(before=before.status, after=after.status), self.assertRaises(self.wire.ContractError):
+                self.wire.compare_response(case, before, after, reference_before=success)
+
+    def test_f14_body_cap_requires_the_success_reference(self):
+        case, success, _, new_error = self.body_cap_f14()
+        with self.assertRaises(self.wire.ContractError):
+            self.compare(case, success, new_error)
+        changed = self.response(success.body.replace(b"0.35", b"0.36"), 200, success.lines[1:])
+        with self.assertRaises(self.wire.ContractError):
+            self.wire.compare_response(case, changed, new_error, reference_before=success)
+
+    def test_f14_body_cap_requires_its_flag_named_case_and_transition(self):
+        case, success, old_error, new_error = self.body_cap_f14()
+        variants = [{**case, "differences": ["C3", "C8", "F10"]},
+                    {**case, "id": "auction-malformed"}, {**case, "id": "unlisted-cap"},
+                    {**case, "id": "unlisted-cap", "differences": ["F14"]},
+                    {**case, "transition": "unlisted-transition"},
+                    {key: value for key, value in case.items() if key != "id"}]
+        for variant in variants:
+            for before in [success, old_error, new_error]:
+                with self.subTest(case=variant, status=before.status), self.assertRaises(self.wire.ContractError):
+                    self.wire.compare_response(variant, before, new_error, reference_before=success)
+
+    def test_f14_body_cap_validates_both_exact_error_payloads(self):
+        case, success, old_error, new_error = self.body_cap_f14()
+        for error in [old_error, new_error]:
+            payload = json.loads(error.body)
+            mutations = [error.body + b"\n", json.dumps(payload, indent=2).encode(),
+                         json.dumps({"error": dict(reversed(list(payload["error"].items())))},
+                                    separators=(",", ":")).encode()]
+            for field, value in [("status", 400 if error.status == 413 else 413),
+                                 ("kind", "bad_request" if error.status == 413 else "payload_too_large"),
+                                 ("message", "request body too large changed")]:
+                changed = copy.deepcopy(payload)
+                changed["error"][field] = value
+                mutations.append(json.dumps(changed, separators=(",", ":")).encode())
+            for body in mutations:
+                headers = [b"content-length: " + str(len(body)).encode()
+                           if line.startswith(b"content-length:") else line for line in error.lines[1:]]
+                changed = self.response(body, error.status, headers)
+                before, after = (changed, new_error) if error.status == 400 else (old_error, changed)
+                with self.subTest(status=error.status, body=body), self.assertRaises(self.wire.ContractError):
+                    self.wire.compare_response(case, before, after, reference_before=success)
+                with self.subTest(repeat=error.status, body=body), self.assertRaises(self.wire.ContractError):
+                    self.compare(case, changed, changed)
+
+    def test_f14_body_cap_forbids_retry_after_even_in_candidate_repeats(self):
+        case, success, old_error, new_error = self.body_cap_f14()
+        for field in [b"retry-after: 60", b"Retry-After: 0"]:
+            changed = self.response(new_error.body, 413, [*new_error.lines[1:], field])
+            for before in [success, old_error, changed]:
+                with self.subTest(field=field, status=before.status), self.assertRaises(self.wire.ContractError):
+                    self.wire.compare_response(case, before, changed, reference_before=success)
+
+    def test_f14_body_cap_preserves_cors_cookies_and_other_ordered_headers(self):
+        case, success, old_error, new_error = self.body_cap_f14()
+        headers = new_error.lines[1:]
+        variants = [headers[1:], [*headers, CORS_HEADERS[0]],
+                    [line.replace(b"GET, POST, OPTIONS", b"GET, POST") for line in headers],
+                    [line.replace(b"set-cookie: a=1", b"set-cookie: a=changed") for line in headers],
+                    [headers[0], headers[1], headers[3], headers[2], *headers[4:]],
+                    [headers[1], headers[0], *headers[2:]],
+                    [*headers, b"x-unrelated: added"],
+                    [*headers[:-1], b"content-length: " + str(len(new_error.body) - 1).encode()]]
+        for changed in variants:
+            for before in [success, old_error]:
+                with self.subTest(headers=changed, status=before.status), self.assertRaises(self.wire.ContractError):
+                    self.wire.compare_response(case, before, self.response(new_error.body, 413, changed),
+                                               reference_before=success)
+        for response in [success, old_error, new_error]:
+            no_cors = self.response(response.body, response.status,
+                                    [line for line in response.lines[1:] if not line.startswith(b"access-control-")])
+            with self.subTest(no_cors=response.status), self.assertRaises(self.wire.ContractError):
+                self.compare(case, no_cors, no_cors)
+
+    def test_f14_does_not_relax_other_c8_error_statuses(self):
+        _, _, _, new_error = self.body_cap_f14()
+        for name in ["auction-malformed", "aps-malformed", "mediation-malformed",
+                     "auction-validation", "aps-validation", "mediation-validation"]:
+            case = {"id": name, "differences": ["C8", "F10"]}
+            with self.subTest(name=name), self.assertRaises(self.wire.ContractError):
+                self.compare(case, new_error, new_error)
+
     def test_corpus_is_explicit_and_has_separate_startup_scenarios(self):
         corpus = json.loads((HERE / "requests.json").read_text())
         cases = corpus["cases"]
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertEqual({case["scenario"] for case in cases}, {"seeded", "unseeded"})
         self.assertEqual(set(corpus["accepted_differences"]),
-                         {f"F{i}" for i in range(1, 14)} | {f"C{i}" for i in range(1, 9)})
+                         {f"F{i}" for i in range(1, 15)} | {f"C{i}" for i in range(1, 9)})
         self.assertEqual(len(cases), 87)
         self.assertEqual(sum(case["scenario"] == "seeded" for case in cases), 85)
+        self.assertEqual({case["id"] for case in cases if "F14" in case["differences"]}, {
+            "auction-over-1mib", "aps-over-1mib", "mediation-over-8mib",
+        })
         self.assertEqual({case["id"] for case in cases if "C8" in case["differences"]}, {
             "image-nonstandard", "creative-nonstandard", "pixel-missing", "aps-validation", "aps-malformed",
             "auction-malformed", "auction-validation", "sync-start-missing", "mediation-malformed",

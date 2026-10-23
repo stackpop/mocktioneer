@@ -10,6 +10,7 @@ mod tests {
     use edgezero_core::http::{
         HeaderValue, Method, Request, Response, StatusCode, header, request_builder,
     };
+    use edgezero_core::response_egress_framing::ResponseEgressFramingMode;
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use edgezero_core::{
         Deadline, IngressBeginOutcome, IngressDispatchOutcome, IngressFraming,
@@ -142,13 +143,20 @@ mod tests {
                     invalid.as_bytes().to_vec(),
                     StatusCode::UNPROCESSABLE_ENTITY,
                 ),
-                (vec![b' '; cap + 1], StatusCode::BAD_REQUEST),
+                (vec![b' '; cap + 1], StatusCode::PAYLOAD_TOO_LARGE),
             ] {
                 let mut request = make_request(Method::POST, path, Body::from_bytes(payload));
                 request.extensions_mut().insert(config_registry(0.20_f64));
                 let response = dispatch(&app(), request);
                 assert_eq!(response.status(), status, "{path}");
                 assert_cors(&response);
+                if status == StatusCode::PAYLOAD_TOO_LARGE {
+                    assert!(!response.headers().contains_key(header::RETRY_AFTER));
+                    let error: serde_json::Value =
+                        serde_json::from_slice(&body_bytes(response)).unwrap();
+                    assert_eq!(error["error"]["kind"], "payload_too_large");
+                    assert_eq!(error["error"]["message"], "request body too large");
+                }
             }
         }
     }
@@ -460,7 +468,9 @@ mod tests {
             };
             block_on(app.dispatch_admitted(prepared, request))
         };
-        let Ok((prepared, _, mut attempt, clock)) = envelope.begin() else {
+        let Ok((prepared, _, mut attempt, clock)) =
+            envelope.begin(ResponseEgressFramingMode::ExplicitBufferedLength)
+        else {
             panic!("prepare test response");
         };
         assert!(attempt.begin_writing());

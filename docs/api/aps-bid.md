@@ -192,21 +192,21 @@ curl -X POST http://127.0.0.1:8787/e/dtb/bid \
 
 ## Error Responses
 
-| Failure                                        | Status | `error.kind`      |
-| ---------------------------------------------- | ------ | ----------------- |
-| Empty slots or other request validator failure | 422    | `validation`      |
-| Malformed JSON or missing required JSON fields | 400    | `bad_request`     |
-| Body over 1 MiB                                | 400    | `bad_request`     |
-| Observed body-read deadline expiry             | 408    | `request_timeout` |
+| Failure                                        | Status | `error.kind`        |
+| ---------------------------------------------- | ------ | ------------------- |
+| Empty slots or other request validator failure | 422    | `validation`        |
+| Malformed JSON or missing required JSON fields | 400    | `bad_request`       |
+| Body over 1 MiB                                | 413    | `payload_too_large` |
+| Observed body-read deadline expiry             | 408    | `request_timeout`   |
 
-An oversized body returns:
+An oversized body returns 413 without `Retry-After`:
 
 ```json
 {
   "error": {
-    "kind": "bad_request",
+    "kind": "payload_too_large",
     "message": "request body too large",
-    "status": 400
+    "status": 413
   }
 }
 ```

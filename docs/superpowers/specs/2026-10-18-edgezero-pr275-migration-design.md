@@ -6,13 +6,18 @@
 - **Upstream:** [IABTechLab/edgezero#275](https://github.com/IABTechLab/edgezero/pull/275),
   "implement portable outbound HTTP and request lifecycle contracts". **Draft,
   open, unmerged.**
-  - Audited implementation pin: `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`.
+  - Current implementation pin: `d47c8026a941a2361182c9e2042bebdcb8be4d04`,
+    the PR head observed for the user's 2026-10-23 latest-revision request.
+    The original R1–R9 audit used `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`;
+    R10 records the implementation/API/wire delta rather than treating its old
+    source line references as a fresh audit of every upstream subsystem.
   - Preflight head on 2026-10-21: `852ec74bbb72139dca2809f3537689bb1ee5f0c6`,
     base `main`. Final pre-handoff refresh observed `619c69bd2b2b24f35210c482b560cb46b1b96888`;
-    PR #275 remains draft/open/unmerged. Neither newer revision is adopted (§11).
+    PR #275 remains draft/open/unmerged. R10 supersedes the earlier frozen-pin
+    decision with the explicitly requested latest-head adoption (§11).
   - It contains release `v0.0.10` and the IABTechLab transfer (#419). Nothing on
     edgezero `main` is missing from it.
-- **Status:** implemented and locally verified through 2026-10-22; upstream merge/release remains gated. Execution is tracked in
+- **Status:** migration and review fixes implemented; latest-head qualification is recorded in R10. Upstream merge/release and JWKS destination admission remain gated. Execution is tracked in
   the [implementation plan](../plans/2026-10-20-edgezero-pr275-migration-implementation.md).
 - **Revision history:**
   - **R1:** initial draft.
@@ -58,6 +63,15 @@
     shares immutable cached keys and preserves redaction without kind-string
     matching. The new JWKS destination-admission decision remains a merge gate
     pending the user's answer; DNS syntax validation is not SSRF prevention.
+  - **R10:** explicitly authorized latest-head adoption on 2026-10-23. All six
+    dependencies and all eight lockfile sources move to `d47c8026`. Test helpers
+    select platform framing modes and pass response status/decoding policy.
+    The final metadata refresh advanced from `7fdef8b0` to `d47c8026` with
+    bounded synthesized-response headers. Independent core/provider audits
+    verified the new policy defaults empty; Mocktioneer leaves it unconfigured,
+    preserving its existing routed-error CORS and routing/head-error scope.
+    Upstream body overflow becomes 413 `payload_too_large` (F14), without
+    changing caps, budgets, CORS or cache policy. The full local matrix is rerun.
 
 ## 0. Confirmed scope (2026-10-20)
 
@@ -129,8 +143,8 @@ calls for confirmation.
     measurement for mocktioneer.
   - Fastly `Serve` defaults to unlimited requests and an idle timeout of
     `Duration::MAX`, and idle time is billed.
-  - Under `Serve`, a failed build or an aborted delivery ends the loop without a
-    response.
+  - Under `Serve`, a failed build sends a typed assembly error and retries
+    assembly on the next request; an aborted delivery ends the loop.
   - Revisit this with measurements.
 - **The memory-envelope check.** With template constants it comes out
   `Indeterminate` on all four platform profiles: host-ingress accounting is
@@ -141,7 +155,7 @@ calls for confirmation.
   `config-read-allocation-bounds` capability is Unsupported on every adapter.
   Only the timeout is set (§6.3).
 - **`ReadBodyBeforeFallback` for 404/405.** It turns the JSON 404/405 into a
-  plain-text 400 or 408 whenever a body exceeds the cap, and it makes every
+  plain-text 413 or 408 whenever a body exceeds the cap, and it makes every
   404/405 wait for a body drain.
 - **A class on every trigger.** The read deadline governs only body reads, and
   only the three POST routes read a body.
@@ -178,7 +192,7 @@ calls for confirmation.
 - **The CI gates in `CLAUDE.md` must pass,** plus the three contract jobs in
   `test.yml`.
 - **Pin:** the six `edgezero-*` entries use
-  `git = "https://github.com/IABTechLab/edgezero.git", rev = "f6c708ccb5be19ba9fa92575db3c08c0f17e0d72"`.
+  `git = "https://github.com/IABTechLab/edgezero.git", rev = "d47c8026a941a2361182c9e2042bebdcb8be4d04"`.
   There is no seventh edgezero dependency (§6.1).
 - **PR target (my call):** open the PR against `main`.
   - Every workflow triggers only on `pull_request: branches: [main]`, so a PR
@@ -227,6 +241,9 @@ the compile probe.
 ### 5.1 Dependencies and toolchain
 
 - **`Cargo.toml`:** the six-entry repin (§3).
+- **R10 delta:** the dependency family/toolchain below was already aligned by
+  the original migration. Moving from `f6c708cc` to `d47c8026` changes only the
+  eight EdgeZero lockfile source identities; it needs no SDK or toolchain bump.
 - **`crates/mocktioneer-adapter-cloudflare/Cargo.toml:33`:**
   `wasm-bindgen-test = "=0.3.71"` becomes `"=0.3.78"`. Without the bump the lock
   does not resolve: the old pin locks `js-sys =0.3.98`, and #275's `worker
@@ -275,6 +292,9 @@ the compile probe.
 
 ### 5.2 App assembly
 
+- **R10:** `Hooks::routes()` and generated `build_router()` now return
+  `Result<RouterService, EdgeError>`. The app macro and `App::build` propagate
+  this without new application code; there are no handwritten Hook callers here.
 - `Hooks::build_app()` is gone. Build apps with
   `App::build::<MocktioneerApp>(platform)?`.
 - **Tests:**
@@ -429,6 +449,12 @@ adoption step.
   - Build responses with
     `OutboundResponse::new(method, status, headers, body, clock, ContentTypeProvenance::Unknown)`.
   - Insert `HttpClient::with_client(stub)` into the request extensions.
+  - At `d47c8026`, `ResponseBodyPolicy` also requires `response_decoding` and
+    `status`. Copy the former from the actual request parts and pass the reply's
+    actual status; decode fixtures use 200. Default decoding remains enabled,
+    but 206 preserves original content coding. Non-200 JWKS still fails
+    verification after a successful buffered send; partial-response collection
+    can therefore change which upstream failure precedes that status check.
   - Capture the request and assert buffered response mode, a 65536-byte limit,
     and a five-second timeout. On success the stub returns a buffered body.
     Model buffered body failures as errors returned by `send`, rather than
@@ -462,6 +488,9 @@ adoption step.
     `complete_envelope`, as in edgezero
     `crates/edgezero-adapter-fastly/tests/contract.rs:49-56`.
   - Read bodies with `block_on(response.into_body().into_bytes_bounded(n))`.
+  - R10 requires `envelope.begin(ResponseEgressFramingMode::HostAutomatic)`,
+    matching the actual Fastly sender. Core, Axum, Cloudflare and Spin select
+    `ExplicitBufferedLength`; `prepare_response_egress` now takes that mode first.
 - **Cloudflare contract tests:** `test_env_ctx` installs two test-only shims with
   `Reflect::set`:
   1. a `waitUntil` function on the context object, as in edgezero
@@ -520,7 +549,8 @@ suppresses its body. A 205 may carry a zero length. Cover ordinary empty
 responses and these exceptions in helper tests. Exercise empty 400/403/401/302/500
 responses through Fastly and Cloudflare egress contracts, constructing responses
 for statuses whose route branches are unavailable on that runtime. On Fastly,
-`ResponseEgressEnvelope::begin()` already calls shared `prepare_response_egress`;
+`ResponseEgressEnvelope::begin(ResponseEgressFramingMode::HostAutomatic)` already
+calls shared `prepare_response_egress`;
 assert the resulting prepared frame before completing the attempt. This proves
 shared framing, not the private provider writer. Cloudflare tests exercise its
 service response conversion. The required live smokes establish real delivery. Native
@@ -730,8 +760,8 @@ fn configure_app(app: &mut App) -> Result<(), EdgeError> {
   for `OpenRTBRequest` and `ApsBidRequest`, with a cap of 1 MiB **(my call)**.
   - The builder measures the largest request in the Playwright suite and the
     endpoint tests, and confirms that it is well under the cap.
-  - Over the cap, the response is 400 `bad_request` "request body too large".
-    The shape is the same as a malformed-JSON 400, and a validator failure is
+  - Over the cap, the response is 413 `payload_too_large` "request body too large",
+    with no `Retry-After` (R10/F14). Malformed JSON still returns 400, and a validator failure is
     still 422.
 - **Mediation keeps `ValidatedJson`,** with edgezero's 8 MiB default.
   - Mediation requests embed bidder `adm`, and mocktioneer's own `adm` contains
@@ -757,13 +787,14 @@ regression.
 | F4 | 405 carries a sorted, deduplicated `Allow`. |
 | F5 | Normalized head validation runs before routing, so its error responses carry no CORS headers. Visible target lengths over 8192 bytes return 414; more than 100 normalized headers or 64 KiB of normalized headers returns 431. Framing ambiguity that survives host parsing returns 400. On Fastly and Cloudflare the target length counts the absolute URL. Raw framing rejection is not guaranteed; see below. |
 | F6 | An inbound body read past the read deadline returns 408 (default 30 s). |
-| F7 | JSON bodies are capped at 8 MiB by default. Over the cap returns 400 "request body too large". |
+| F7 | JSON bodies are capped at 8 MiB by default. Over the cap returned 400 at the original pin and returns 413 under R10/F14, with fixed message "request body too large". |
 | F8 | Axum now parses JSON bodies without `Content-Type: application/json`, as Prebid's `text/plain` posts send them. They were rejected with 400 on Axum before; the other adapters already accepted them. |
 | F9 | Axum is HTTP/1 only. It caps connections at 256 and closes connections with no response after a 10 s head-read or idle timeout. Hyper enforces raw head limits. |
 | F10 | Egress strips hop-by-hop headers, canonicalizes `Content-Length`, and applies the 204/205/304/HEAD body rules. Removing/reinserting the length group moves the last application header group into its former slot and appends the canonical length. Duplicate values retain their order; host-added `Date` stays in place. With C6, ordinary empty responses insert length before other application fields, then undergo this same permutation. Responses with no length may stream on Fastly and Cloudflare; §5.8 preserves zero-length framing for all ordinary empty mocktioneer responses. |
 | F11 | The JWKS fetch no longer follows redirects. Axum and Cloudflare used to follow them. A redirecting JWKS URL now fails verification closed. |
 | F12 | Outbound error details change to the sanitized per-adapter messages in §5.6. Buffered fetching can move body-read and decode failures from `Stream read failed:` to `JWKS fetch failed:`. Send-time framing, size, body and timeout failures take precedence over the non-200 status reason, because the status is checked only after `send` succeeds. Size failures keep the legacy JWKS size-limit reason. Recognized gzip/Brotli/deflate decoding and Axum/Fastly default `Accept-Encoding: identity` negotiation are accepted changes, including formerly invalid encoded JWKS now verifying successfully. The 65536-byte final buffered cap applies after recognized decoding. |
 | F13 | `/_mocktioneer/manifest` gains a `capabilities` object, which is always serialized, and `class` on the three bid triggers. |
+| F14 | At `d47c8026`, EdgeZero-owned inbound byte overflow returns 413 `payload_too_large` with fixed message "request body too large" and no `Retry-After`. This replaces the original pin's 400 `bad_request`; malformed JSON 400, validation 422, read-expiry 408 and config errors are unchanged. The corpus permits this only on the three named body-cap cases and preserves exact CORS/header/body comparisons. |
 
 **Chosen by this spec:**
 
@@ -771,12 +802,12 @@ regression.
 | --- | --- |
 | C1 | Bid routes get a 10 s body-read budget instead of 30 s (§6.3). |
 | C2 | An observed expiry of the 2 s config extraction deadline returns 503 `service_unavailable`. Config deadlines remain BestEffort (§6.3). |
-| C3 | Auction and APS bodies over 1 MiB return 400 (§6.4). |
+| C3 | Auction and APS bodies over 1 MiB hit the selected cap (§6.4): originally 400, now 413 under R10/F14. |
 | C4 | A poisoned JWKS cache lock is a miss, not a `Cache lock poisoned` failure (§6.2). |
 | C5 | The JWKS cache is capped at 32 entries and a 2 MiB owned-allocation charge, and keyed by canonical host (§6.2). An uncacheable value can still verify the current request. |
 | C6 | `Content-Length: 0` is set explicitly on every ordinary empty buffered response whose status permits it (§5.8). |
 | C7 | The JWKS outbound budget is 5 s. An observed expiry yields a failed-verification reason in `adm`, while the auction still returns 200. A previously successful slower fetch may now fail. Enforcement is Native on Axum and BestEffort on the other adapters (§6.1). |
-| C8 | CORS renders matched-route errors with the framework's default `IntoResponse`, then adds the same three CORS fields as successful responses. This includes malformed JSON/queries, validator failures, body-cap 400s, body-read 408s, config 503s and matched asset 404s. Unmatched routing 404/405 and normalized-head errors still bypass route middleware. No exposed response headers are added; `Retry-After` semantics are unchanged. |
+| C8 | CORS renders matched-route errors with the framework's default `IntoResponse`, then adds the same three CORS fields as successful responses. This includes malformed JSON/queries, validator failures, body-cap 413s (400 at the original pin), body-read 408s, config 503s and matched asset 404s. Unmatched routing 404/405 and normalized-head errors still bypass route middleware. No exposed response headers are added; overflow responses carry no `Retry-After`. |
 
 CORS is the outer route middleware, with RequestLogger inside it so the logger
 still observes errors before they are rendered. Registered OPTIONS requests run
@@ -910,7 +941,9 @@ exact message.
        rewrite these inputs. Do not require a universal 400; F5's normalized
        checks cannot recover framing removed by the host parser.
      - **The size caps:** C3 (a 1.1 MiB auction or APS body) and F7 (a 9 MiB
-       mediation body), retaining the successful baseline's CORS headers under C8.
+       mediation body), retaining the successful baseline's CORS headers under C8
+       and using 413/no-retry under R10/F14. Also compare the preceding `04c3635`
+       implementation's exact 400 body-cap responses against the new 413s.
      - **Matched errors (C8):** compare the exact added CORS fields, preserving
        error statuses, bodies, Retry-After and unrelated headers. Routing/head
        errors must not gain CORS. Controlled-clock tests cover 408/config-expiry
@@ -1094,12 +1127,11 @@ Passing CI does not substitute for these checks.
 
 ## 11. Risks and follow-ups
 
-- **The draft is moving.** `f6c708cc` sits on a draft branch.
+- **The draft is moving.** `d47c8026` sits on a draft branch.
   - A force-push leaves it unreferenced, and a later GC breaks `cargo fetch`.
-  - This implementation stays on the audited `f6c708cc` pin. The observed
-    `852ec74b` head adds new outbound policy APIs, provider changes and 413
-    payload-overflow responses; it is a separate adoption review, not an
-    automatic tracking update. The current 400 overflow contract stays intact.
+  - The user explicitly requested latest-head adoption on 2026-10-23. R10
+    reviews the delta from `f6c708cc`, pins `d47c8026`, and adopts its required
+    413 and framing changes. It does not automatically follow subsequent heads.
   - Before adopting any newer revision, review its implementation/API/wire delta,
     update this spec and the plan, and rerun §9 in full.
 - **Re-pin when #275 ships:**
@@ -1109,7 +1141,7 @@ Passing CI does not substitute for these checks.
 - **Downstream clients** (Prebid.js, Prebid Server, trusted-server) see the §7
   changes. The ones to call out in release notes:
   - F8: Axum accepts `text/plain` JSON.
-  - C1 and C3: the new 400s and 408s on bid routes.
+  - C1, C3 and F14: the new 413s and 408s on bid routes.
   - C8: browser clients can read matched-route error statuses and bodies through
     CORS, including body-cap, body-read and config failures.
   - F11: no redirects for JWKS.

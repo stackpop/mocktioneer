@@ -5,6 +5,7 @@ use edgezero_adapter_fastly::request::FastlyService;
 use edgezero_core::blob_envelope::BlobEnvelope;
 use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
 use edgezero_core::http::{Response, StatusCode};
+use edgezero_core::response_egress_framing::ResponseEgressFramingMode;
 use fastly::Request as FastlyRequest;
 use fastly::http::Method as FastlyMethod;
 use futures::executor::block_on;
@@ -147,7 +148,9 @@ fn auction_uses_seeded_cpm_through_fastly_adapter() {
 }
 
 fn complete_envelope(envelope: edgezero_core::ResponseEgressEnvelope) -> Response {
-    let Ok((prepared, _, mut attempt, clock)) = envelope.begin() else {
+    let Ok((prepared, _, mut attempt, clock)) =
+        envelope.begin(ResponseEgressFramingMode::HostAutomatic)
+    else {
         panic!("begin test egress");
     };
     assert!(attempt.begin_writing());
@@ -182,7 +185,9 @@ fn empty_statuses_have_zero_length_through_fastly_prepared_egress() {
         let envelope = FastlyService::new(&app)
             .capture_egress_for_test(fastly_request(FastlyMethod::GET, "/empty"))
             .expect("capture egress");
-        let Ok((prepared, _, mut attempt, clock)) = envelope.begin() else {
+        let Ok((prepared, _, mut attempt, clock)) =
+            envelope.begin(ResponseEgressFramingMode::HostAutomatic)
+        else {
             panic!("prepare empty response");
         };
         assert_eq!(prepared.declared_length(), Some(0));

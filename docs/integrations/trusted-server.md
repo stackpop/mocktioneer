@@ -198,7 +198,8 @@ status. Size failures keep `HTTP error: JWKS response body exceeds 65536 byte li
 Other send failures use `HTTP error: JWKS fetch failed: ...`; internal-kind errors
 use `internal error` instead of exposing details. Only a successful send reaches
 the status check, which requires 200. A non-200 status is reported without
-parsing its JSON. A defensive read for a custom client that returns a stream can
+parsing its JSON. Partial (206) responses retain their original content coding
+and cannot satisfy the required 200 status. A defensive read for a custom client that returns a stream can
 still use `HTTP error: Stream read failed: ...`.
 
 `HTTP error: Proxy not available` is retained legacy wording for a missing

@@ -12,6 +12,7 @@ use edgezero_adapter_spin::SPIN_PLATFORM;
 use edgezero_core::app::App;
 use edgezero_core::body::Body;
 use edgezero_core::http::{Method, Request, Response, StatusCode, header, request_builder};
+use edgezero_core::response_egress_framing::ResponseEgressFramingMode;
 use edgezero_core::{
     IngressBeginOutcome, IngressFraming, IngressHeadAccounting, IngressHeadParts, MonotonicClock,
 };
@@ -51,7 +52,9 @@ fn dispatch(app: &App, request: Request) -> Response {
         panic!("expected admitted request");
     };
     let envelope = block_on(app.dispatch_admitted(ingress, request));
-    let Ok((prepared, _, mut attempt, clock)) = envelope.begin() else {
+    let Ok((prepared, _, mut attempt, clock)) =
+        envelope.begin(ResponseEgressFramingMode::ExplicitBufferedLength)
+    else {
         panic!("prepare response egress");
     };
     assert!(attempt.begin_writing(), "response write must start");

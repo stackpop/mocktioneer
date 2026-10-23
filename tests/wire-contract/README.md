@@ -73,7 +73,7 @@ python3 tests/wire-contract/wire_contract.py compare \
 ```
 
 Comparator failures exit nonzero and report the case. Accepted differences print
-their F/C number and changed fields. All F1–F13
+their F/C number and changed fields. All F1–F14
 and C1–C8 contracts are recorded in `accepted_differences`, with each one's exact
 local scope; listing a number does not waive comparisons on unrelated responses.
 
@@ -94,8 +94,18 @@ length-group removal/reinsertion permutation: the last application header group
 moves into the former length slot, then length appends. C6 empty responses first
 insert length before the application fields and undergo that same permutation.
 Names, values and duplicate order stay exact; host-added `Date` remains last.
-No general header sorting is permitted. Cap cases require the exact
-400 payload and verify the baseline against its successful small-body reference.
+No general header sorting is permitted. F14 applies only to the three named
+body-cap cases with an explicit F14 flag: `auction-over-1mib`, `aps-over-1mib`
+and `mediation-over-8mib`. Auction/APS retain their 1 MiB cap and mediation
+retains its 8 MiB cap. Overflow must return the exact 413 `payload_too_large`
+payload with message `request body too large` and no `Retry-After`, including
+in candidate self-comparisons. A 200 baseline is verified against its successful
+small-body reference before accepting 200→413. An immediately preceding
+baseline's exact 400 `bad_request` overflow payload may become that exact 413
+payload. Only status, literal body and its length may change; CORS, cookies and
+all other ordered headers stay exact. Exact 200, 400 and 413 repeats remain
+comparable, while 200→400 fails with F14. Malformed JSON stays 400, validation
+stays 422 and deadline expiry stays 408.
 F8 requires the exact baseline streaming-body error and checks the new success
 against the matching successful reference. F5 target errors require their exact
 error payload and a baseline root reference. These transitions allow only their
@@ -107,7 +117,9 @@ reference in each revision.
 C8 covers exactly 15 named matched error cases and their fixed statuses:
 nonstandard image and creative, missing pixel query, malformed and invalid
 auction/APS/mediation JSON, missing sync query, both missing-config cases, and
-the three body-cap cases. Existing errors may gain exactly one of each field:
+the three body-cap cases. Only those three use 413 when F14 is present; their
+exact old 400 baseline repeats also remain valid. Existing errors may gain
+exactly one of each field:
 
 ```text
 access-control-allow-origin: *
@@ -125,12 +137,16 @@ Baseline repeats without CORS and candidate repeats with the complete fields
 remain comparable. An identical pair without CORS cannot establish that a
 candidate implements C8; the admitted-dispatch tests assert that requirement.
 
-The corpus digest changes when C8 is added. Capture both revisions and the
-independent baseline repeat again, using this checkout's `wire_contract.py`
-for every capture so each saves the same revised `requests.json`. Keep prior
-captures intact; their saved corpus and digests are historical evidence.
-Saved body-cap cases without C8 retain their original, narrowly scoped CORS
-removal exception; current C8 cases require the complete fields on both responses.
+The corpus digest changes when C8 or F14 is added. Capture the pre-PR baseline,
+the immediately preceding PR revision, an independent repeat of each baseline,
+and the candidate again, using this checkout's `wire_contract.py` for every
+capture so each saves the same revised `requests.json`. Require both baseline
+repeat comparisons and each baseline→candidate comparison to pass for both
+startup scenarios. Keep prior captures intact; their saved corpus and digests
+are historical evidence. Saved body-cap cases without F14 retain the exact
+historical 200→400 contract, including C8's historical 400 allowlist. Saved cases
+without C8 also retain their original, narrowly scoped CORS removal exception;
+current F14 cap cases require the complete fields on both responses.
 
 Record raw framing **separately** for each revision:
 

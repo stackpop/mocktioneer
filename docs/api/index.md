@@ -64,7 +64,7 @@ Mocktioneer exposes several HTTP endpoints for bid requests, creative serving, a
 
 All matched-route responses include the CORS headers listed under
 [CORS Preflight](#cors-preflight), including framework-rendered errors: malformed
-JSON or oversized bodies (400), validation failures (422), body-read expiry
+JSON (400), oversized bodies (413), validation failures (422), body-read expiry
 (408), config failures (503), and matched asset requests that return 404.
 Routing fallback 404/405 responses and normalized-head validation failures do
 not include CORS headers. A host parser may also reject a request before
@@ -117,29 +117,31 @@ return empty error responses, as described on their endpoint pages:
 
 ### HTTP Status Codes
 
-| Code | Meaning                                                                               |
-| ---- | ------------------------------------------------------------------------------------- |
-| 200  | Success                                                                               |
-| 204  | Success (no content)                                                                  |
-| 302  | Redirect (sync flow)                                                                  |
-| 400  | Malformed JSON/query, body over its cap (`bad_request`), or visible framing ambiguity |
-| 401  | Unauthorized (invalid token)                                                          |
-| 403  | Forbidden (domain not allowed)                                                        |
-| 404  | Route or asset not found                                                              |
-| 405  | Method not allowed; `Allow` is sorted and deduplicated                                |
-| 408  | Observed inbound body-read deadline expiry                                            |
-| 414  | Visible request target over 8192 bytes                                                |
-| 422  | Request validator failure (`validation`)                                              |
-| 431  | More than 100 normalized headers or over 64 KiB of normalized headers                 |
-| 500  | Internal or config-store failure                                                      |
-| 503  | Config unavailable, out of date, or observed config-read deadline expiry              |
+| Code | Meaning                                                                  |
+| ---- | ------------------------------------------------------------------------ |
+| 200  | Success                                                                  |
+| 204  | Success (no content)                                                     |
+| 302  | Redirect (sync flow)                                                     |
+| 400  | Malformed JSON/query (`bad_request`) or visible framing ambiguity        |
+| 401  | Unauthorized (invalid token)                                             |
+| 403  | Forbidden (domain not allowed)                                           |
+| 404  | Route or asset not found                                                 |
+| 405  | Method not allowed; `Allow` is sorted and deduplicated                   |
+| 408  | Observed inbound body-read deadline expiry                               |
+| 413  | Body over its cap (`payload_too_large`)                                  |
+| 414  | Visible request target over 8192 bytes                                   |
+| 422  | Request validator failure (`validation`)                                 |
+| 431  | More than 100 normalized headers or over 64 KiB of normalized headers    |
+| 500  | Internal or config-store failure                                         |
+| 503  | Config unavailable, out of date, or observed config-read deadline expiry |
 
 ### Request Limits and Deadlines
 
 `POST /openrtb2/auction` and `POST /e/dtb/bid` accept at most **1 MiB** of JSON.
 `POST /adserver/mediate` keeps the framework default of **8 MiB**. At the audited
-EdgeZero revision `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`, overflow returns
-400 with `error.kind: "bad_request"` and `error.message: "request body too large"`.
+EdgeZero revision `d47c8026a941a2361182c9e2042bebdcb8be4d04`, overflow returns
+413 with `error.kind: "payload_too_large"` and `error.message: "request body too large"`,
+without `Retry-After`.
 Malformed JSON is 400; successfully parsed input that fails a validator is 422.
 
 All three POST routes have a **10-second body-read budget** measured from ingress

@@ -1010,7 +1010,9 @@ mod tests {
     use edgezero_core::error::EdgeError;
     use edgezero_core::http::{Method, Response, StatusCode, request_builder};
     use edgezero_core::params::PathParams;
-    use edgezero_core::response_egress_framing::prepare_response_egress;
+    use edgezero_core::response_egress_framing::{
+        ResponseEgressFramingMode, prepare_response_egress,
+    };
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
     use std::collections::HashMap;
@@ -1071,14 +1073,18 @@ mod tests {
                 .contains_key(header::CONTENT_LENGTH)
         );
         for body in [Body::empty(), Body::from("suppressed")] {
-            let response =
-                prepare_response_egress(&Method::GET, build_response(StatusCode::NO_CONTENT, body))
-                    .unwrap()
-                    .into_response();
+            let response = prepare_response_egress(
+                ResponseEgressFramingMode::ExplicitBufferedLength,
+                &Method::GET,
+                build_response(StatusCode::NO_CONTENT, body),
+            )
+            .unwrap()
+            .into_response();
             assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
         }
         assert!(
             prepare_response_egress(
+                ResponseEgressFramingMode::ExplicitBufferedLength,
                 &Method::GET,
                 build_response(StatusCode::CONTINUE, Body::empty()),
             )
@@ -1094,6 +1100,7 @@ mod tests {
             (Method::GET, StatusCode::NOT_MODIFIED),
         ] {
             let prepared = prepare_response_egress(
+                ResponseEgressFramingMode::ExplicitBufferedLength,
                 &method,
                 build_response(status, Body::from("representation")),
             )
@@ -1132,10 +1139,11 @@ mod tests {
                 if size == 1024 * 1024 {
                     assert_eq!(response.status(), StatusCode::OK);
                 } else {
-                    assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+                    assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+                    assert!(!response.headers().contains_key(header::RETRY_AFTER));
                     let error_payload: serde_json::Value =
                         serde_json::from_slice(&body_bytes(response)).unwrap();
-                    assert_eq!(error_payload["error"]["kind"], "bad_request");
+                    assert_eq!(error_payload["error"]["kind"], "payload_too_large");
                     assert_eq!(error_payload["error"]["message"], "request body too large");
                 }
             }
@@ -1171,7 +1179,7 @@ mod tests {
             assert_eq!(
                 response.status(),
                 if size > 8 * 1024 * 1024 {
-                    StatusCode::BAD_REQUEST
+                    StatusCode::PAYLOAD_TOO_LARGE
                 } else {
                     StatusCode::OK
                 }

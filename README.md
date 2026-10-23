@@ -56,8 +56,8 @@ Full documentation is available at **[stackpop.github.io/mocktioneer](https://st
 
 See the [full API reference](https://stackpop.github.io/mocktioneer/api/) for all endpoints,
 request limits, deadlines, and config-error responses. Auction and APS requests
-are capped at 1 MiB; at the audited EdgeZero pin, overflow returns 400
-`bad_request` with `request body too large`.
+are capped at 1 MiB; overflow returns 413 `payload_too_large` with
+`request body too large` and no `Retry-After`.
 
 ## Development
 

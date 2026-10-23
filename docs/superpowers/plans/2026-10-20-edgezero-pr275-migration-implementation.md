@@ -18,9 +18,15 @@ The 2026-10-23 second review adds a JWKS destination-admission decision that
 remains open. The previous implementation checkpoints are complete; merge
 qualification additionally requires resolving this new security policy.
 
-Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R7. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
+Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R10. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
 
 Review on 2026-10-20 checked the exact proposed upstream pin `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`, not merely the upstream checkout's HEAD. PR #275 remains draft and unmerged. Its current head, `7cccaf10734914161803317aec6c55c22c2bccc9`, adds seven documentation files relative to that pin; it changes no implementation, dependencies or toolchain. Reconcile the spec's stale head metadata and its repinning rule in Task 0; do not silently change Cargo source identity.
+
+The paragraph above records the original pre-execution review. On 2026-10-23 the
+user explicitly requested the latest PR #275 revision. R10 below supersedes the
+old pin freeze and adopts observed head `d47c8026a941a2361182c9e2042bebdcb8be4d04`
+after reviewing its implementation/API/wire delta. It remains an exact Git pin,
+not a moving branch selector or a shipping release.
 
 Review corrections incorporated in spec R6 and the execution-backed R7 corrections are implemented and verified below:
 
@@ -561,3 +567,94 @@ performance issue without changing insertion charging or public APIs.
   The raw corpus is unchanged, so historical captures retain their original
   digests. Fresh candidate captures use the unchanged C8 corpus and compare
   against its existing baseline captures.
+
+### Latest upstream adoption (2026-10-23, R10)
+
+Requested action: "update to use latest from edgezero PR 275". Captured PR head:
+`d47c8026a941a2361182c9e2042bebdcb8be4d04`, draft/open/unmerged. Independent
+core/lifecycle, outbound/cache and provider/build audits compared materialized
+source against `f6c708cc`; no speculative API migration or app policy change is
+included. Evidence: `/tmp/mocktioneer-pr275-latest-20261023.27rggaxz`.
+
+The first captured head was `7fdef8b0`; a final metadata refresh found one new
+commit, `d47c8026`, adding bounded synthesized-response headers. Independent
+core/provider delta audits selected pin-only adoption: the new immutable header
+policy defaults empty and Mocktioneer does not configure it. No new CORS scope,
+comparator exception, API migration, SDK or toolchain change is needed. Earlier
+7f test/runtime captures remain historical; final qualification uses d47 and
+separate evidence paths.
+
+- [x] Review the changelog and consumed implementation/API delta. App assembly
+  now propagates fallible generated routes automatically; adapter entrypoints,
+  ConfigStore mocks, CLI wiring, toolchain and SDK versions stay compatible.
+- [x] Repin all six workspace dependencies and all eight EdgeZero lockfile
+  sources. Probe compilation first reproduced missing framing arguments and
+  status/decoding fields; no unrelated lockfile updates were needed.
+- [x] Adapt test helpers to explicit framing selection: HostAutomatic for
+  Fastly, ExplicitBufferedLength for core/Spin. Preserve production response
+  helper, CORS and admission policy. Pass actual reply status and request
+  response_decoding into the private outbound policy mapper.
+- [x] Adopt upstream typed 413/no-retry overflow without remapping to 400.
+  Keep exact 1 MiB auction/APS and 8 MiB mediation caps; malformed JSON 400,
+  validator 422, body expiry 408 and the config matrix retain their contracts.
+  Existing over-cap tests first failed on 413 versus 400, then passed with exact
+  kind/message and absent Retry-After assertions.
+- [x] Add F14 only to the three named wire body-cap cases, preserving all
+  unrelated ordered headers/body bytes. Support the original baseline's
+  200→413 and the preceding `04c3635` implementation's exact 400→413. Keep
+  historical no-F14 captures self-contained. Comparator regressions: **49 passed**.
+  Corpus SHA-256: `524c2555445b7e57e2af56676902557c97008dae34b0d94afc2968bb9478f1a4`.
+- [x] Recapture original and preceding baselines/repeats plus the candidate
+  using the new corpus, then compare all 85 seeded + 2 unseeded cases.
+  Both baselines restarted independently; final d47 candidate/repeat/self and
+  original→candidate/preceding→candidate passed **435 case checks** across ten
+  comparisons. Baseline repeats also passed. No archived corpus was rewritten.
+- [x] Complete fresh native fmt/Clippy/features, strict config and 0.35 push
+  roundtrip, Playwright and final source checks. Final d47: **201 tests**, strict
+  workspace Clippy, fmt, locked fetch and `fastly cloudflare spin` feature check;
+  strict config and isolated HTTP CPM **0.35** roundtrip; **41 Playwright tests**.
+- [x] Run actual target contracts: **Fastly 4, Cloudflare 5, Spin 4** passed.
+  See `final-d47/provider-verification.json` for exact commands, tools, artifacts
+  and hashes; fetched upstream source matches the reviewed materialization.
+- [x] Refresh public API/CLI/capability docs and the active spec. ESLint,
+  Prettier and VitePress build passed. The new 206 original-coding behavior is
+  documented without changing successful 200 JWKS decoding or the 64 KiB cap.
+- [x] Complete real local Docker, Fastly production main, Cloudflare/workerd
+  and Spin qualification and record precise evidence boundaries.
+  Final d47 rebuilt Docker linux/amd64 and all WASM artifacts: root/seeded
+  auction CPM 0.20 passed in all four runtimes; Fastly/workerd additionally
+  passed GIF43 and real empty 400/302 handlers. Workerd overflow returned exact
+  413/CORS/no-retry; direct workerd origin root matched the public root bytes
+  and exact length before Wrangler HTML rewriting. Spin CLI positive build,
+  isolated host-drift rejection, restored build and local SQLite push passed.
+  All temporary servers/containers stopped; no deployment or registry push.
+- [x] Independently review the final change for spec compliance and quality.
+  Separate reviews approved d47 with no outstanding findings; earlier review
+  corrected stale README overflow status and Fastly assembly-failure wording.
+  Publication continues on existing draft PR #131 and issue #130, whose live
+  records carry the current remote-head/CI state and remaining gates.
+
+Final evidence indexes under `final-d47/`: `provider-verification.json`,
+`wire-qualification/qualification.json`, `live-runtime-summary.json`,
+`cloudflare-qualification.json`, `live-cloudflare/results.json`, plus native,
+comparator and docs logs. Config/browser details are in the sibling
+`final-native-config-browser/`. Initial fixture-only command mistakes are
+retained: worker-build from workspace rather than adapter cwd and strict
+validation before copying the referenced Spin manifest; corrected isolated
+commands passed without application changes. Spin emitted a shutdown-only
+worker warning after SIGTERM, with clean pre-cleanup logs and exit 0.
+
+Docker image: `mocktioneer:pr275-final-d47-27rggaxz`,
+`sha256:05270942b798979a6cb7e329472b6e77b09c1686c73fcd02ca0756c0ba0ff0d8`.
+Provider manifest SHA-256:
+`8b86745c4e1b984caaa884ea45fbef87ebb4be6bb8b123ff687d39f83b7fc190`.
+All 13 GitHub checks passed for preceding head `04c3635`; the new update
+requires fresh CI. Final upstream refresh still observed d47, draft/open/unmerged.
+
+Unchanged decisions: 10/30 s ingress, 2 s config, 5 s JWKS, cache TTL/limits/
+oldest-fetch eviction/poison bypass/PlatformDefault/Arc hits, optional outbound,
+Cloudflare date and all three compatibility flags. The latest upstream still
+delegates destination authorization to applications; it adds no portable
+resolved-IP or DNS-pinning control. The user's destination-policy question and
+its merge gate remain open. Hosted qualification and shipping-tag adoption
+also remain separate; local tests do not promote provider guarantees.

@@ -661,7 +661,7 @@ mod tests {
                     use edgezero_core::outbound::{
                         apply_response_body_policy, collect_response_stream,
                     };
-                    let policy = response_body_policy(&parts);
+                    let policy = response_body_policy(&parts, *status);
                     let mut headers = HeaderMap::new();
                     if let Some(length) = declared {
                         headers.insert(
@@ -734,14 +734,19 @@ mod tests {
         }
     }
 
-    fn response_body_policy(parts: &OutboundRequestParts) -> ResponseBodyPolicy {
+    fn response_body_policy(
+        parts: &OutboundRequestParts,
+        status: StatusCode,
+    ) -> ResponseBodyPolicy {
         ResponseBodyPolicy {
             max_brotli_window_bits: parts.max_brotli_window_bits,
             max_chunk_bytes: parts.max_chunk_bytes,
             max_decoded_response_bytes: parts.max_decoded_response_bytes,
             max_decoder_bytes: parts.max_decoder_bytes,
             max_encoded_response_bytes: parts.max_encoded_response_bytes,
+            response_decoding: parts.response_decoding,
             response_mode: parts.response_mode,
+            status,
         }
     }
 
@@ -932,7 +937,7 @@ mod tests {
         let parts = OutboundRequest::get("https://example.com/")?
             .max_response_bytes(MAX_JWKS_BODY_BYTES)
             .into_parts();
-        let policy = response_body_policy(&parts);
+        let policy = response_body_policy(&parts, StatusCode::OK);
         let mut headers = HeaderMap::new();
         headers.insert(
             "content-encoding",

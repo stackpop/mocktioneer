@@ -50,15 +50,17 @@ flowchart TD
 
 The audited EdgeZero revision declares this support:
 
-| Capability                     | Axum        | Fastly      | Cloudflare  | Spin        |
-| ------------------------------ | ----------- | ----------- | ----------- | ----------- |
-| Outbound HTTP                  | Native      | BestEffort  | Native      | Native      |
-| Inbound body-read deadlines    | Native      | BestEffort  | BestEffort  | BestEffort  |
-| Outbound HTTP deadlines        | Native      | BestEffort  | BestEffort  | BestEffort  |
-| Config-read deadlines          | BestEffort  | BestEffort  | BestEffort  | BestEffort  |
-| Response egress                | BestEffort  | BestEffort  | BestEffort  | BestEffort  |
-| Ingress admission              | Native      | Native      | Native      | Native      |
-| Raw ingress framing validation | Unsupported | Unsupported | Unsupported | Unsupported |
+| Capability                       | Axum        | Fastly      | Cloudflare  | Spin        |
+| -------------------------------- | ----------- | ----------- | ----------- | ----------- |
+| Outbound HTTP                    | Native      | BestEffort  | Native      | Native      |
+| Inbound body-read deadlines      | Native      | BestEffort  | BestEffort  | BestEffort  |
+| Outbound HTTP deadlines          | Native      | BestEffort  | BestEffort  | BestEffort  |
+| Config-read deadlines            | BestEffort  | BestEffort  | BestEffort  | BestEffort  |
+| Buffered response content length | Native      | BestEffort  | BestEffort  | BestEffort  |
+| Outbound failure diagnostics     | BestEffort  | Native      | BestEffort  | Native      |
+| Response egress                  | BestEffort  | BestEffort  | BestEffort  | BestEffort  |
+| Ingress admission                | Native      | Native      | Native      | Native      |
+| Raw ingress framing validation   | Unsupported | Unsupported | Unsupported | Unsupported |
 
 BestEffort budgets do not guarantee provider cancellation or teardown by the
 deadline. Normalized-head checks do not establish raw-wire framing validation:
@@ -100,7 +102,7 @@ The EdgeZero CLI provides a unified interface for all adapters. It's maintained 
 
 ```bash
 # Install (requires access to EdgeZero repo)
-cargo install --git https://github.com/IABTechLab/edgezero.git --rev f6c708ccb5be19ba9fa92575db3c08c0f17e0d72 edgezero-cli --features cli
+cargo install --git https://github.com/IABTechLab/edgezero.git --rev d47c8026a941a2361182c9e2042bebdcb8be4d04 edgezero-cli --features cli
 
 # Serve any adapter
 edgezero-cli serve --adapter axum

@@ -269,13 +269,31 @@ def compare_response(case, before, after, reference_before=None, reference_after
     allowed = case.get("differences", [])
     transition = case.get("transition")
     baseline_exception = case.get("baseline_exception")
+    body_cap = case.get("id") in BODY_CAP_CASES and transition == "body-cap"
+    f14 = "F14" in allowed
+    if f14:
+        require(body_cap, "F14 used outside its three named body-cap cases")
+        require((before.status, after.status) in {
+            (200, 200), (400, 400), (413, 413), (200, 413), (400, 413),
+        }, "unexpected F14 body-cap status transition")
+        require_cors(a)
+        require_cors(b)
+        for response in (before, after):
+            if response.status in (400, 413):
+                kind = "payload_too_large" if response.status == 413 else "bad_request"
+                require(response.body == error_body(response.status, kind, "request body too large"),
+                        "unlisted F14 body-cap error")
+                normalize_length(response.lines, response.body)
+            if response.status == 413:
+                require(not any(header_name(line) == b"retry-after" for line in response.lines[1:]),
+                        "F14 body-cap 413 must not include Retry-After")
     if "C8" in allowed:
         case_id = case.get("id")
-        expected = CORS_ERROR_STATUSES.get(case_id)
-        body_cap = case_id in BODY_CAP_CASES and transition == "body-cap"
+        expected = 413 if f14 else CORS_ERROR_STATUSES.get(case_id)
         require(expected is not None and (
             before.status == after.status == expected
             or body_cap and before.status == 200 and after.status in (200, expected)
+            or f14 and before.status == 400 and after.status in (400, 413)
         ), "C8 used outside its named matched-error status")
         cors_names = {header_name(field) for field in CORS_HEADERS}
         before_cors = any(header_name(line) in cors_names for line in a[1:])
@@ -309,7 +327,8 @@ def compare_response(case, before, after, reference_before=None, reference_after
                 "boundary/fallback requires both small-body reference captures")
         compare_response({"mask": case.get("mask")}, reference_before, before)
         compare_response({"mask": case.get("mask")}, reference_after, after)
-    if reference_before is not None and transition in ("body-cap", "head-target") and before.status != after.status:
+    if (reference_before is not None and transition in ("body-cap", "head-target")
+            and before.status == 200 and before.status != after.status):
         compare_response({"mask": case.get("mask")}, reference_before, before)
     if transition == "no-content-type" and before.status != after.status:
         require("F8" in allowed and before.status == 400 and after.status == 200,
@@ -355,11 +374,18 @@ def compare_response(case, before, after, reference_before=None, reference_after
         changes.append("F2: error.message/Content-Length")
     if transition == "body-cap" and before.status != after.status:
         number = "C3" if "C3" in allowed else "F7"
-        require(number in allowed and before.status == 200 and after.status == 400,
+        if f14 and before.status == 400:
+            number = "F14"
+        status, kind = (413, "payload_too_large") if f14 else (400, "bad_request")
+        require(number in allowed and before.status in ((200, 400) if f14 else (200,))
+                and after.status == status,
                 "unexpected body-cap status transition")
-        require(after.body == error_body(400, "bad_request", "request body too large"),
+        require(after.body == error_body(status, kind, "request body too large"),
                 "unlisted body-cap error")
-        if "C8" not in allowed:
+        if f14 and before.status == 200:
+            require(reference_before is not None, "F14 requires the successful baseline reference capture")
+            number += "/F14"
+        if "C8" not in allowed and not f14:
             a = remove_cors(a)
         a, b = normalize_length(a, before.body), normalize_length(b, after.body)
         a[0] = b[0]
