@@ -55,14 +55,20 @@ Mocktioneer exposes several HTTP endpoints for bid requests, creative serving, a
 
 ### Request Headers
 
-| Header         | Required   | Description                                  |
-| -------------- | ---------- | -------------------------------------------- |
-| `Content-Type` | Yes (POST) | Must be `application/json` for POST requests |
-| `Host`         | No         | Used to construct creative URLs              |
+| Header         | Required | Description                                                                            |
+| -------------- | -------- | -------------------------------------------------------------------------------------- |
+| `Content-Type` | No       | `application/json` is recommended; JSON is also parsed without it or with `text/plain` |
+| `Host`         | No       | Used to construct creative URLs                                                        |
 
 ### Response Headers
 
-All responses include CORS headers (`Access-Control-Allow-Origin: *`, etc.). See [CORS Preflight](#cors-preflight) for details.
+All matched-route responses include the CORS headers listed under
+[CORS Preflight](#cors-preflight), including framework-rendered errors: malformed
+JSON (400), oversized bodies (413), validation failures (422), body-read expiry
+(408), config failures (503), and matched asset requests that return 404.
+Routing fallback 404/405 responses and normalized-head validation failures do
+not include CORS headers. A host parser may also reject a request before
+application dispatch.
 
 ## Supported Ad Sizes {#supported-sizes}
 
@@ -96,34 +102,94 @@ Non-standard sizes:
 
 ## Error Responses
 
-Errors are returned as JSON:
+Framework errors are returned as JSON. Some sync/auth handlers intentionally
+return empty error responses, as described on their endpoint pages:
 
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "Description of the error"
+    "kind": "validation",
+    "message": "Description of the error",
+    "status": 422
   }
 }
 ```
 
 ### HTTP Status Codes
 
-| Code | Meaning                        |
-| ---- | ------------------------------ |
-| 200  | Success                        |
-| 204  | Success (no content)           |
-| 302  | Redirect (sync flow)           |
-| 400  | Bad request (malformed JSON)   |
-| 401  | Unauthorized (invalid token)   |
-| 403  | Forbidden (domain not allowed) |
-| 404  | Not found                      |
-| 422  | Validation error               |
-| 500  | Internal server error          |
+| Code | Meaning                                                                  |
+| ---- | ------------------------------------------------------------------------ |
+| 200  | Success                                                                  |
+| 204  | Success (no content)                                                     |
+| 302  | Redirect (sync flow)                                                     |
+| 400  | Malformed JSON/query (`bad_request`) or visible framing ambiguity        |
+| 401  | Unauthorized (invalid token)                                             |
+| 403  | Forbidden (domain not allowed)                                           |
+| 404  | Route or asset not found                                                 |
+| 405  | Method not allowed; `Allow` is sorted and deduplicated                   |
+| 408  | Observed inbound body-read deadline expiry                               |
+| 413  | Body over its cap (`payload_too_large`)                                  |
+| 414  | Visible request target over 8192 bytes                                   |
+| 422  | Request validator failure (`validation`)                                 |
+| 431  | More than 100 normalized headers or over 64 KiB of normalized headers    |
+| 500  | Internal or config-store failure                                         |
+| 503  | Config unavailable, out of date, or observed config-read deadline expiry |
+
+### Request Limits and Deadlines
+
+`POST /openrtb2/auction` and `POST /e/dtb/bid` accept at most **1 MiB** of JSON.
+`POST /adserver/mediate` keeps the framework default of **8 MiB**. At the audited
+EdgeZero revision `d47c8026a941a2361182c9e2042bebdcb8be4d04`, overflow returns
+413 with `error.kind: "payload_too_large"` and `error.message: "request body too large"`,
+without `Retry-After`.
+Malformed JSON is 400; successfully parsed input that fails a validator is 422.
+
+All three POST routes have a **10-second body-read budget** measured from ingress
+start. Other routes use the default 30-second budget. An observed body-read
+expiry returns 408; enforcement is Native on Axum and BestEffort on the edge
+adapters. A read budget does not set a total handler or response-delivery timeout.
+
+Normalized-head checks run before routing and CORS. The target limit counts the
+absolute URL on Fastly and Cloudflare. These checks apply to the head visible to
+EdgeZero: raw ingress framing validation is Unsupported on every adapter. Hosts
+can reject or normalize input first; for example, Axum's Hyper parser can merge
+identical `Content-Length` fields or remove `Content-Length` when
+`Transfer-Encoding` is present. Those raw inputs need not produce an application 400. See [Axum](../guide/adapters/axum#http-transport) for its HTTP/1 transport limits.
+
+### Bid-Route Config Errors
+
+Both bid handlers extract `AppConfig` **before reading the JSON body**. An
+unavailable or invalid config therefore takes precedence over body parsing and
+the 1 MiB cap. Config extraction has a two-second deadline, enforced BestEffort
+on every adapter.
+
+| Config failure                                                                                      | Status | `error.kind`          | `Retry-After` |
+| --------------------------------------------------------------------------------------------------- | ------ | --------------------- | ------------- |
+| Missing blob, wrong data type/deserialization failure, or config validation failure                 | 503    | `config_out_of_date`  | `60`          |
+| Unavailable backend, including missing Cloudflare KV binding or unreadable/malformed Axum snapshot  | 503    | `service_unavailable` | Absent        |
+| Observed config-read deadline expiry                                                                | 503    | `service_unavailable` | Absent        |
+| No registered config store, malformed envelope, integrity mismatch, or unsupported envelope version | 500    | `internal`            | Absent        |
+| Backend read failure, including Fastly store open failure                                           | 500    | `internal`            | Absent        |
+| Config value over 8 MiB or JSON structure over depth 64 / 8192 nodes                                | 500    | `internal`            | Absent        |
+| Invalid store key (unreachable with Mocktioneer's fixed key)                                        | 400    | `bad_request`         | Absent        |
+
+An oversized Axum snapshot fails server startup. Ordinary `EdgeError::internal`
+errors expose the fixed message `internal server error`; config-extraction 500s
+retain their specific public diagnostic messages with sensitive details redacted.
+
+### Response Framing
+
+Ordinary empty buffered responses, including sync redirects and auth failures,
+carry `Content-Length: 0`. Egress strips hop-by-hop headers and canonicalizes
+lengths. No `Content-Length` is emitted for 1xx or 204; 205 may carry zero. HEAD
+and 304 suppress bodies while preserving a permitted representation length
+rather than replacing it with zero. Provider delivery can still add its own
+transport framing.
 
 ## CORS Preflight {#cors-preflight}
 
-All endpoints support OPTIONS requests for CORS preflight and include these headers in responses:
+Registered OPTIONS routes return 204 No Content with these CORS headers.
+Matched-route responses, including errors, carry the same headers:
 
 | Header                         | Value                |
 | ------------------------------ | -------------------- |

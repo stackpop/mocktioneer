@@ -2,8 +2,8 @@
 name = "mocktioneer"
 entry = "crates/mocktioneer-core"
 middleware = [
-  "edgezero_core::middleware::RequestLogger",
-  "mocktioneer_core::routes::Cors"
+  "mocktioneer_core::routes::Cors",
+  "edgezero_core::middleware::RequestLogger"
 ]
 
 [stores.config]
@@ -71,6 +71,7 @@ adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "openrtb_auction"
+class = "bid"
 path = "/openrtb2/auction"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_openrtb_auction"
@@ -141,6 +142,7 @@ adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "aps_bid"
+class = "bid"
 path = "/e/dtb/bid"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_aps_bid"
@@ -169,6 +171,7 @@ adapters = ["axum", "cloudflare", "fastly", "spin"]
 
 [[triggers.http]]
 id = "adserver_mediate"
+class = "bid"
 path = "/adserver/mediate"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_adserver_mediate"
@@ -310,3 +313,9 @@ serve = "spin up --from crates/mocktioneer-adapter-spin/spin.toml --runtime-conf
 [adapters.spin.logging]
 level = "info"
 echo_stdout = true
+
+[capabilities]
+optional = ["outbound-http"]
+
+[capabilities.outbound]
+hosts = ["https://*:*"]

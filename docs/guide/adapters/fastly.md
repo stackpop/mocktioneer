@@ -13,7 +13,7 @@ The Fastly adapter runs Mocktioneer on Fastly's Compute platform, providing glob
 
 ## Prerequisites
 
-1. **Fastly CLI**
+1. **Fastly CLI 16.0.0** and **Viceroy 0.21.0** for local serving
 
    ```bash
    brew install fastly/tap/fastly
@@ -104,8 +104,10 @@ EDGEZERO_MANIFEST="$RELEASE_ROOT/edgezero.toml" \
 
 Managed deployment uploads the prebuilt package, reconciles store links, and
 activates the service version. Create the service and provision and seed its
-stores beforehand. `/openrtb2/auction` and `/e/dtb/bid` return
-`503 config_out_of_date` when their config blob is missing.
+stores beforehand. `/openrtb2/auction` and `/e/dtb/bid` read `bid_cpm` from
+that remote store through `AppConfig`. A missing config blob returns
+`503 config_out_of_date` with `Retry-After: 60`; a store that cannot be opened
+returns `500 internal`.
 
 Keep the extracted release unchanged: run `provision` from the mutable source
 checkout, and keep config files and extracted CLI binaries outside `$RELEASE_ROOT`.
@@ -163,6 +165,20 @@ Fastly logging requires a configured log endpoint. Create one in the Fastly cons
 1. Go to your service configuration
 2. Add a logging endpoint (e.g., S3, BigQuery, or HTTPS)
 3. Name it to match `endpoint` in the config
+
+### Outbound JWKS Requests
+
+Keep dynamic backends enabled for signed trusted-server verification; this
+requirement is unchanged. The JWKS fetch does not follow redirects, uses a
+five-second budget, and caps the final decoded buffer at 64 KiB. Fastly defaults
+`Accept-Encoding` to `identity` when absent. Outbound HTTP and deadline support
+are BestEffort, so a configured timeout does not guarantee provider teardown.
+A fetch failure is reflected in creative signature metadata while the auction
+still returns bids. See the [JWKS policy](/integrations/trusted-server#signature-verification-and-jwks).
+
+The CLI declares outbound HTTP as optional and warns about Fastly's BestEffort
+support. Hosted provider qualification is outside this migration; see the
+[capability table](./#capability-support).
 
 ### fastly.toml
 

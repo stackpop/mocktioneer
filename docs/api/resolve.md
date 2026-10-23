@@ -78,49 +78,21 @@ curl "http://127.0.0.1:8787/resolve?ec_id=a1b2c3d4...64hex...AbC123&ip=5.6.7.8" 
 
 ## Error Responses
 
-### Missing or invalid ec_id (400)
+Query extraction and validation run before Bearer authentication.
 
-The `ec_id` must be in `{64-hex}.{6-alnum}` format:
+| Failure                                                                    | Status | Body                                 |
+| -------------------------------------------------------------------------- | ------ | ------------------------------------ |
+| Missing `ec_id`/`ip`, or malformed query                                   | 400    | Framework JSON error (`bad_request`) |
+| Invalid `{64-hex}.{6-alnum}` identifier, including non-hex characters      | 422    | Framework JSON error (`validation`)  |
+| Invalid IP address, empty IP, or IP longer than 45 characters              | 422    | Framework JSON error (`validation`)  |
+| Missing/incorrect Bearer token when required, or an empty configured token | 401    | Empty (`Content-Length: 0`)          |
 
 ```bash
 curl "http://127.0.0.1:8787/resolve?ec_id=tooshort&ip=1.2.3.4"
-# Returns 400 Bad Request
-```
+# Returns 422 Unprocessable Entity
 
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "ec_id: must be in {64-hex}.{6-alnum} format"
-  }
-}
-```
-
-### Non-hex characters in ec_id (400)
-
-```bash
-curl "http://127.0.0.1:8787/resolve?ec_id=zzzz...64chars....AbC123&ip=1.2.3.4"
-# Returns 400 Bad Request
-```
-
-### Missing or invalid ip (400)
-
-```bash
-curl "http://127.0.0.1:8787/resolve?ec_id=a1b2...64hex.AbC123"
-# Returns 400 Bad Request
-
-curl "http://127.0.0.1:8787/resolve?ec_id=a1b2...64hex.AbC123&ip=not-an-ip"
-# Returns 400 Bad Request
-```
-
-### Unauthorized (401)
-
-When `MOCKTIONEER_PULL_TOKEN` is set and the token is missing or incorrect:
-
-```bash
-curl "http://127.0.0.1:8787/resolve?ec_id=a1b2...64hex.AbC123&ip=1.2.3.4" \
-  -H "Authorization: Bearer wrong-token"
-# Returns 401 Unauthorized
+curl "http://127.0.0.1:8787/resolve?ec_id=tooshort"
+# Returns 400 Bad Request (missing ip)
 ```
 
 ## Environment Variables

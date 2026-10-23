@@ -46,6 +46,9 @@ jobs:
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
 
+      - name: Test wire-contract comparator (offline)
+        run: python3 -m unittest discover -s tests/wire-contract -p 'test_*.py' -v
+
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
 
@@ -82,3 +85,6 @@ jobs:
 
       - name: Run Prettier (check)
         run: npm run format
+
+      - name: Build docs
+        run: npm run build

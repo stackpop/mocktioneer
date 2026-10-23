@@ -1,0 +1,1740 @@
+{
+  "version": 1,
+  "base_url": "http://127.0.0.1:8787",
+  "environment": {
+    "MOCKTIONEER_TS_DOMAINS": "ts.publisher.com",
+    "MOCKTIONEER_PULL_TOKEN": "wire-test-token"
+  },
+  "generators": {
+    "body_pad_to": "UTF-8 body plus ASCII spaces to exact total byte count; valid JSON, same parsed request",
+    "target_pad": "append this many ASCII x bytes to path",
+    "extra_headers": "append X-Wire-000: x through X-Wire-(n-1): x in order"
+  },
+  "accepted_differences": {
+    "F1": {
+      "contract": "internal error.message only becomes internal server error; status/kind/shape unchanged",
+      "corpus_scope": "not exercised: no internal-error injection"
+    },
+    "F2": {
+      "contract": "missing-blob error.message changes em dash to semicolon; deserialization hint removed; ConfigStoreError fixed text; status/kind/Retry-After unchanged",
+      "corpus_scope": "unseeded cases permit only the exact missing-blob message and resulting Content-Length delta"
+    },
+    "F3": {
+      "contract": "unopenable store changes Axum/Cloudflare 500 to 503 service_unavailable without Retry-After; oversized Axum snapshot fails startup",
+      "corpus_scope": "not exercised: unseeded means absent key, not malformed/unreadable snapshot"
+    },
+    "F4": {
+      "contract": "405 adds sorted deduplicated Allow",
+      "corpus_scope": "method-not-allowed cases: only add exact case.allow header; body and remaining ordered headers stay exact"
+    },
+    "F5": {
+      "contract": "adapter-visible target over 8192 -> 414; over 100 normalized headers or 64KiB -> 431; surviving framing ambiguity -> 400; no CORS on errors",
+      "corpus_scope": "head cases accept only exact target/count error payload, status, framing and lost CORS; raw TCP cases are report-only"
+    },
+    "F6": {
+      "contract": "observed default 30-second body-read deadline -> 408",
+      "corpus_scope": "not exercised: timeout cases are nondeterministic; contract tests cover budgets"
+    },
+    "F7": {
+      "contract": "default JSON body cap is 8MiB; F14 sets the overflow status and kind",
+      "corpus_scope": "mediation-over-8mib: only exact error payload, status and Content-Length change; F14 requires 413 payload_too_large and C8 preserves existing CORS. Saved corpora without F14 retain the exact historical 400 bad_request contract."
+    },
+    "F8": {
+      "contract": "Axum parses JSON without application/json Content-Type",
+      "corpus_scope": "no-content-type/text-plain cases: exact old streaming-body 400 becomes bytes equivalent to matching successful reference"
+    },
+    "F9": {
+      "contract": "Axum HTTP/1 only; 256 connections; 10-second head/idle close; Hyper raw head limits",
+      "corpus_scope": "head cases may expose adapter validation; raw characterization separately records parser output; no blanket response exception"
+    },
+    "F10": {
+      "contract": "strip hop-by-hop fields, canonicalize Content-Length and 204/205/304/HEAD body rules",
+      "corpus_scope": "Only the exact HeaderMap length-group swap/remove/reinsert permutation, preserving names, values and duplicate order; C6 ordinary empty cases additionally permit their exact first-insertion permutation. Host Date remains last. No sorting or general header filtering."
+    },
+    "F11": {
+      "contract": "JWKS redirects are not followed",
+      "corpus_scope": "excluded from local corpus: public signed-success host needed"
+    },
+    "F12": {
+      "contract": "sanitized outbound error strings; buffered error-stage/precedence changes; content decoding and negotiation",
+      "corpus_scope": "excluded from local corpus: no outbound/public JWKS requests"
+    },
+    "F13": {
+      "contract": "manifest capabilities and bid trigger class fields",
+      "corpus_scope": "introspection excluded from wire corpus"
+    },
+    "F14": {
+      "contract": "inbound byte overflow -> 413 payload_too_large with message request body too large and no Retry-After; byte caps, malformed JSON 400, validation 422 and deadline expiry 408 unchanged",
+      "corpus_scope": "Only auction-over-1mib, aps-over-1mib and mediation-over-8mib with transition body-cap and an explicit F14 flag: 200 success (verified against its baseline small-body reference) or exact old 400 bad_request -> exact 413 payload_too_large; only status, literal body and Content-Length may change. Complete existing CORS and all other ordered headers/cookies stay exact. Exact 200/400/413 repeats remain comparable; 200 -> 400 is rejected. Saved corpora without F14 retain their historical contracts."
+    },
+    "C1": {
+      "contract": "bid-route body-read budget is 10 seconds",
+      "corpus_scope": "contract tests; no timing mask or wire exception"
+    },
+    "C2": {
+      "contract": "observed 2-second config deadline -> 503 service_unavailable",
+      "corpus_scope": "contract tests; no timing mask or wire exception"
+    },
+    "C3": {
+      "contract": "auction and APS JSON bodies over 1MiB are rejected; F14 sets the overflow status and kind",
+      "corpus_scope": "over-1mib cases: only exact error payload, status and Content-Length change; F14 requires 413 payload_too_large and C8 preserves existing CORS. Saved corpora without F14 retain the exact historical 400 bad_request contract."
+    },
+    "C4": {
+      "contract": "poisoned JWKS cache lock is a miss",
+      "corpus_scope": "contract tests; no wire exception"
+    },
+    "C5": {
+      "contract": "JWKS cache canonical-host keys and 32-entry/2MiB owned-allocation bounds",
+      "corpus_scope": "contract tests; no wire exception"
+    },
+    "C6": {
+      "contract": "ordinary empty buffered response has explicit Content-Length: 0 when status permits",
+      "corpus_scope": "empty cases permit only addition of that exact field"
+    },
+    "C7": {
+      "contract": "JWKS outbound budget is 5 seconds; observed expiry becomes failed verification adm while status stays 200",
+      "corpus_scope": "contract tests; no time-dependent wire exception"
+    },
+    "C8": {
+      "contract": "matched framework and handler errors receive the same three exact CORS headers as successful matched responses; routing 404/405 and normalized-head failures remain without CORS",
+      "corpus_scope": "only the 15 named matched error cases listed by CORS_ERROR_STATUSES; existing errors permit exact header addition before F10, while body-cap transitions preserve the successful baseline CORS fields; no general header filtering or reordering"
+    }
+  },
+  "cases": [
+    {
+      "id": "root",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "sizes",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/_/sizes",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "image-standard",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/static/img/300x250.svg?bid=0.35",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "image-nonstandard",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/static/img/301x251.svg",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "creative-standard",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/static/creatives/300x250.html?pixel_html=true&pixel_js=true",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "mask": "creative",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 3
+    },
+    {
+      "id": "creative-no-pixels",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/static/creatives/300x250.html?pixel_html=false&pixel_js=false",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "mask": "creative",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 0
+    },
+    {
+      "id": "creative-nonstandard",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/static/creatives/301x251.html",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "click-parameters",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/click?crid=wire-crid&w=300&h=250&source=wire",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "click-no-parameters",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/click",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "pixel-present",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/pixel?pid=wire-pixel-1",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "pixel-missing",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/pixel",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "aps-win",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/aps/win?price=0.35&slot=wire-slot-1",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "aps-valid",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"pubId\":\"wire-publisher\",\"slots\":[{\"slotID\":\"wire-slot-1\",\"sizes\":[[300,250],[728,90]]}]}",
+      "mask": "aps",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2
+    },
+    {
+      "id": "aps-validation",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"pubId\":\"wire-publisher\",\"slots\":[]}",
+      "differences": [
+        "C8",
+        "F10"
+      ],
+      "baseline_exception": "BASELINE_APS_PARAMETER_ORDER"
+    },
+    {
+      "id": "aps-malformed",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"pubId\":",
+      "differences": [
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "auction-one",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
+      "mask": "auction",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2
+    },
+    {
+      "id": "auction-several",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-multi\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}},{\"id\":\"wire-imp-2\",\"banner\":{\"w\":728,\"h\":90}}]}",
+      "mask": "auction",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 6
+    },
+    {
+      "id": "auction-multiformat",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-multiformat\",\"imp\":[{\"id\":\"wire-imp-format\",\"banner\":{\"format\":[{\"w\":728,\"h\":90},{\"w\":300,\"h\":250}]},\"video\":{\"mimes\":[\"video/mp4\"]}}]}",
+      "mask": "auction",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2
+    },
+    {
+      "id": "auction-nonstandard",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-nonstandard\",\"imp\":[{\"id\":\"wire-imp-nonstandard\",\"banner\":{\"w\":301,\"h\":251}}]}",
+      "mask": "auction",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2
+    },
+    {
+      "id": "auction-eids-edge-cookie",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"user\":{\"id\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.Ab12Cd\",\"buyeruid\":\"wire-buyer\",\"consent\":\"wire-consent\",\"eids\":[{\"source\":\"mocktioneer.dev\",\"uids\":[{\"id\":\"wire-mtk-uid\",\"atype\":1}]}]}}",
+      "mask": "auction",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2
+    },
+    {
+      "id": "auction-unsigned",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"site\":{\"domain\":\"publisher.example\"}}",
+      "mask": "auction",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2
+    },
+    {
+      "id": "auction-trusted-missing-field",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"site\":{\"domain\":\"publisher.example\"},\"ext\":{\"trusted_server\":{}}}",
+      "mask": "auction",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2
+    },
+    {
+      "id": "auction-malformed",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":",
+      "differences": [
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "auction-validation",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-invalid\",\"imp\":[{\"id\":\"wire-imp-invalid\"}]}",
+      "differences": [
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "mediation-one-bidder",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}]}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 1
+    },
+    {
+      "id": "mediation-several-bidders",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]},{\"bidder\":\"wire-bidder-b\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.5,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}]}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 1
+    },
+    {
+      "id": "mediation-price-tie",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-first\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.5,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\",\"adm\":\"<p>first wins</p>\"}]},{\"bidder\":\"wire-bidder-second\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.5,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\",\"adm\":\"<p>second loses</p>\"}]}]}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 1
+    },
+    {
+      "id": "mediation-floor-some",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}},{\"id\":\"wire-imp-2\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.1,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"},{\"imp_id\":\"wire-imp-2\",\"price\":0.5,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}],\"config\":{\"price_floor\":0.3}}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 1
+    },
+    {
+      "id": "mediation-floor-all",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.1,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}],\"config\":{\"price_floor\":0.3}}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 0
+    },
+    {
+      "id": "mediation-adm-pass-through",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\",\"adm\":\"<div data-wire=\\\"fixed\\\">caller creative</div>\"}]}]}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 1
+    },
+    {
+      "id": "mediation-adm-generated",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}]}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 1
+    },
+    {
+      "id": "sync-start-allowed",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/sync/start?ts_domain=ts.publisher.com",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "sync-start-disallowed",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/sync/start?ts_domain=blocked.publisher.com",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "sync-start-invalid-host",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/sync/start?ts_domain=bad%2Fhost",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "sync-start-missing",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/sync/start",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "sync-start-existing-mtkid",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/sync/start?ts_domain=ts.publisher.com",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Cookie: mtkid=13170e94273c9f84b05e8937f7d4b70b"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "sync-done-success",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/sync/done?ts_synced=1",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "sync-done-failure",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/sync/done?ts_synced=0&ts_reason=no_consent",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "resolve-valid-token",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/resolve?ec_id=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.Ab12Cd&ip=192.0.2.10",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Authorization: Bearer wire-test-token"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "resolve-wrong-token",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/resolve?ec_id=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.Ab12Cd&ip=192.0.2.10",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Authorization: Bearer wrong-wire-token"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "resolve-missing-token",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/resolve?ec_id=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef.Ab12Cd&ip=192.0.2.10",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "options-root",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-root",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-sizes",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/_/sizes",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-sizes",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/_/sizes",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-image",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/static/img/300x250.svg",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-image",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/static/img/300x250.svg",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-creative",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/static/creatives/300x250.html",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-creative",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/static/creatives/300x250.html",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-click",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/click",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-click",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/click",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-pixel",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/pixel",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-pixel",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/pixel",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-aps-win",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/aps/win",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-aps-win",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/aps/win",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-aps-bid",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-aps-bid",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "OPTIONS, POST"
+    },
+    {
+      "id": "options-auction",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-auction",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "OPTIONS, POST"
+    },
+    {
+      "id": "options-mediation",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-mediation",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "OPTIONS, POST"
+    },
+    {
+      "id": "options-sync-start",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/sync/start",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-sync-start",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/sync/start",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-sync-done",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/sync/done",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-sync-done",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/sync/done",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "options-resolve",
+      "scenario": "seeded",
+      "method": "OPTIONS",
+      "path": "/resolve",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "C6",
+        "F10"
+      ]
+    },
+    {
+      "id": "method-not-allowed-resolve",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/resolve",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS"
+    },
+    {
+      "id": "unknown-path",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/wire-no-such-path",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F10"
+      ]
+    },
+    {
+      "id": "head-target-9kb",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/?wire=",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F5",
+        "F9",
+        "F10"
+      ],
+      "target_pad": 9216,
+      "transition": "head-target",
+      "reference": "root"
+    },
+    {
+      "id": "head-over-100-headers",
+      "scenario": "seeded",
+      "method": "GET",
+      "path": "/",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:"
+      ],
+      "body": "",
+      "differences": [
+        "F5",
+        "F9",
+        "F10"
+      ],
+      "extra_headers": 101,
+      "transition": "head-count",
+      "reference": "root"
+    },
+    {
+      "id": "auction-over-1mib",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
+      "mask": "auction",
+      "differences": [
+        "C3",
+        "C8",
+        "F10",
+        "F14"
+      ],
+      "body_pad_to": 1153434,
+      "transition": "body-cap",
+      "reference": "auction-one"
+    },
+    {
+      "id": "aps-over-1mib",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"pubId\":\"wire-publisher\",\"slots\":[{\"slotID\":\"wire-slot-1\",\"sizes\":[[300,250],[728,90]]}]}",
+      "mask": "aps",
+      "differences": [
+        "C3",
+        "C8",
+        "F10",
+        "F14"
+      ],
+      "body_pad_to": 1153434,
+      "transition": "body-cap",
+      "reference": "aps-valid"
+    },
+    {
+      "id": "mediation-over-8mib",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}]}}",
+      "mask": "mediation",
+      "differences": [
+        "F7",
+        "C8",
+        "F10",
+        "F14"
+      ],
+      "body_pad_to": 9437184,
+      "transition": "body-cap",
+      "reference": "mediation-one-bidder"
+    },
+    {
+      "id": "auction-no-content-type",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type:"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
+      "mask": "auction",
+      "differences": [
+        "F8",
+        "F10"
+      ],
+      "transition": "no-content-type",
+      "reference": "auction-one",
+      "uuid_count": 2
+    },
+    {
+      "id": "auction-text-plain",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: text/plain"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
+      "mask": "auction",
+      "differences": [
+        "F8",
+        "F10"
+      ],
+      "transition": "no-content-type",
+      "reference": "auction-one",
+      "uuid_count": 2
+    },
+    {
+      "id": "aps-no-content-type",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type:"
+      ],
+      "body": "{\"pubId\":\"wire-publisher\",\"slots\":[{\"slotID\":\"wire-slot-1\",\"sizes\":[[300,250],[728,90]]}]}",
+      "mask": "aps",
+      "differences": [
+        "F8",
+        "F10"
+      ],
+      "transition": "no-content-type",
+      "reference": "aps-valid",
+      "uuid_count": 2
+    },
+    {
+      "id": "aps-text-plain",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: text/plain"
+      ],
+      "body": "{\"pubId\":\"wire-publisher\",\"slots\":[{\"slotID\":\"wire-slot-1\",\"sizes\":[[300,250],[728,90]]}]}",
+      "mask": "aps",
+      "differences": [
+        "F8",
+        "F10"
+      ],
+      "transition": "no-content-type",
+      "reference": "aps-valid",
+      "uuid_count": 2
+    },
+    {
+      "id": "auction-exact-1mib",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
+      "mask": "auction",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2,
+      "body_pad_to": 1048576,
+      "transition": "body-boundary",
+      "required_status": 200,
+      "reference": "auction-one"
+    },
+    {
+      "id": "aps-exact-1mib",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"pubId\":\"wire-publisher\",\"slots\":[{\"slotID\":\"wire-slot-1\",\"sizes\":[[300,250],[728,90]]}]}",
+      "mask": "aps",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 2,
+      "body_pad_to": 1048576,
+      "transition": "body-boundary",
+      "required_status": 200,
+      "reference": "aps-valid"
+    },
+    {
+      "id": "mediation-exact-8mib",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}]}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 1,
+      "body_pad_to": 8388608,
+      "transition": "body-boundary",
+      "required_status": 200,
+      "reference": "mediation-one-bidder"
+    },
+    {
+      "id": "mediation-between-1-and-8mib",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}]}}",
+      "mask": "mediation",
+      "differences": [
+        "F10"
+      ],
+      "uuid_count": 1,
+      "body_pad_to": 2097152,
+      "transition": "body-boundary",
+      "required_status": 200,
+      "reference": "mediation-one-bidder"
+    },
+    {
+      "id": "mediation-malformed",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":",
+      "differences": [
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "mediation-validation",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/adserver/mediate",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-mediation-1\",\"imp\":[],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}]}}",
+      "differences": [
+        "C8",
+        "F10"
+      ],
+      "baseline_exception": "BASELINE_MEDIATION_PARAMETER_ORDER"
+    },
+    {
+      "id": "fallback-large-404",
+      "scenario": "seeded",
+      "method": "POST",
+      "path": "/wire-no-such-path",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
+      "differences": [
+        "F10"
+      ],
+      "body_pad_to": 9437184,
+      "transition": "fallback",
+      "required_status": 404,
+      "reference": "unknown-path"
+    },
+    {
+      "id": "fallback-large-405",
+      "scenario": "seeded",
+      "method": "DELETE",
+      "path": "/",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
+      "differences": [
+        "F4",
+        "F10"
+      ],
+      "allow": "GET, OPTIONS",
+      "body_pad_to": 9437184,
+      "transition": "fallback",
+      "required_status": 405,
+      "reference": "method-not-allowed-root"
+    },
+    {
+      "id": "unseeded-auction-missing-config",
+      "scenario": "unseeded",
+      "method": "POST",
+      "path": "/openrtb2/auction",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
+      "differences": [
+        "F2",
+        "C8",
+        "F10"
+      ]
+    },
+    {
+      "id": "unseeded-aps-missing-config",
+      "scenario": "unseeded",
+      "method": "POST",
+      "path": "/e/dtb/bid",
+      "headers": [
+        "Host: 127.0.0.1:8787",
+        "User-Agent: wire-contract/1",
+        "Accept: */*",
+        "Expect:",
+        "Content-Type: application/json"
+      ],
+      "body": "{\"pubId\":\"wire-publisher\",\"slots\":[{\"slotID\":\"wire-slot-1\",\"sizes\":[[300,250],[728,90]]}]}",
+      "differences": [
+        "F2",
+        "C8",
+        "F10"
+      ]
+    }
+  ],
+  "baseline_exceptions": {
+    "BASELINE_APS_PARAMETER_ORDER": {
+      "case": "aps-validation",
+      "status": 422,
+      "kind": "validation",
+      "messages": [
+        "slots: Validation error: length [{\"value\": Array [], \"min\": Number(1)}]",
+        "slots: Validation error: length [{\"min\": Number(1), \"value\": Array []}]"
+      ],
+      "scope": "Only these two complete literal body payloads; every header, status, kind, value, path, whitespace and other response byte remains exact. Pre-existing validator HashMap parameter-order nondeterminism; not a migration change."
+    },
+    "BASELINE_MEDIATION_PARAMETER_ORDER": {
+      "case": "mediation-validation",
+      "status": 422,
+      "kind": "validation",
+      "messages": [
+        "imp: Validation error: length [{\"value\": Array [], \"min\": Number(1)}]",
+        "imp: Validation error: length [{\"min\": Number(1), \"value\": Array []}]"
+      ],
+      "scope": "Only these two complete literal body payloads; every header, status, kind, value, path, whitespace and other response byte remains exact. Pre-existing validator HashMap parameter-order nondeterminism; not a migration change."
+    }
+  }
+}
