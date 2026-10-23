@@ -10,10 +10,9 @@ use edgezero_core::extractor::{
     AppConfig, ForwardedHost, FromRequest, Headers, ValidatedJson, ValidatedJsonWithin,
     ValidatedQuery,
 };
-use edgezero_core::http::{
-    HeaderMap, HeaderValue, Method, Response, StatusCode, header, response_builder,
-};
+use edgezero_core::http::{HeaderMap, HeaderValue, Response, StatusCode, header, response_builder};
 use edgezero_core::middleware::{Middleware, Next};
+use edgezero_core::response::IntoResponse;
 use edgezero_core::{body::Body, error::EdgeError};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest as _, Sha256};
@@ -212,12 +211,7 @@ where
 impl Middleware for Cors {
     #[inline]
     async fn handle(&self, ctx: RequestContext, next: Next<'_>) -> Result<Response, EdgeError> {
-        let method = ctx.method().clone();
-        let mut response = if method == Method::OPTIONS {
-            Ok(options_response())
-        } else {
-            next.run(ctx).await
-        }?;
+        let mut response = next.run(ctx).await.or_else(IntoResponse::into_response)?;
         apply_cors(response.headers_mut());
         Ok(response)
     }
@@ -278,7 +272,7 @@ fn apply_cors(headers: &mut HeaderMap) {
 fn build_response(status: StatusCode, body: Body) -> Response {
     let mut builder = response_builder().status(status);
     if let Body::Once(bytes) = &body
-        && !status.is_informational()
+        // Inserting then removing a 204 length would reorder the other headers.
         && status != StatusCode::NO_CONTENT
         && (status != StatusCode::NOT_MODIFIED || !bytes.is_empty())
     {
@@ -1014,7 +1008,6 @@ mod tests {
     use edgezero_core::error::EdgeError;
     use edgezero_core::http::{Method, Response, StatusCode, request_builder};
     use edgezero_core::params::PathParams;
-    use edgezero_core::response::IntoResponse as _;
     use edgezero_core::response_egress_framing::prepare_response_egress;
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use futures::executor::block_on;
@@ -1069,18 +1062,26 @@ mod tests {
                 Some(&HeaderValue::from_static("0"))
             );
         }
-        for status in [
-            StatusCode::CONTINUE,
-            StatusCode::NO_CONTENT,
-            StatusCode::NOT_MODIFIED,
-        ] {
-            let response = build_response(status, Body::empty());
+        let not_modified_response = build_response(StatusCode::NOT_MODIFIED, Body::empty());
+        assert!(
+            !not_modified_response
+                .headers()
+                .contains_key(header::CONTENT_LENGTH)
+        );
+        for body in [Body::empty(), Body::from("suppressed")] {
+            let response =
+                prepare_response_egress(&Method::GET, build_response(StatusCode::NO_CONTENT, body))
+                    .unwrap()
+                    .into_response();
             assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
         }
-        for status in [StatusCode::CONTINUE, StatusCode::NO_CONTENT] {
-            let response = build_response(status, Body::from("suppressed"));
-            assert!(!response.headers().contains_key(header::CONTENT_LENGTH));
-        }
+        assert!(
+            prepare_response_egress(
+                &Method::GET,
+                build_response(StatusCode::CONTINUE, Body::empty()),
+            )
+            .is_err()
+        );
         let representation = build_response(StatusCode::NOT_MODIFIED, Body::from("representation"));
         assert_eq!(
             representation.headers().get(header::CONTENT_LENGTH),

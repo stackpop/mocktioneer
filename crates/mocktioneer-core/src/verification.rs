@@ -90,12 +90,14 @@ pub enum VerificationError {
 )]
 impl JwksCache {
     fn get(&mut self, host: &str, now: MonotonicInstant) -> Option<JwksResponse> {
-        if self
-            .entries
-            .get(host)
-            .is_some_and(|entry| cache_entry_is_fresh(entry, now))
-        {
-            return self.entries.get(host).map(|entry| entry.jwks.clone());
+        if let Some(entry) = self.entries.get(host) {
+            if cache_entry_is_fresh(entry, now) {
+                log::debug!("JWKS cache hit for {host}");
+                return Some(entry.jwks.clone());
+            }
+            log::debug!("JWKS cache expired for {host}");
+        } else {
+            log::debug!("JWKS cache miss for {host}");
         }
         self.remove(host);
         None
@@ -198,6 +200,7 @@ fn jwks_transport_error(error: &EdgeError, stage: &str) -> VerificationError {
 
 // The loader validates the canonical DNS host before cache lookup or fetch.
 async fn fetch_jwks(ctx: &RequestContext, host: &str) -> Result<JwksResponse, VerificationError> {
+    log::debug!("Fetching JWKS for {host}");
     let jwks_url = format!("https://{host}/.well-known/trusted-server.json");
     let request = OutboundRequest::get(&jwks_url)
         .map_err(|error| VerificationError::HttpError(format!("Invalid JWKS URL: {error}")))?
@@ -223,6 +226,7 @@ async fn fetch_jwks(ctx: &RequestContext, host: &str) -> Result<JwksResponse, Ve
         .map_err(|error| jwks_transport_error(&error, "Stream read failed"))?;
     let parsed: TrustedServerResponse = serde_json::from_slice(&bytes)
         .map_err(|error| VerificationError::HttpError(format!("JWKS parse failed: {error}")))?;
+    log::debug!("Fetched JWKS for {host}");
     Ok(parsed.jwks)
 }
 
@@ -575,7 +579,8 @@ mod tests {
     use edgezero_core::Deadline;
     use edgezero_core::http::{HeaderMap, HeaderValue};
     use edgezero_core::outbound::{
-        HttpClient, OutboundBatch, OutboundHttpClient, OutboundResponse, ResponseMode,
+        HttpClient, OutboundBatch, OutboundHttpClient, OutboundRequestParts, OutboundResponse,
+        ResponseBodyPolicy, ResponseMode,
     };
     use futures::stream::iter;
     use std::io::Error as IoError;
@@ -651,16 +656,9 @@ mod tests {
                     body_error,
                 } => {
                     use edgezero_core::outbound::{
-                        ResponseBodyPolicy, apply_response_body_policy, collect_response_stream,
+                        apply_response_body_policy, collect_response_stream,
                     };
-                    let policy = ResponseBodyPolicy {
-                        max_brotli_window_bits: parts.max_brotli_window_bits,
-                        max_chunk_bytes: parts.max_chunk_bytes,
-                        max_decoded_response_bytes: parts.max_decoded_response_bytes,
-                        max_decoder_bytes: parts.max_decoder_bytes,
-                        max_encoded_response_bytes: parts.max_encoded_response_bytes,
-                        response_mode: parts.response_mode,
-                    };
+                    let policy = response_body_policy(&parts);
                     let mut headers = HeaderMap::new();
                     if let Some(length) = declared {
                         headers.insert(
@@ -730,6 +728,17 @@ mod tests {
             _cutoff: Deadline,
         ) -> OutboundBatch {
             OutboundBatch::cutoff(requests.len())
+        }
+    }
+
+    fn response_body_policy(parts: &OutboundRequestParts) -> ResponseBodyPolicy {
+        ResponseBodyPolicy {
+            max_brotli_window_bits: parts.max_brotli_window_bits,
+            max_chunk_bytes: parts.max_chunk_bytes,
+            max_decoded_response_bytes: parts.max_decoded_response_bytes,
+            max_decoder_bytes: parts.max_decoder_bytes,
+            max_encoded_response_bytes: parts.max_encoded_response_bytes,
+            response_mode: parts.response_mode,
         }
     }
 
@@ -882,20 +891,11 @@ mod tests {
     }
 
     fn decode_fixture(coding: &str, encoded: &[u8]) -> Result<Vec<u8>, EdgeError> {
-        use edgezero_core::outbound::{
-            ResponseBodyPolicy, apply_response_body_policy, collect_response_stream,
-        };
+        use edgezero_core::outbound::{apply_response_body_policy, collect_response_stream};
         let parts = OutboundRequest::get("https://example.com/")?
             .max_response_bytes(MAX_JWKS_BODY_BYTES)
             .into_parts();
-        let policy = ResponseBodyPolicy {
-            max_brotli_window_bits: parts.max_brotli_window_bits,
-            max_chunk_bytes: parts.max_chunk_bytes,
-            max_decoded_response_bytes: parts.max_decoded_response_bytes,
-            max_decoder_bytes: parts.max_decoder_bytes,
-            max_encoded_response_bytes: parts.max_encoded_response_bytes,
-            response_mode: parts.response_mode,
-        };
+        let policy = response_body_policy(&parts);
         let mut headers = HeaderMap::new();
         headers.insert(
             "content-encoding",

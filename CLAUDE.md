@@ -149,9 +149,11 @@ through `render.rs`. Do not inline ad markup in handlers.
 - **Minimal changes**: every change should impact as little code as possible.
   Avoid unnecessary refactoring, docstrings on untouched code, or premature abstractions.
 - **No direct `http` crate imports** — use `edgezero_core` re-exports.
-- **Determinism**: no randomness, no time-dependent pricing. Same input always
-  produces the same output. Exception: signature timestamp freshness
-  validation uses the wall clock — required for replay prevention.
+- **Determinism**: pricing and bid selection are deterministic for fixed request
+  inputs and configuration, with no randomness or time-dependent pricing.
+  Monotonic operational deadlines and cache expiry are permitted, as is
+  wall-clock signature timestamp freshness for replay prevention. Request
+  outcomes can therefore depend on timing.
 
 ## Module Structure (mocktioneer-core/src/)
 
@@ -347,6 +349,7 @@ Custom commands live in `.claude/commands/`:
 - Don't make large, sweeping refactors — keep changes minimal and focused.
 - Don't commit without running `cargo test` first.
 - Don't skip `cargo fmt` and `cargo clippy` — CI will reject the PR.
-- Don't introduce non-deterministic behavior (randomness, time-dependent logic).
-  Signature timestamp freshness is the lone carve-out for replay prevention.
+- Don't introduce randomness or time-dependent pricing or bid selection.
+  Monotonic operational deadlines and cache expiry are permitted, as is
+  wall-clock signature timestamp freshness for replay prevention.
 - Don't include `Co-Authored-By` trailers, "Generated with" footers, or any AI bylines in commits or PR bodies.

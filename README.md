@@ -5,7 +5,7 @@ Deterministic OpenRTB banner bidder for edge platforms. Test client integrations
 ## Features
 
 - **Multi-platform** - Runs on Fastly Compute, Cloudflare Workers, Spin 4.1+, and native Axum from a single codebase
-- **Deterministic** - Same input always produces the same output
+- **Deterministic pricing and bid selection** - Fixed request inputs and configuration produce the same pricing and bid selection; monotonic operational deadlines and cache expiry, plus wall-clock signature freshness, can affect request outcomes
 - **OpenRTB 2.x & APS TAM** - Full banner support with predictable pricing
 - **Embedded assets** - Creatives render locally; bid routes require pushed config, and signed requests can fetch trusted-server keys
 

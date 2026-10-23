@@ -453,3 +453,58 @@ Document checks: Markdown parse, all nine shell-block syntax checks, fence/link 
 - Added seven real CLI regression tests. The old implementation produced 15 failing subcases; the fix passes all **32 comparator tests**. An independent reviewer reran the suite and approved the change.
 - Existing historical evidence remains valid: all **85 seeded + 2 unseeded** candidate comparisons and the independent baseline repeats pass under the stricter validation. Archived corpora remain self-contained; they do not need to match the current checkout's corpus.
 - Fresh native workspace tests (**198**), strict Clippy, rustfmt and the feature check pass. Application runtime and provider code are unchanged.
+
+### Fifteen-finding review follow-up (2026-10-22, R8)
+
+Runtime, cache and cleanup reviewers independently checked the pasted feedback
+against the branch and the pinned framework. The implementation follows the
+recommended scope presented in the conversation: fix verified regressions and
+local cleanup, preserving the approved timeout and cache policies. These are
+deliberate operational tradeoffs, not guarantees of timing-independent success.
+
+| Finding | Disposition and evidence |
+| --- | --- |
+| 1: error CORS | Fixed as C8. Cors renders matched errors through default `IntoResponse` and decorates them. RequestLogger runs inside Cors and observes errors before rendering. Registered OPTIONS still runs its handler and logger. Routing/head failures remain outside this middleware. |
+| 2: slow config reads | Retained the approved 2 s deadline. A successful backend result arriving after an observed expiry can become 503; no new Retry-After policy is introduced. |
+| 3: mediation upload budget | Retained the approved 10 s budget and 8 MiB cap. The cap is a size ceiling, not a promise that every connection can upload that size before expiry; 8 MiB over 10 s requires about 6.7 Mbps before overhead. |
+| 4: determinism language | Fixed CLAUDE, AGENTS, README and the public guide/spec. Fixed-input pricing and selection remain deterministic; monotonic operational deadlines/cache expiry and wall-clock signature freshness affect operational outcomes. |
+| 5: cache churn | Retained the approved oldest-fetched eviction. Thirty-two new valid hosts can evict an entry; LRU alone does not prevent this sequence. Failed key retrieval marks verification failed without rejecting the auction. |
+| 6: poisoned lock | Retained the approved bypass-until-restart policy. Recovery/reset would change an explicit policy and its tests; no request-induced panic was identified. |
+| 7: provider freshness | Retained PlatformDefault. Provider caching can outlive the local TTL, as already documented. Bypass would change provider semantics and may require Cloudflare cache compatibility changes on the retained date. |
+| 8: cloning JWKS under lock | Deferred the pre-existing optimization. Arc requires revisiting retained-allocation accounting and performance validation; the migration already bounds the cache's owned allocations. |
+| 9: missing debug logs | Restored cache hit/miss/expiry and fetch start/success events using canonical hosts, without provider diagnostics or credentials. |
+| 10: ValidatedHost type | Deferred optional hardening. The private loader is the sole production caller and validates/canonicalizes before cache lookup or URL construction. |
+| 11: framing duplication | Removed the unnecessary informational-status constructor guard and asserted final framework egress. Retained the empty-304 exception and the 204 guard: inserting then removing 204 length changes HeaderMap ordering and would alter preflight wire headers. |
+| 12: unused dependency | Removed the unused workspace futures-util declaration. Transitive lockfile entries remain required. |
+| 13: repeated config mocks | Kept the four thin target-local implementations, as permitted by spec §14. A shared support crate would expand the migration's workspace/API surface. |
+| 14: duplicate lookup | Cache hits now use one map lookup, retaining freshness and accounting behavior. |
+| 15: policy mapper | Both fixtures now use one private response-policy helper derived from the actual outbound request parts. Rust already rejects a missing field in either exhaustive initializer. |
+
+Verification for this follow-up:
+
+- CORS regression tests first failed for missing headers, then passed for all
+  three bid routes' malformed JSON, validator, size and body-expiry errors, plus
+  both config routes' complete error matrix. Controlled clocks avoid real sleeps.
+- Fresh native workspace **199 tests**, strict Clippy, rustfmt and feature check
+  passed. Actual target contracts passed: **Fastly 4, Cloudflare 5, Spin 2**.
+  The Cloudflare signed-fetch/cache-hit test remains included.
+- Fresh Chromium cross-origin requests read the status and JSON error body for
+  **13 seeded errors and 2 unseeded config errors**, including JSON preflights,
+  all three body caps and matched asset/query failures. Existing Playwright
+  suite: **41 passed**.
+- C8 is restricted to 15 named corpus cases/statuses and the exact three added
+  fields before F10's framing permutation. Retry-After, unrelated headers and
+  their order remain compared. Fresh **85 seeded + 2 unseeded** captures pass
+  against baseline and independent baseline repeats, using the new corpus digest:
+  `baseline-c8/`, `baseline-repeat-c8/`, `after-c8/` under the evidence directory.
+- Comparator **37 tests passed**, including red/green C8 mutation tests and
+  historical-corpus compatibility. The earlier 87 saved comparisons still pass
+  using their own corpus; old captures were not modified.
+- ESLint, Prettier and VitePress build passed after the public docs updates.
+  Independent final review found stale middleware examples in two guides; these
+  now match Cors → RequestLogger. No introduced production defect was found.
+- Follow-up logs use the `feedback-` prefix in the evidence directory. The Rust
+  verification summary records source hashes. Earlier Docker/provider live
+  smokes remain historical evidence; this follow-up reran native/browser and all
+  target contracts rather than repeating deployment qualification. Hosted outbound
+  and the upstream shipping-tag adoption gate remain open.

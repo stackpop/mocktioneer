@@ -18,6 +18,18 @@ UUID7 = re.compile(r"[0-9a-f]{12}7[0-9a-f]{3}[89ab][0-9a-f]{15}\Z")
 MISSING = "missing typed app-config blob at key `mocktioneer_config`"
 PUSH_HINT = "run `<app-cli> config push` for this deploy"
 STREAM_ERROR = "invalid JSON payload: streaming body cannot be materialised as JSON"
+CORS_HEADERS = (b"access-control-allow-origin: *",
+                b"access-control-allow-methods: GET, POST, OPTIONS",
+                b"access-control-allow-headers: *, content-type")
+CORS_ERROR_STATUSES = {
+    "image-nonstandard": 422, "creative-nonstandard": 404, "pixel-missing": 400,
+    "aps-validation": 422, "aps-malformed": 400, "auction-malformed": 400,
+    "auction-validation": 422, "sync-start-missing": 400, "mediation-malformed": 400,
+    "mediation-validation": 422, "auction-over-1mib": 400, "aps-over-1mib": 400,
+    "mediation-over-8mib": 400, "unseeded-auction-missing-config": 503,
+    "unseeded-aps-missing-config": 503,
+}
+BODY_CAP_CASES = {"auction-over-1mib", "aps-over-1mib", "mediation-over-8mib"}
 
 
 class ContractError(ValueError):
@@ -200,12 +212,17 @@ def normalize_length(lines, original):
 
 
 def remove_cors(lines):
-    cors = {b"access-control-allow-origin": b"*", b"access-control-allow-methods": b"GET, POST, OPTIONS",
-            b"access-control-allow-headers": b"*, content-type"}
-    for name, value in cors.items():
+    for field in CORS_HEADERS:
+        name, value = field.split(b": ", 1)
         if any(header_name(line) == name for line in lines[1:]):
             lines = remove_field(lines, name, value)
     return lines
+
+
+def require_cors(lines):
+    for field in CORS_HEADERS:
+        found = [line for line in lines[1:] if header_name(line) == header_name(field)]
+        require(found == [field], f"expected one exact {header_name(field).decode()} header")
 
 
 def canonical_length_order(lines, empty_insertion=False):
@@ -245,6 +262,26 @@ def compare_response(case, before, after, reference_before=None, reference_after
     allowed = case.get("differences", [])
     transition = case.get("transition")
     baseline_exception = case.get("baseline_exception")
+    if "C8" in allowed:
+        case_id = case.get("id")
+        expected = CORS_ERROR_STATUSES.get(case_id)
+        body_cap = case_id in BODY_CAP_CASES and transition == "body-cap"
+        require(expected is not None and (
+            before.status == after.status == expected
+            or body_cap and before.status == 200 and after.status in (200, expected)
+        ), "C8 used outside its named matched-error status")
+        cors_names = {header_name(field) for field in CORS_HEADERS}
+        before_cors = any(header_name(line) in cors_names for line in a[1:])
+        after_cors = any(header_name(line) in cors_names for line in b[1:])
+        if before_cors or body_cap:
+            require_cors(a)
+            require_cors(b)
+        elif after_cors:
+            require_cors(b)
+            # Cors appends these fields before egress performs F10's exact length permutation.
+            tail = a[-1:] if header_name(a[-1]) == b"date" else []
+            a = [*(a[:-1] if tail else a), *CORS_HEADERS, *tail]
+            changes.append("C8: matched-error CORS")
     if baseline_exception in ("BASELINE_APS_PARAMETER_ORDER", "BASELINE_MEDIATION_PARAMETER_ORDER"):
         case_id, field = {"BASELINE_APS_PARAMETER_ORDER": ("aps-validation", "slots"),
                           "BASELINE_MEDIATION_PARAMETER_ORDER": ("mediation-validation", "imp")}[baseline_exception]
@@ -315,7 +352,9 @@ def compare_response(case, before, after, reference_before=None, reference_after
                 "unexpected body-cap status transition")
         require(after.body == error_body(400, "bad_request", "request body too large"),
                 "unlisted body-cap error")
-        a, b = normalize_length(remove_cors(a), before.body), normalize_length(b, after.body)
+        if "C8" not in allowed:
+            a = remove_cors(a)
+        a, b = normalize_length(a, before.body), normalize_length(b, after.body)
         a[0] = b[0]
         left, left_ids = Response(left.head, right.body), []
         changes.append(number + ": status/body/Content-Length")

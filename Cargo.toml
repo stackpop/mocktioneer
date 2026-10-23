@@ -36,7 +36,6 @@ edgezero-cli = { git = "https://github.com/IABTechLab/edgezero.git", rev = "f6c7
 edgezero-core = { git = "https://github.com/IABTechLab/edgezero.git", rev = "f6c708ccb5be19ba9fa92575db3c08c0f17e0d72", package = "edgezero-core" }
 fastly = "0.13"
 futures = { version = "0.3", features = ["std", "executor"] }
-futures-util = "0.3.32"
 handlebars = "6"
 js-sys = "0.3"
 log = { version = "0.4", features = ["serde"] }

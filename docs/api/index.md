@@ -62,11 +62,13 @@ Mocktioneer exposes several HTTP endpoints for bid requests, creative serving, a
 
 ### Response Headers
 
-Successful matched responses and responses returned directly by handlers include
-CORS headers (`Access-Control-Allow-Origin: *`, etc.). Framework-rendered
-extraction, validation and config errors, 404/405 responses, and normalized-head
-validation failures do not. A host parser may also reject a request before
-application dispatch. See [CORS Preflight](#cors-preflight).
+All matched-route responses include the CORS headers listed under
+[CORS Preflight](#cors-preflight), including framework-rendered errors: malformed
+JSON or oversized bodies (400), validation failures (422), body-read expiry
+(408), config failures (503), and matched asset requests that return 404.
+Routing fallback 404/405 responses and normalized-head validation failures do
+not include CORS headers. A host parser may also reject a request before
+application dispatch.
 
 ## Supported Ad Sizes {#supported-sizes}
 
@@ -123,7 +125,7 @@ return empty error responses, as described on their endpoint pages:
 | 400  | Malformed JSON/query, body over its cap (`bad_request`), or visible framing ambiguity |
 | 401  | Unauthorized (invalid token)                                                          |
 | 403  | Forbidden (domain not allowed)                                                        |
-| 404  | Not found                                                                             |
+| 404  | Route or asset not found                                                              |
 | 405  | Method not allowed; `Allow` is sorted and deduplicated                                |
 | 408  | Observed inbound body-read deadline expiry                                            |
 | 414  | Visible request target over 8192 bytes                                                |
@@ -184,7 +186,8 @@ transport framing.
 
 ## CORS Preflight {#cors-preflight}
 
-All endpoints support OPTIONS requests for CORS preflight and include these headers in responses:
+Registered OPTIONS routes return 204 No Content with these CORS headers.
+Matched-route responses, including errors, carry the same headers:
 
 | Header                         | Value                |
 | ------------------------------ | -------------------- |

@@ -17,6 +17,9 @@ UUID_A = "019a8a01000070008000000000000001"
 UUID_B = "019a8a02000070009000000000000002"
 UUID_C = "019a8a0300007000a000000000000003"
 MTKID = "13170e94273c9f84b05e8937f7d4b70b"
+CORS_HEADERS = [b"access-control-allow-origin: *",
+                b"access-control-allow-methods: GET, POST, OPTIONS",
+                b"access-control-allow-headers: *, content-type"]
 
 
 class WireContractTests(unittest.TestCase):
@@ -305,13 +308,108 @@ class WireContractTests(unittest.TestCase):
         with self.assertRaises(self.wire.ContractError):
             self.compare(case, before, self.response(error, 400))
 
+    def test_c8_adds_exact_cors_before_the_f10_length_permutation(self):
+        body = self.wire.error_body(400, "bad_request", "invalid JSON")
+        length = b"content-length: " + str(len(body)).encode()
+        case = {"id": "auction-malformed", "differences": ["C8", "F10"]}
+        date = b"date: Wed, 21 Oct 2026 18:21:58 GMT"
+        before = self.response(body, 400, [length, b"content-type: application/json", date])
+        after_headers = [CORS_HEADERS[2], b"content-type: application/json",
+                         *CORS_HEADERS[:2], length, date]
+        after = self.response(body, 400, after_headers)
+        self.assertEqual(self.compare(case, before, before), [])
+        self.assertEqual(self.compare(case, after, after), [])
+        self.assertEqual(self.compare(case, before, after),
+                         ["C8: matched-error CORS", "F10: exact Content-Length group permutation"])
+        for headers in [after_headers[1:], [*after_headers, CORS_HEADERS[0]],
+                        [line.replace(b"GET, POST, OPTIONS", b"GET, POST") for line in after_headers],
+                        [after_headers[1], after_headers[0], *after_headers[2:]],
+                        [after_headers[0], *after_headers[2:4], after_headers[1], length],
+                        [*after_headers, b"x-unrelated: added"]]:
+            with self.subTest(headers=headers), self.assertRaises(self.wire.ContractError):
+                self.compare(case, before, self.response(body, 400, headers))
+        with self.assertRaises(self.wire.ContractError):
+            self.compare(case, after, before)
+
+    def test_c8_preserves_config_retry_and_all_other_header_order(self):
+        old = self.wire.error_body(503, "config_out_of_date", self.wire.MISSING + " — " + self.wire.PUSH_HINT)
+        new = self.wire.error_body(503, "config_out_of_date", self.wire.MISSING + "; " + self.wire.PUSH_HINT)
+        case = {"id": "unseeded-auction-missing-config", "differences": ["F2", "C8", "F10"]}
+        before = self.response(old, 503, [b"content-length: " + str(len(old)).encode(),
+                                         b"content-type: application/json", b"retry-after: 60"])
+        headers = [CORS_HEADERS[2], b"content-type: application/json", b"retry-after: 60",
+                   *CORS_HEADERS[:2], b"content-length: " + str(len(new)).encode()]
+        self.assertIn("C8: matched-error CORS", self.compare(case, before, self.response(new, 503, headers)))
+        for changed in [[headers[0], headers[2], headers[1], *headers[3:]],
+                        [line for line in headers if not line.startswith(b"retry-after:")],
+                        [line.replace(b"retry-after: 60", b"retry-after: 10") for line in headers]]:
+            with self.subTest(changed=changed), self.assertRaises(self.wire.ContractError):
+                self.compare(case, before, self.response(new, 503, changed))
+
+    def test_c8_is_limited_to_named_matched_error_statuses(self):
+        before = self.response(b"same", 400)
+        after = self.response(b"same", 400, CORS_HEADERS)
+        for case in [{"id": "head-target-9kb", "differences": ["C8"]},
+                     {"id": "unknown-path", "differences": ["C8"]},
+                     {"id": "method-not-allowed-root", "differences": ["C8"]},
+                     {"id": "auction-validation", "differences": ["C8"]},
+                     {"id": "auction-malformed", "differences": []}]:
+            with self.subTest(case=case), self.assertRaises(self.wire.ContractError):
+                self.compare(case, before, after)
+
+    def test_c8_body_cap_transition_preserves_cors_and_the_success_reference(self):
+        case = {"id": "auction-over-1mib", "differences": ["C3", "C8", "F10"],
+                "transition": "body-cap", "mask": "auction"}
+        before_body = self.auction()
+        before_length = len(json.dumps(before_body, separators=(",", ":")).encode())
+        before = self.response(before_body, 200, [b"content-length: " + str(before_length).encode(),
+                                                b"content-type: application/json", *CORS_HEADERS])
+        body = self.wire.error_body(400, "bad_request", "request body too large")
+        headers = [CORS_HEADERS[2], b"content-type: application/json", *CORS_HEADERS[:2],
+                   b"content-length: " + str(len(body)).encode()]
+        self.assertEqual(self.compare(case, before, before), [])
+        self.assertIn("C3: status/body/Content-Length", self.wire.compare_response(
+            case, before, self.response(body, 400, headers), reference_before=before))
+        for changed in [headers[1:], [*headers, CORS_HEADERS[1]],
+                        [line for line in headers if not line.startswith(b"access-control-")]]:
+            with self.subTest(changed=changed), self.assertRaises(self.wire.ContractError):
+                self.wire.compare_response(case, before, self.response(body, 400, changed), reference_before=before)
+        with self.assertRaises(self.wire.ContractError):
+            self.wire.compare_response(case, before, self.response(body, 400, headers),
+                                       reference_before=self.response(self.auction(UUID_B), 200))
+
+    def test_historical_body_cap_metadata_retains_its_cors_removal_contract(self):
+        case = {"id": "auction-over-1mib", "differences": ["C3", "F10"],
+                "transition": "body-cap", "mask": "auction"}
+        success = self.auction()
+        length = len(json.dumps(success, separators=(",", ":")).encode())
+        date = b"date: Wed, 21 Oct 2026 18:21:58 GMT"
+        before = self.response(success, 200, [b"content-length: " + str(length).encode(),
+                                            b"content-type: application/json", *CORS_HEADERS, date])
+        body = self.wire.error_body(400, "bad_request", "request body too large")
+        after = self.response(body, 400, [b"content-type: application/json",
+                                        b"content-length: 80", date])
+        self.assertEqual(self.wire.compare_response(case, before, after, reference_before=before),
+                         ["C3: status/body/Content-Length", "F10: exact Content-Length group permutation"])
+        current_case = {**case, "differences": ["C3", "C8", "F10"]}
+        with self.assertRaises(self.wire.ContractError):
+            self.wire.compare_response(current_case, before, after, reference_before=before)
+
     def test_corpus_is_explicit_and_has_separate_startup_scenarios(self):
         corpus = json.loads((HERE / "requests.json").read_text())
         cases = corpus["cases"]
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertEqual({case["scenario"] for case in cases}, {"seeded", "unseeded"})
         self.assertEqual(set(corpus["accepted_differences"]),
-                         {f"F{i}" for i in range(1, 14)} | {f"C{i}" for i in range(1, 8)})
+                         {f"F{i}" for i in range(1, 14)} | {f"C{i}" for i in range(1, 9)})
+        self.assertEqual(len(cases), 87)
+        self.assertEqual(sum(case["scenario"] == "seeded" for case in cases), 85)
+        self.assertEqual({case["id"] for case in cases if "C8" in case["differences"]}, {
+            "image-nonstandard", "creative-nonstandard", "pixel-missing", "aps-validation", "aps-malformed",
+            "auction-malformed", "auction-validation", "sync-start-missing", "mediation-malformed",
+            "mediation-validation", "auction-over-1mib", "aps-over-1mib", "mediation-over-8mib",
+            "unseeded-auction-missing-config", "unseeded-aps-missing-config",
+        })
         self.assertTrue(all("method" in case and "path" in case and "headers" in case for case in cases))
         for scenario in ("seeded", "unseeded"):
             self.assertTrue(any(case["scenario"] == scenario for case in cases))

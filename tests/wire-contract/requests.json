@@ -37,7 +37,7 @@
     },
     "F7": {
       "contract": "default JSON body cap is 8MiB; excess -> 400 request body too large",
-      "corpus_scope": "mediation-over-8mib: only exact error payload, status, Content-Length and CORS removal"
+      "corpus_scope": "mediation-over-8mib: only exact error payload, status and Content-Length change; C8 preserves existing CORS"
     },
     "F8": {
       "contract": "Axum parses JSON without application/json Content-Type",
@@ -73,7 +73,7 @@
     },
     "C3": {
       "contract": "auction and APS JSON bodies over 1MiB -> 400 request body too large",
-      "corpus_scope": "over-1mib cases: only exact error payload, status, Content-Length and CORS removal"
+      "corpus_scope": "over-1mib cases: only exact error payload, status and Content-Length change; C8 preserves existing CORS"
     },
     "C4": {
       "contract": "poisoned JWKS cache lock is a miss",
@@ -90,6 +90,10 @@
     "C7": {
       "contract": "JWKS outbound budget is 5 seconds; observed expiry becomes failed verification adm while status stays 200",
       "corpus_scope": "contract tests; no time-dependent wire exception"
+    },
+    "C8": {
+      "contract": "matched framework and handler errors receive the same three exact CORS headers as successful matched responses; routing 404/405 and normalized-head failures remain without CORS",
+      "corpus_scope": "only the 15 named matched error cases listed by CORS_ERROR_STATUSES; existing errors permit exact header addition before F10, while body-cap transitions preserve the successful baseline CORS fields; no general header filtering or reordering"
     }
   },
   "cases": [
@@ -154,6 +158,7 @@
       ],
       "body": "",
       "differences": [
+        "C8",
         "F10"
       ]
     },
@@ -206,6 +211,7 @@
       ],
       "body": "",
       "differences": [
+        "C8",
         "F10"
       ]
     },
@@ -270,6 +276,7 @@
       ],
       "body": "",
       "differences": [
+        "C8",
         "F10"
       ]
     },
@@ -323,6 +330,7 @@
       ],
       "body": "{\"pubId\":\"wire-publisher\",\"slots\":[]}",
       "differences": [
+        "C8",
         "F10"
       ],
       "baseline_exception": "BASELINE_APS_PARAMETER_ORDER"
@@ -341,6 +349,7 @@
       ],
       "body": "{\"pubId\":",
       "differences": [
+        "C8",
         "F10"
       ]
     },
@@ -491,6 +500,7 @@
       ],
       "body": "{\"id\":",
       "differences": [
+        "C8",
         "F10"
       ]
     },
@@ -508,6 +518,7 @@
       ],
       "body": "{\"id\":\"wire-invalid\",\"imp\":[{\"id\":\"wire-imp-invalid\"}]}",
       "differences": [
+        "C8",
         "F10"
       ]
     },
@@ -709,6 +720,7 @@
       "body": "",
       "differences": [
         "C6",
+        "C8",
         "F10"
       ]
     },
@@ -1343,6 +1355,7 @@
       "mask": "auction",
       "differences": [
         "C3",
+        "C8",
         "F10"
       ],
       "body_pad_to": 1153434,
@@ -1365,6 +1378,7 @@
       "mask": "aps",
       "differences": [
         "C3",
+        "C8",
         "F10"
       ],
       "body_pad_to": 1153434,
@@ -1387,6 +1401,7 @@
       "mask": "mediation",
       "differences": [
         "F7",
+        "C8",
         "F10"
       ],
       "body_pad_to": 9437184,
@@ -1587,6 +1602,7 @@
       ],
       "body": "{\"id\":",
       "differences": [
+        "C8",
         "F10"
       ]
     },
@@ -1604,6 +1620,7 @@
       ],
       "body": "{\"id\":\"wire-mediation-1\",\"imp\":[],\"ext\":{\"bidder_responses\":[{\"bidder\":\"wire-bidder-a\",\"bids\":[{\"imp_id\":\"wire-imp-1\",\"price\":0.35,\"w\":300,\"h\":250,\"crid\":\"wire-creative-1\"}]}]}}",
       "differences": [
+        "C8",
         "F10"
       ],
       "baseline_exception": "BASELINE_MEDIATION_PARAMETER_ORDER"
@@ -1667,6 +1684,7 @@
       "body": "{\"id\":\"wire-auction-1\",\"imp\":[{\"id\":\"wire-imp-1\",\"banner\":{\"w\":300,\"h\":250}}]}",
       "differences": [
         "F2",
+        "C8",
         "F10"
       ]
     },
@@ -1685,6 +1703,7 @@
       "body": "{\"pubId\":\"wire-publisher\",\"slots\":[{\"slotID\":\"wire-slot-1\",\"sizes\":[[300,250],[728,90]]}]}",
       "differences": [
         "F2",
+        "C8",
         "F10"
       ]
     }

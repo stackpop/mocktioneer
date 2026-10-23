@@ -12,7 +12,7 @@
     PR #275 remains draft/open/unmerged. Neither newer revision is adopted (§11).
   - It contains release `v0.0.10` and the IABTechLab transfer (#419). Nothing on
     edgezero `main` is missing from it.
-- **Status:** implemented and locally verified on 2026-10-21; upstream merge/release remains gated. Execution is tracked in
+- **Status:** implemented and locally verified through 2026-10-22; upstream merge/release remains gated. Execution is tracked in
   the [implementation plan](../plans/2026-10-20-edgezero-pr275-migration-implementation.md).
 - **Revision history:**
   - **R1:** initial draft.
@@ -49,6 +49,10 @@
   - **R7:** execution confirms the exact F10 header-group permutation, adds the
     required legacy-date BYOB compatibility flag, fixes direct Wrangler command
     CWD, and records completed verification in the implementation plan.
+  - **R8:** review follow-up adds CORS to matched-route errors (C8), preserves
+    error logging by placing CORS outside RequestLogger, clarifies clock-dependent
+    operational checks and restores JWKS debug diagnostics. R7 timeout and cache
+    policies remain unchanged.
 
 ## 0. Confirmed scope (2026-10-20)
 
@@ -163,7 +167,9 @@ calls for confirmation.
   - Markup stays in templates.
   - `{id}` route syntax.
   - The strict clippy gate.
-  - Determinism, with signature-timestamp freshness as the only clock carve-out.
+  - Deterministic pricing and bid selection for fixed input and configuration.
+    Operational deadlines and JWKS cache expiry use monotonic clocks; signature
+    freshness uses wall time. Operational outcomes can vary with timing and keys.
 - **The CI gates in `CLAUDE.md` must pass,** plus the three contract jobs in
   `test.yml`.
 - **Pin:** the six `edgezero-*` entries use
@@ -497,7 +503,9 @@ chunked. Extend the shared `build_response` helper to set `Content-Length: 0`
 for empty buffered responses whose status permits it, rather than patching
 individual call sites. Axum already sends 0 for these ordinary empty responses.
 
-Keep the bodyless rules: no `Content-Length` on 1xx or 204 responses, and do
+Keep the bodyless rules at final egress: the framework rejects terminal 1xx
+responses and strips 204 length. The helper still omits 204 length because
+inserting and later removing it would reorder the preflight headers. Do
 not replace a HEAD/304 representation length with zero merely because egress
 suppresses its body. A 205 may carry a zero length. Cover ordinary empty
 responses and these exceptions in helper tests. Exercise empty 400/403/401/302/500
@@ -755,6 +763,12 @@ regression.
 | C5 | The JWKS cache is capped at 32 entries and a 2 MiB owned-allocation charge, and keyed by canonical host (§6.2). An uncacheable value can still verify the current request. |
 | C6 | `Content-Length: 0` is set explicitly on every ordinary empty buffered response whose status permits it (§5.8). |
 | C7 | The JWKS outbound budget is 5 s. An observed expiry yields a failed-verification reason in `adm`, while the auction still returns 200. A previously successful slower fetch may now fail. Enforcement is Native on Axum and BestEffort on the other adapters (§6.1). |
+| C8 | CORS renders matched-route errors with the framework's default `IntoResponse`, then adds the same three CORS fields as successful responses. This includes malformed JSON/queries, validator failures, body-cap 400s, body-read 408s, config 503s and matched asset 404s. Unmatched routing 404/405 and normalized-head errors still bypass route middleware. No exposed response headers are added; `Retry-After` semantics are unchanged. |
+
+CORS is the outer route middleware, with RequestLogger inside it so the logger
+still observes errors before they are rendered. Registered OPTIONS requests run
+their handler and logger before CORS decorates the response; their wire contract
+remains 204 with the existing headers.
 
 **F5 scope:** these are checks of the head visible to edgezero, not a raw-wire
 parser contract. Raw ingress framing validation is Unsupported on every
@@ -806,8 +820,9 @@ exact message.
     by §7.
   - Validation codes: bad JSON is 400, a validator failure is 422, bad query
     parameters are 400, and `EdgeError::validation` is 422.
-  - CORS on matched routes, including the explicit OPTIONS triggers. 404/405
-    carry no CORS headers before or after.
+  - CORS on successful matched routes, including explicit OPTIONS triggers.
+    Matched-route errors gain CORS under C8. Unmatched routing 404/405 and
+    normalized-head errors carry no CORS headers before or after.
   - The CI config-push check: `jq '.mocktioneer_config | fromjson | .data.bid_cpm'`
     over `.edgezero/local-config-mocktioneer_config.json` returns 0.35.
 - **Wire-diff procedure** (run by the builder, with results attached to the PR):
@@ -882,7 +897,11 @@ exact message.
        rewrite these inputs. Do not require a universal 400; F5's normalized
        checks cannot recover framing removed by the host parser.
      - **The size caps:** C3 (a 1.1 MiB auction or APS body) and F7 (a 9 MiB
-       mediation body).
+       mediation body), retaining the successful baseline's CORS headers under C8.
+     - **Matched errors (C8):** compare the exact added CORS fields, preserving
+       error statuses, bodies, Retry-After and unrelated headers. Routing/head
+       errors must not gain CORS. Controlled-clock tests cover 408/config-expiry
+       503 without real-time sleeps.
      - A JSON POST without `Content-Type` (F8).
      - **Excluded:**
        - A successful signed auction. It needs a public JWKS host, because
@@ -1078,6 +1097,8 @@ Passing CI does not substitute for these checks.
   changes. The ones to call out in release notes:
   - F8: Axum accepts `text/plain` JSON.
   - C1 and C3: the new 400s and 408s on bid routes.
+  - C8: browser clients can read matched-route error statuses and bodies through
+    CORS, including body-cap, body-read and config failures.
   - F11: no redirects for JWKS.
   - F12 and C7: recognized content decoding and negotiation, buffered JWKS
     error ordering and the five-second outbound budget, which can change

@@ -97,10 +97,10 @@ is `bid`. Other routes keep the 30-second default. See [request limits](/api/#re
 
 ### Middleware
 
-Middleware is applied to all routes in order:
+Middleware is applied to matched routes in order:
 
-1. **RequestLogger** - Logs incoming requests
-2. **Cors** - Adds CORS headers to responses
+1. **Cors** - Renders errors and adds CORS headers to responses
+2. **RequestLogger** - Logs handler results before errors are rendered
 
 ### Request Context
 

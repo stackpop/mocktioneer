@@ -11,8 +11,8 @@ The `edgezero.toml` file lives at the root of the mocktioneer workspace:
 name = "mocktioneer"
 entry = "crates/mocktioneer-core"
 middleware = [
-  "edgezero_core::middleware::RequestLogger",
-  "mocktioneer_core::routes::Cors"
+  "mocktioneer_core::routes::Cors",
+  "edgezero_core::middleware::RequestLogger"
 ]
 
 [stores.config]

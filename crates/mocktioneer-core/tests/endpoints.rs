@@ -131,6 +131,7 @@ mod tests {
         retry_after: Option<&str>,
     ) {
         assert_eq!(response.status(), status);
+        assert_cors(&response);
         assert_eq!(
             response
                 .headers()
@@ -141,6 +142,46 @@ mod tests {
         let error: serde_json::Value = serde_json::from_slice(&body_bytes(response)).unwrap();
         assert_eq!(error["error"]["kind"], kind);
         assert_eq!(error["error"]["message"], message);
+    }
+
+    fn assert_cors(response: &Response) {
+        for (name, value) in [
+            ("access-control-allow-origin", "*"),
+            ("access-control-allow-methods", "GET, POST, OPTIONS"),
+            ("access-control-allow-headers", "*, content-type"),
+        ] {
+            let values: Vec<_> = response.headers().get_all(name).iter().collect();
+            assert_eq!(values.len(), 1, "{name}");
+            assert_eq!(values[0], value, "{name}");
+        }
+    }
+
+    #[test]
+    fn matched_bid_parse_validation_and_size_errors_have_cors() {
+        for (path, cap, invalid) in [
+            ("/openrtb2/auction", 1024 * 1024, r#"{"id":"r","imp":[]}"#),
+            ("/e/dtb/bid", 1024 * 1024, r#"{"pubId":"p","slots":[]}"#),
+            (
+                "/adserver/mediate",
+                8 * 1024 * 1024,
+                r#"{"id":"m","imp":[],"ext":{"bidder_responses":[{"bidder":"a","bids":[]}]}}"#,
+            ),
+        ] {
+            for (payload, status) in [
+                (b"{".to_vec(), StatusCode::BAD_REQUEST),
+                (
+                    invalid.as_bytes().to_vec(),
+                    StatusCode::UNPROCESSABLE_ENTITY,
+                ),
+                (vec![b' '; cap + 1], StatusCode::BAD_REQUEST),
+            ] {
+                let mut request = make_request(Method::POST, path, Body::from_bytes(payload));
+                request.extensions_mut().insert(config_registry(0.20_f64));
+                let response = dispatch(&app(), request);
+                assert_eq!(response.status(), status, "{path}");
+                assert_cors(&response);
+            }
+        }
     }
 
     #[test]
@@ -289,8 +330,15 @@ mod tests {
                 now.lock().unwrap().checked_duration_since(start),
                 Some(Duration::from_secs(2))
             );
+        }
 
-            *now.lock().unwrap() = start;
+        for path in ["/openrtb2/auction", "/e/dtb/bid", "/adserver/mediate"] {
+            let mut application = app();
+            let start = application.monotonic_clock().now();
+            let now = Arc::new(Mutex::new(start));
+            let clock_source = Arc::clone(&now);
+            application
+                .set_monotonic_clock(MonotonicClock::new(move || *clock_source.lock().unwrap()));
             let source = Arc::clone(&now);
             let body = Body::from_stream(poll_fn(move |_| {
                 *source.lock().unwrap() = start.checked_add(Duration::from_secs(10)).unwrap();

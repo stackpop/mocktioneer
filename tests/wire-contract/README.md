@@ -74,7 +74,7 @@ python3 tests/wire-contract/wire_contract.py compare \
 
 Comparator failures exit nonzero and report the case. Accepted differences print
 their F/C number and changed fields. All F1–F13
-and C1–C7 contracts are recorded in `accepted_differences`, with each one's exact
+and C1–C8 contracts are recorded in `accepted_differences`, with each one's exact
 local scope; listing a number does not waive comparisons on unrelated responses.
 
 Only `Date` values and UUIDv7 values at known emission sites are masked. Auction
@@ -103,6 +103,34 @@ listed status, body, length, content type and CORS changes. A different error at
 an otherwise permitted status still fails. Boundary successes and large-body
 fallbacks must retain their required 200/404/405 status and match their small-body
 reference in each revision.
+
+C8 covers exactly 15 named matched error cases and their fixed statuses:
+nonstandard image and creative, missing pixel query, malformed and invalid
+auction/APS/mediation JSON, missing sync query, both missing-config cases, and
+the three body-cap cases. Existing errors may gain exactly one of each field:
+
+```text
+access-control-allow-origin: *
+access-control-allow-methods: GET, POST, OPTIONS
+access-control-allow-headers: *, content-type
+```
+
+The comparator appends these exact native header lines before applying F10's
+length-group permutation; it does not remove CORS or sort other headers.
+Missing, duplicate or changed fields, unrelated header permutations, and changes
+to `Retry-After` fail. Body-cap transitions retain and compare the CORS fields
+already present on the successful baseline. Routing 404/405 and normalized-head
+errors have no C8 exception; a 404 from the matched creative handler does.
+Baseline repeats without CORS and candidate repeats with the complete fields
+remain comparable. An identical pair without CORS cannot establish that a
+candidate implements C8; the admitted-dispatch tests assert that requirement.
+
+The corpus digest changes when C8 is added. Capture both revisions and the
+independent baseline repeat again, using this checkout's `wire_contract.py`
+for every capture so each saves the same revised `requests.json`. Keep prior
+captures intact; their saved corpus and digests are historical evidence.
+Saved body-cap cases without C8 retain their original, narrowly scoped CORS
+removal exception; current C8 cases require the complete fields on both responses.
 
 Record raw framing **separately** for each revision:
 
