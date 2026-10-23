@@ -34,6 +34,7 @@ fn configure_app(app: &mut App) -> Result<(), EdgeError> {
         } else {
             DEFAULT_INBOUND_READ_BUDGET
         };
+        // Completion and grant match this pin's private default admission policy.
         AdmissionDecision::Admit {
             completion: ResponseEgressCompletion::empty(),
             grant: IngressGrant::empty(),

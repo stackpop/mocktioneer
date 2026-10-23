@@ -191,4 +191,36 @@ fn empty_statuses_have_zero_length_through_fastly_prepared_egress() {
         assert!(attempt.begin_writing());
         assert!(attempt.complete(clock.now()));
     }
+
+    let app =
+        edgezero_core::app::App::build::<MocktioneerApp>(edgezero_adapter_fastly::FASTLY_PLATFORM)
+            .expect("build Mocktioneer app");
+    for (path, status) in [
+        ("/sync/start?ts_domain=bad%2Fhost", StatusCode::BAD_REQUEST),
+        ("/sync/start?ts_domain=ts.publisher.com", StatusCode::FOUND),
+    ] {
+        let response = complete_envelope(
+            FastlyService::new(&app)
+                .capture_egress_for_test(fastly_request(FastlyMethod::GET, path))
+                .expect("Mocktioneer egress"),
+        );
+        assert_eq!(response.status(), status);
+        assert_eq!(response.headers().get("content-length").unwrap(), "0");
+        if status == StatusCode::FOUND {
+            assert!(
+                response
+                    .headers()
+                    .get("location")
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with("https://ts.publisher.com/sync?")
+            );
+        }
+        assert!(
+            block_on(response.into_body().into_bytes_bounded(1))
+                .unwrap()
+                .is_empty()
+        );
+    }
 }

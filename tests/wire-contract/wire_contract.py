@@ -101,7 +101,11 @@ def string_sites(text):
             sites.append((path, pos, end, value))
         return end
 
-    require(skip(walk(0, ())) == len(text), "trailing JSON data")
+    try:
+        decoder.decode(text)
+        require(skip(walk(0, ())) == len(text), "trailing JSON data")
+    except (json.JSONDecodeError, RecursionError) as error:
+        raise ContractError(f"invalid response JSON: {error}") from error
     return sites
 
 
@@ -173,7 +177,10 @@ def mask_response(case, response):
                 if len(path) != 5 or path[-1] != "adm" or not bid_id_path(path[:-1] + ("id",)):
                     continue
                 require(adm.startswith(marker), "missing auction metadata")
-                _, end = json.JSONDecoder().raw_decode(adm, len(marker))
+                try:
+                    _, end = json.JSONDecoder().raw_decode(adm, len(marker))
+                except RecursionError as error:
+                    raise ContractError(f"invalid auction metadata JSON: {error}") from error
                 metadata = adm[len(marker):end]
                 for nested, begin, finish, value in string_sites(metadata):
                     if nested[:1] != ("response",) or not bid_id_path(nested[1:]):

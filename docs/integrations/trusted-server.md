@@ -174,9 +174,15 @@ See the [Resolve API reference](/api/resolve) for full endpoint details.
 
 Signed OpenRTB requests use the keys at
 `https://{site.domain}/.well-known/trusted-server.json`. Mocktioneer validates and
-canonicalizes the public DNS hostname before fetching or consulting its cache.
+canonicalizes DNS hostname syntax before fetching or consulting its cache.
 Verification failure is logged and reflected in the bid's creative metadata;
 it does not reject an otherwise valid auction.
+
+Hostname syntax validation does not establish that DNS resolves to a public IP.
+IP literals, localhost and dotless names are rejected, but other names can still
+resolve internally. Wildcard outbound declarations are not destination security
+controls. Public deployments need operator-controlled destination admission and
+DNS/IP egress controls; see [OWASP's SSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
 
 The outbound request does **not follow redirects**. It has a five-second timeout
 and buffers at most **64 KiB after recognized gzip, Brotli, or deflate decoding**.
@@ -195,14 +201,21 @@ the status check, which requires 200. A non-200 status is reported without
 parsing its JSON. A defensive read for a custom client that returns a stream can
 still use `HTTP error: Stream read failed: ...`.
 
+`HTTP error: Proxy not available` is retained legacy wording for a missing
+outbound client in the request context. It does not refer to the removed proxy
+API. Fastly dynamic-backend failures occur when the installed client sends.
+
 The local cache uses a portable monotonic clock with a **10-minute TTL**, at most
 **32 canonical-host entries**, and a **2 MiB owned-allocation charge**. The charge
 counts host-string capacity, key-vector capacity (including each key struct),
 and each key's `kid`/`x` string capacities. It excludes map buckets, allocator
-metadata, transient parsing buffers, and request-local clones, so it does not
+metadata, fixed reference-counting overhead, transient parsing buffers, and
+request-local values, so it does not
 bound total process memory or RSS. Expired entries are removed before the oldest
 entries are evicted. A value too large to cache can still verify the current
-request; a poisoned cache lock bypasses lookup and insertion.
+request; a poisoned cache lock bypasses lookup and insertion and logs a debug
+diagnostic. Cache hits share immutable key storage instead of copying it under
+the cache mutex; fetch misses retain their existing allocation accounting.
 
 Outbound caching uses `PlatformDefault`. Cloudflare's committed compatibility
 date (`2023-05-01`) does not support `Bypass` without a later date or the

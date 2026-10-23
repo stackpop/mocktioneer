@@ -14,6 +14,10 @@
 
 The user approved execution on 2026-10-21 ("can we start?"). Both scope questions are resolved: the related project does not depend on Mocktioneer, and no batch fan-out is needed. Task 0 incorporates the remaining design corrections before the API cut. Implementation and required local verification are complete. The user requested commit/push and issue/PR publication on 2026-10-21. Existing tracking issue [#130](https://github.com/stackpop/mocktioneer/issues/130) and draft PR [#131](https://github.com/stackpop/mocktioneer/pull/131) are reused; upstream merge/release remains a separate gate.
 
+The 2026-10-23 second review adds a JWKS destination-admission decision that
+remains open. The previous implementation checkpoints are complete; merge
+qualification additionally requires resolving this new security policy.
+
 Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R7. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
 
 Review on 2026-10-20 checked the exact proposed upstream pin `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`, not merely the upstream checkout's HEAD. PR #275 remains draft and unmerged. Its current head, `7cccaf10734914161803317aec6c55c22c2bccc9`, adds seven documentation files relative to that pin; it changes no implementation, dependencies or toolchain. Reconcile the spec's stale head metadata and its repinning rule in Task 0; do not silently change Cargo source identity.
@@ -508,3 +512,52 @@ Verification for this follow-up:
   smokes remain historical evidence; this follow-up reran native/browser and all
   target contracts rather than repeating deployment qualification. Hosted outbound
   and the upstream shipping-tag adoption gate remain open.
+
+### Second review follow-up (2026-10-23, R9)
+
+Three independent reviewers checked cache/security, wire/provider coverage and
+middleware/admission defaults against `205b1b9` and frozen EdgeZero `f6c708cc`.
+The selected implementation fixes concrete regressions and adds useful coverage
+without changing the user's approved timeout, eviction, cache-TTL, provider-cache
+or poisoned-lock policies. Small Arc sharing now avoids the earlier deferred
+performance issue without changing insertion charging or public APIs.
+
+| Finding | Disposition |
+| --- | --- |
+| 1: internal hostname fetches | Confirmed, pre-existing. The new wildcard declaration does not newly grant Axum/Cloudflare/Fastly access; Spin already permitted wildcard HTTPS. Syntax validation cannot establish the resolved destination. No portable DNS resolution/pinning hook exists in the frozen outbound API. A required user choice is pending: default-empty operator-controlled exact hostname admission, or arbitrary publisher hosts with deployment DNS/IP egress controls. Suffix checks alone would leave public-looking internal destinations and rebinding unresolved. No internal-network probe was performed. |
+| 2: config deadline | Retained the explicitly approved 2 s policy and its observed-expiry 503 behavior. |
+| 3: mediation upload budget | Retained the explicitly approved 10 s budget and 8 MiB size ceiling, including the documented throughput tradeoff. |
+| 4: cache churn | Retained oldest-fetched eviction. LRU does not prevent eviction after enough distinct attacker hosts; the bounded-memory policy remains unchanged. |
+| 5: provider rotation lag | Retained PlatformDefault and the documented distinction between local TTL and provider freshness. |
+| 6: poisoned cache | Retained bypass until restart; added a debug diagnostic for the bypass. Existing poisoned-before-lookup/during-fetch signature tests remain applicable. |
+| 7: truncated-response crash | Fixed. Complete JSON validation precedes span walking; malformed/trailing-comma/deeply nested JSON becomes ContractError at the parser boundary. The CLI reports the failed case and continues to later cases. No broad Exception catch or success fallback was added. |
+| 8: CORS renderer boundary | No current defect: default rendering is explicitly specified and RequestLogger is inside Cors. The pinned framework exposes no supported middleware accessor for the app renderer. Added source/architecture notes about custom renderer and middleware placement limitations; did not add CORS to routing/head failures. |
+| 9: Spin coverage | Replaced routing-only dispatch with SPIN_PLATFORM app assembly, normalized-head validation, admission, admitted dispatch and egress completion. Added target checks for selected 10/30 s deadlines, the 2 s config setting and controlled mediation body expiry yielding finalized 408/CORS. This does not prove native Spin request-handle translation or provider preemption; native core fixtures already exercise actual config expiry. |
+| 10: synthetic empty statuses | Kept explicitly scoped provider fixtures for runtime-unreachable statuses. Extended both Fastly and Cloudflare contracts with real Mocktioneer malformed-sync 400 and redirect 302 handlers, asserting zero length, empty body and redirect target. No production test route or public framing helper was introduced. |
+| 11: private validated host type | Consider with finding 1's destination-admission boundary after the user chooses the policy. The current single production caller validates before lookup/fetch. A type would enforce syntax/admission, not resolved-address safety. |
+| 12: cache copies under lock | Fixed with immutable Arc storage on cache hits. Misses retain the existing owned clone/insertion charge; fixed Arc overhead and in-flight request values remain excluded from the cache budget. A red/green pointer-sharing regression also checks accounting and usability after eviction. |
+| 13: string-based redaction | Replaced kind-string matching with typed HTTP 500 classification. An Internal-only match would miss nine internal StoreExtraction reasons. Tests preserve redaction for all ten current internal cases and retain public details for representative 400/502/503 errors. |
+| 14: Proxy wording | Kept the explicitly approved wire string. Documented that it means the request has no outbound client; it is not a reference to a current proxy API or specifically a Fastly dynamic-backend failure. |
+| 15: default admission | Kept the pinned defaults. Upstream's default policy and alias are private, with no public getter/builder to delegate to. Added a source note; future upstream changes remain subject to shipping-pin review. |
+| 16: framing and test duplication | Kept the 204 ordering and empty-304 representation guards for their documented wire behavior. Removed the redundant endpoint MapConfigStore by reusing the existing Blob fixture, without adding a support crate or another target fixture. |
+
+- [ ] Resolve the operator-controlled JWKS destination policy and implement/test
+  the selected boundary before treating the second review as complete.
+- Fresh validation passed: **201 workspace tests** (174 unit, 12 APS, 14 endpoint,
+  1 CLI), strict workspace Clippy, fmt and feature compilation. Actual target
+  contracts passed: **Fastly 4, Cloudflare 5, Spin 4**; Spin target Clippy also
+  passed. The legacy Spin helper returned 400 in the controlled-expiry regression
+  before the lifecycle fix; the final test returns 408.
+- Comparator **40 tests passed**, including a real CLI test that reports a
+  malformed first case and still passes a valid later case. Historical and C8
+  stored comparisons both retain all 87 passing cases. Fresh candidate
+  **85 seeded + 2 unseeded** comparisons passed with the same saved C8 corpus.
+- Docs ESLint, Prettier and VitePress build passed. Independent review approved
+  the cache/redaction/provider changes; cache pointer sharing failed before Arc
+  storage and passed afterward, with capacity accounting and post-eviction use
+  intact. This follow-up did not rerun Docker/provider live smokes; they remain
+  historical qualification evidence, with the native wire/target suites refreshed.
+- Evidence directory: `/tmp/mocktioneer-pr131-review2-20261023.x6al8jyr`.
+  The raw corpus is unchanged, so historical captures retain their original
+  digests. Fresh candidate captures use the unchanged C8 corpus and compare
+  against its existing baseline captures.

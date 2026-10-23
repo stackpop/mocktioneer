@@ -102,6 +102,11 @@ Middleware is applied to matched routes in order:
 1. **Cors** - Renders errors and adds CORS headers to responses
 2. **RequestLogger** - Logs handler results before errors are rendered
 
+Cors uses the framework's default error renderer. Middleware that needs the
+original error must run inside Cors. A future custom app error renderer needs a
+framework hook that makes it available at this boundary; simply setting an app
+renderer would not change the errors already rendered by Cors.
+
 ### Request Context
 
 Handlers receive a `RequestContext` that provides:

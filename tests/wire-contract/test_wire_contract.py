@@ -173,6 +173,43 @@ class WireContractTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("FAIL two", result.stderr)
 
+    def test_string_sites_rejects_malformed_json_without_runtime_exceptions(self):
+        for text in ["", " ", "{", "[", '{"a":', '{"a":1', '{"a":1,}', '[1,]',
+                     "[" * (sys.getrecursionlimit() + 1) + "0" + "]" * (sys.getrecursionlimit() + 1)]:
+            with self.subTest(text=text[:40]), self.assertRaises(self.wire.ContractError):
+                self.wire.string_sites(text)
+
+    def test_masked_auction_rejects_excessive_metadata_nesting_as_contract_failure(self):
+        payload = self.auction()
+        depth = sys.getrecursionlimit() + 1
+        payload["seatbid"][0]["bid"][0]["adm"] = "<!-- MOCKTIONEER_METADATA\n" + "[" * depth + "0" + "]" * depth
+        with self.assertRaises(self.wire.ContractError):
+            self.wire.mask_response({"mask": "auction"}, self.response(payload))
+
+    def test_cli_compare_reports_malformed_json_and_continues_to_later_cases(self):
+        depth = sys.getrecursionlimit() + 1
+        for malformed in [b"", b'{"a":1', b'{"a":1,}', b"[" * depth + b"0" + b"]" * depth]:
+            with self.subTest(body=malformed[:40]), tempfile.TemporaryDirectory() as root:
+                directories = self.capture_pair(root)
+                for directory in directories:
+                    path = directory / "requests.json"
+                    corpus = json.loads(path.read_text())
+                    corpus["cases"][0]["mask"] = "auction"
+                    path.write_text(json.dumps(corpus))
+                self.change_manifest(directories, corpus_sha256=hashlib.sha256(
+                    (directories[0] / "requests.json").read_bytes()).hexdigest())
+                for directory, body in zip(directories, [b'{"a":1}', malformed]):
+                    (directory / "one/response.body").write_bytes(body)
+                    (directory / "one/response.headers").write_bytes(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: " + str(len(body)).encode() + b"\r\n\r\n")
+                result = self.compare_captures(directories)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("FAIL one", result.stderr)
+                self.assertIn("PASS two", result.stdout)
+                self.assertIn("1 wire case(s) failed", result.stderr)
+                self.assertNotIn("PASS one", result.stdout)
+                self.assertNotIn("Traceback", result.stderr)
+
     def test_identical_bytes_pass_and_dates_are_masked(self):
         a = self.response(headers=[b"Date: Tue, 20 Oct 2026 01:00:00 GMT"])
         b = self.response(headers=[b"Date: Tue, 20 Oct 2026 02:00:00 GMT"])

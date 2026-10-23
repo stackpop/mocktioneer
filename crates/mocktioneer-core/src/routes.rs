@@ -211,6 +211,8 @@ where
 impl Middleware for Cors {
     #[inline]
     async fn handle(&self, ctx: RequestContext, next: Next<'_>) -> Result<Response, EdgeError> {
+        // CORS uses the default renderer. Middleware that observes original errors
+        // belongs inside Cors; custom app renderers need a framework context hook.
         let mut response = next.run(ctx).await.or_else(IntoResponse::into_response)?;
         apply_cors(response.headers_mut());
         Ok(response)

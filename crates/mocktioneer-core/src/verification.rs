@@ -7,7 +7,7 @@ use edgezero_core::{EdgeError, MonotonicClock, MonotonicInstant};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::mem::size_of;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 use url::Host;
 
@@ -42,7 +42,7 @@ struct JwksCache {
 struct CachedJwks {
     charge: usize,
     fetched_at: MonotonicInstant,
-    jwks: JwksResponse,
+    jwks: Arc<JwksResponse>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -89,11 +89,11 @@ pub enum VerificationError {
     reason = "entry charges sum to charged_bytes and every accepted total is bounded by 2 MiB"
 )]
 impl JwksCache {
-    fn get(&mut self, host: &str, now: MonotonicInstant) -> Option<JwksResponse> {
+    fn get(&mut self, host: &str, now: MonotonicInstant) -> Option<Arc<JwksResponse>> {
         if let Some(entry) = self.entries.get(host) {
             if cache_entry_is_fresh(entry, now) {
                 log::debug!("JWKS cache hit for {host}");
-                return Some(entry.jwks.clone());
+                return Some(Arc::clone(&entry.jwks));
             }
             log::debug!("JWKS cache expired for {host}");
         } else {
@@ -144,7 +144,7 @@ impl JwksCache {
             host,
             CachedJwks {
                 fetched_at: now,
-                jwks,
+                jwks: Arc::new(jwks),
                 charge,
             },
         );
@@ -183,7 +183,7 @@ fn jwks_body_too_large_error() -> VerificationError {
 }
 
 fn outbound_error_detail(error: &EdgeError) -> String {
-    if error.kind() == "internal" {
+    if error.status() == StatusCode::INTERNAL_SERVER_ERROR {
         "internal error".to_owned()
     } else {
         error.to_string()
@@ -235,12 +235,15 @@ async fn load_jwks(
     clock: &MonotonicClock,
     ctx: &RequestContext,
     domain: &str,
-) -> Result<JwksResponse, VerificationError> {
+) -> Result<Arc<JwksResponse>, VerificationError> {
     let host = validate_jwks_host(domain)?;
-    if let Ok(mut cached) = cache.lock()
-        && let Some(jwks) = cached.get(&host, clock.now())
-    {
-        return Ok(jwks);
+    match cache.lock() {
+        Ok(mut cached) => {
+            if let Some(jwks) = cached.get(&host, clock.now()) {
+                return Ok(jwks);
+            }
+        }
+        Err(_) => log::debug!("JWKS cache lock poisoned; bypassing cache for {host}"),
     }
 
     let jwks = fetch_jwks(ctx, &host).await?;
@@ -248,7 +251,7 @@ async fn load_jwks(
     if let Ok(mut cached) = cache.lock() {
         cached.insert(host, jwks.clone(), clock.now());
     }
-    Ok(jwks)
+    Ok(Arc::new(jwks))
 }
 
 fn find_public_key<'jwks>(
@@ -585,7 +588,7 @@ mod tests {
     use futures::stream::iter;
     use std::io::Error as IoError;
     use std::panic::catch_unwind;
-    use std::sync::Arc;
+    use std::ptr::eq;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use edgezero_core::body::Body;
@@ -805,6 +808,40 @@ mod tests {
         assert_eq!(requests[0].method, Method::GET);
         assert_eq!(requests[0].timeout, Some(Duration::from_secs(5)));
         assert_eq!(requests[0].cache, OutboundCachePolicy::PlatformDefault);
+    }
+
+    #[test]
+    fn outbound_internal_errors_keep_diagnostics_redacted() {
+        use edgezero_core::error::StoreExtractionReason;
+        assert_eq!(
+            outbound_error_detail(&EdgeError::internal(IoError::other("private diagnostic"))),
+            "internal error"
+        );
+        for reason in [
+            StoreExtractionReason::BackendFailure,
+            StoreExtractionReason::IntegrityMismatch,
+            StoreExtractionReason::InvalidSecretValue,
+            StoreExtractionReason::MalformedEnvelope,
+            StoreExtractionReason::MissingRegistry,
+            StoreExtractionReason::StructuralLimit,
+            StoreExtractionReason::UnsupportedVersion,
+            StoreExtractionReason::UnknownStore,
+            StoreExtractionReason::ValueTooLarge,
+        ] {
+            let error = EdgeError::store_extraction(reason, "private diagnostic", None);
+            assert_eq!(
+                outbound_error_detail(&error),
+                "internal error",
+                "{reason:?}"
+            );
+        }
+        for error in [
+            EdgeError::bad_gateway("public transport message"),
+            EdgeError::service_unavailable("public availability message"),
+            EdgeError::bad_request("public request message"),
+        ] {
+            assert_eq!(outbound_error_detail(&error), error.to_string());
+        }
     }
 
     #[test]
@@ -1413,6 +1450,32 @@ mod tests {
             ),
         };
         JwksResponse { keys: vec![key] }
+    }
+
+    #[test]
+    fn cache_hits_share_key_storage_without_changing_accounting() {
+        let now = MonotonicInstant::now();
+        let mut cache = JwksCache::default();
+        cache.insert(
+            "example.com".to_owned(),
+            JwksResponse {
+                keys: vec![JwkKey {
+                    kid: "key".to_owned(),
+                    x: "public-key".to_owned(),
+                }],
+            },
+            now,
+        );
+        let charged = cache.charged_bytes;
+        let first = cache.get("example.com", now).unwrap();
+        let second = cache.get("example.com", now).unwrap();
+        assert!(eq(first.keys.as_ptr(), second.keys.as_ptr()));
+        assert_eq!(cache.charged_bytes, charged);
+        assert_accounting(&cache);
+        cache.remove("example.com");
+        assert_eq!(first.keys[0].kid, "key");
+        assert_eq!(second.keys[0].x, "public-key");
+        assert_accounting(&cache);
     }
 
     #[test]

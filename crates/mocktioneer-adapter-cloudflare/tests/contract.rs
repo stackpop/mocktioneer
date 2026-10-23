@@ -272,6 +272,43 @@ async fn empty_statuses_have_zero_length_through_cloudflare_egress() {
         );
         assert!(response.bytes().await.expect("empty bytes").is_empty());
     }
+
+    let app = edgezero_core::app::App::build::<MocktioneerApp>(
+        edgezero_adapter_cloudflare::CLOUDFLARE_PLATFORM,
+    )
+    .expect("build Mocktioneer app");
+    for (path, status) in [
+        ("/sync/start?ts_domain=bad%2Fhost", 400_u16),
+        ("/sync/start?ts_domain=ts.publisher.com", 302_u16),
+    ] {
+        let (env, ctx) = test_env_ctx();
+        let mut response = CloudflareService::new(&app)
+            .dispatch(cf_request(CfMethod::Get, path), env, ctx)
+            .await
+            .expect("Mocktioneer response");
+        assert_eq!(response.status_code(), status);
+        assert_eq!(
+            response.headers().get("content-length").expect("header"),
+            Some("0".to_owned())
+        );
+        if status == 302 {
+            assert!(
+                response
+                    .headers()
+                    .get("location")
+                    .unwrap()
+                    .unwrap()
+                    .starts_with("https://ts.publisher.com/sync?")
+            );
+        }
+        assert!(
+            response
+                .bytes()
+                .await
+                .expect("empty Mocktioneer bytes")
+                .is_empty()
+        );
+    }
 }
 
 #[wasm_bindgen_test]

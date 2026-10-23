@@ -53,6 +53,11 @@
     error logging by placing CORS outside RequestLogger, clarifies clock-dependent
     operational checks and restores JWKS debug diagnostics. R7 timeout and cache
     policies remain unchanged.
+  - **R9:** the second review fixes malformed-response comparison, adds Spin
+    admitted-ingress/finalization coverage and real handler framing contracts,
+    shares immutable cached keys and preserves redaction without kind-string
+    matching. The new JWKS destination-admission decision remains a merge gate
+    pending the user's answer; DNS syntax validation is not SSRF prevention.
 
 ## 0. Confirmed scope (2026-10-20)
 
@@ -410,7 +415,7 @@ adoption step.
   - `EdgeError::internal(..)` displays as `internal error: {source}`. Some
     adapter internals carry provider diagnostics in that source; Cloudflare, for
     example, wraps JavaScript runtime errors.
-  - **Rule:** when `err.kind() == "internal"`, the detail is the fixed text
+  - **Rule:** when `err.status() == StatusCode::INTERNAL_SERVER_ERROR`, the detail is the fixed text
     `internal error`. Otherwise it is `err.to_string()`.
   - A test feeds the stub an internal error whose source contains a sentinel
     string, and asserts that the sentinel does not appear in the reason.
@@ -476,7 +481,11 @@ adoption step.
        browser tests. Never replace a real `FixedLengthStream`.
      - The required local `wrangler dev` check (§9) covers the real Workers
        path. Passing the polyfilled tests cannot substitute for that check.
-- **Spin contract tests:** use `App::build`. `oneshot` is unchanged.
+- **Spin contract tests:** build with `SPIN_PLATFORM`, validate normalized heads,
+  admit and dispatch through the app, then prepare and complete the egress
+  envelope. Controlled-clock tests cover selected read budgets and body expiry;
+  the config limit is asserted as 2 s. These are WASI core lifecycle tests,
+  not native Spin request-handle or provider writer tests.
 - **The existing cache-seeding test** (`verification.rs` ~925-939, which inserts
   `Instant::now()`) moves to the new cache API (§6.2).
 - **`router().oneshot(..)`** still works for handler tests. It skips:
@@ -615,9 +624,13 @@ Viceroy inherits arbitrary host variables into the guest.
   - Evict expired entries first, then the oldest.
   - Treat `checked_duration_since` returning `None` as expired.
   - Treat a poisoned lock as a miss. Bypass both cache lookup and insertion
-    when the lock is poisoned; a successful fetch must still reach signature
+    when the lock is poisoned and emit a debug diagnostic; a successful fetch must still reach signature
     verification without failing on a second lock acquisition.
   - Release the lock before awaiting the fetch, as today.
+  - Cache hits clone an `Arc` to immutable key storage instead of deep-cloning
+    strings under the mutex. Insertion still charges the owned clone retained by
+    the cache; fixed Arc metadata and values retained by in-flight requests are
+    outside the cache allocation budget.
 - **Why now and not later:** the cache outlives requests today on Axum, the
   Cloudflare isolate and Spin. Spin's WASI P3 components are subject to instance
   reuse. Once the clock is fixed, the Cloudflare cache starts filling, so the

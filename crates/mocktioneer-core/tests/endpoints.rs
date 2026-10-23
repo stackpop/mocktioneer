@@ -17,7 +17,6 @@ mod tests {
     };
     use futures::executor::block_on;
     use futures::stream::poll_fn;
-    use std::collections::HashMap;
     use std::io::Error as IoError;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
@@ -35,36 +34,6 @@ mod tests {
     }
 
     struct FixtureConfigStore(StoreReply);
-
-    /// In-memory config store returning a blob envelope by key.
-    struct MapConfigStore(HashMap<String, String>);
-
-    #[async_trait(?Send)]
-    impl ConfigStore for MapConfigStore {
-        async fn get(&self, key: &str) -> Result<Option<ConfigValue>, ConfigStoreError> {
-            Ok(self.0.get(key).cloned().map(Into::into))
-        }
-
-        async fn get_bounded(
-            &self,
-            key: &str,
-            clock: &edgezero_core::MonotonicClock,
-            deadline: edgezero_core::Deadline,
-            max_backend_bytes: u64,
-            max_value_bytes: u64,
-        ) -> Result<BoundedStoreRead<ConfigValue>, ConfigStoreError> {
-            if deadline.is_expired_at(clock.now()) {
-                return Err(ConfigStoreError::DeadlineExceeded);
-            }
-            finish_bounded_config_read(
-                Ok(self.0.get(key).cloned()),
-                clock,
-                deadline,
-                max_backend_bytes,
-                max_value_bytes,
-            )
-        }
-    }
 
     #[async_trait(?Send)]
     impl ConfigStore for FixtureConfigStore {
@@ -454,22 +423,9 @@ mod tests {
     /// The auction/APS handlers use the fail-loud `AppConfig` extractor, so the
     /// router needs this bound to serve those routes.
     fn config_registry(bid_cpm: f64) -> ConfigRegistry {
-        let data = serde_json::json!({ "bid_cpm": bid_cpm });
-        let blob =
-            serde_json::to_string(&BlobEnvelope::new(data, "2026-01-01T00:00:00Z".to_owned()))
-                .expect("serialize envelope");
-        let store = MapConfigStore(
-            [("mocktioneer_config".to_owned(), blob)]
-                .into_iter()
-                .collect(),
-        );
-        StoreRegistry::single_id(
-            "mocktioneer_config".to_owned(),
-            ConfigStoreBinding {
-                handle: ConfigStoreHandle::new(Arc::new(store)),
-                default_key: "mocktioneer_config".to_owned(),
-            },
-        )
+        fixture_registry(StoreReply::Blob(envelope(
+            serde_json::json!({ "bid_cpm": bid_cpm }),
+        )))
     }
 
     fn make_request(method: Method, uri: &str, body: Body) -> Request {
