@@ -6,7 +6,7 @@
 
 **Architecture:** Keep business logic and policy in `mocktioneer-core`, with thin adapter entrypoints and runtime-specific contract fixtures. Make the forced API cut atomically, then add the bounded cache, manifest contract, admission policy and request caps in independently testable units. Capture the old service before repinning and compare it against the final implementation.
 
-**Tech Stack:** Rust 1.98.1, EdgeZero at an exact Git revision, Axum, Fastly/Viceroy 0.21.0, Workers/workerd, Spin 4.1.0/Wasmtime 48.0.2, wasm-bindgen 0.2.128, Python 3 standard library, Playwright, VitePress, Node 24.20.0.
+**Tech Stack:** Rust 1.98.1, EdgeZero at an exact Git revision, Axum, Fastly/Viceroy 0.21.0, Workers/workerd, Spin 4.1.0/Wasmtime 48.0.2, wasm-bindgen 0.2.128, Node built-ins, Playwright, VitePress, Node 24.20.0.
 
 ---
 
@@ -18,7 +18,7 @@ The 2026-10-23 second review adds a JWKS destination-admission decision that
 remains open. The previous implementation checkpoints are complete; merge
 qualification additionally requires resolving this new security policy.
 
-Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R10. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
+Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R11. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
 
 Review on 2026-10-20 checked the exact proposed upstream pin `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`, not merely the upstream checkout's HEAD. PR #275 remains draft and unmerged. Its current head, `7cccaf10734914161803317aec6c55c22c2bccc9`, adds seven documentation files relative to that pin; it changes no implementation, dependencies or toolchain. Reconcile the spec's stale head metadata and its repinning rule in Task 0; do not silently change Cargo source identity.
 
@@ -76,7 +76,7 @@ Use @superpowers:test-driven-development for new behavior, @superpowers:systemat
 | Files | Responsibility |
 | --- | --- |
 | This plan; `docs/superpowers/specs/2026-10-18-edgezero-pr275-migration-design.md` | Decisions, review corrections, execution tracking and evidence links. |
-| Create `tests/wire-contract/{README.md,requests.json,wire_contract.py,test_wire_contract.py}` | Reproducible requests, raw capture and narrowly scoped comparison. Captures themselves remain untracked. |
+| Create `tests/wire-contract/{README.md,requests.json,wire_contract.mjs,wire_contract.test.mjs}` | Reproducible requests, raw capture and narrowly scoped comparison. Captures themselves remain untracked. |
 | `Cargo.toml`, `Cargo.lock`, `.tool-versions` | Six matching EdgeZero sources, dependency resolution and runtime versions. |
 | `crates/mocktioneer-core/Cargo.toml`, `src/{lib,routes,verification}.rs`, `tests/endpoints.rs` | Shared construction, hooks, caps, fetch/cache policy, error and compatibility tests. No business-logic move into adapters. |
 | `crates/mocktioneer-adapter-fastly/{Cargo.toml,src/main.rs,tests/contract.rs}` | Raw-ABI entrypoint and updated contract API/prepared-frame tests. |
@@ -102,7 +102,7 @@ Axum and Cloudflare production entrypoints, the CLI implementation, Dockerfile a
 
 ## Task 1: Preserve an executable wire baseline
 
-**Create:** `tests/wire-contract/{README.md,requests.json,wire_contract.py,test_wire_contract.py}`.
+**Create:** `tests/wire-contract/{README.md,requests.json,wire_contract.mjs,wire_contract.test.mjs}`.
 
 - [x] Establish a writable evidence directory and task-local tools directory. Record command versions, checked-out SHA, tree status and the spec revision there. Use task-specific environment names, never repurpose `HOME` or `CODEX_HOME`.
 
@@ -130,8 +130,8 @@ Axum and Cloudflare production entrypoints, the CLI implementation, Dockerfile a
 
   Reusing already verified 0.2.128 binaries is acceptable. On the reviewed machine PATH resolved wasm-bindgen 0.2.121 and Wasmtime 45.0.0; neither proves the required versions. Use a task-local Wrangler install/wrapper under Node 24.20.0 (the existing asdf Wrangler shim failed). Set `WRANGLER_LOG_PATH` inside the evidence directory and `WASM_BINDGEN_BIN` to the matching binary for worker-build. Browser contracts need Chromium/WebDriver as selected by wasm-bindgen-test; record actual runner/browser versions.
 
-- [x] Write meaningful comparator tests before the harness: identical data passes; deterministic mtkid/price/body/header mutations fail; duplicate-header order changes fail; UUID count or cross-reference mismatches fail; an unlisted error change fails even if its status matches an allowed exception. Date and UUID values may differ only at documented sites. Two exact baseline validator-message permutations are additionally allowed for the named APS/mediation cases as documented in spec §8; no other error normalization is permitted. Use standard-library `unittest`, with fixture bytes kept in the test file.
-- [x] Run `python3 -m unittest discover -s tests/wire-contract -p 'test_*.py' -v`; confirm the first run fails because the comparator is absent. Implement the minimal capture/comparison code, then rerun and require all tests to pass.
+- [x] Write meaningful comparator tests before the harness: identical data passes; deterministic mtkid/price/body/header mutations fail; duplicate-header order changes fail; UUID count or cross-reference mismatches fail; an unlisted error change fails even if its status matches an allowed exception. Date and UUID values may differ only at documented sites. Two exact baseline validator-message permutations are additionally allowed for the named APS/mediation cases as documented in spec §8; no other error normalization is permitted. Use Node's built-in test runner, with fixture bytes kept in the test file.
+- [x] Run `node --test tests/wire-contract/wire_contract.test.mjs`; confirm the first run fails because the comparator is absent. Implement the minimal capture/comparison code, then rerun and require all tests to pass.
 - [x] Implement explicit `capture --base-url URL --scenario seeded|unseeded --out DIR`, `compare --before DIR --after DIR` and `characterize-raw --base-url URL --out DIR` commands. Capture via `curl --http1.1 --raw -sS -D <headers> -o <body>` without following redirects or piping through `jq`. Store the status line, ordered duplicate headers and raw body bytes. Preserve the original captures; normalize only in the comparison view. Use a separate small TCP path for malformed raw framing.
 - [x] Build the corpus from spec §8: all success paths in `examples/`, OpenRTB, APS, mediation success and errors, root/static/creative/pixel/click/size/win endpoints, each explicit OPTIONS route, malformed JSON, validator failure, no Content-Type, 404/405, sync cookie/redirect and auth/allowlist paths. Include normalized-head over-limit cases, exact 1 MiB auction/APS and 8 MiB mediation boundaries, 2 MiB mediation success, malformed/validator mediation errors and large-body fallback cases. Exclude external partner registration, public-host signed success and framework introspection as the spec directs. Introspection receives focused tests in Tasks 4–5.
 - [x] Give every case a stable ID, startup scenario, explicit request bytes/headers and expected difference number(s) from §7. Do not allow an entire response to differ merely because one field is permitted to change. For example F8 changes Axum's no-Content-Type outcome; F4 permits only canonical `Allow`; F12/decoding changes belong in stub tests unless the local wire fixture can reach that path. Raw cases are a separate report and cannot satisfy F5.
@@ -312,7 +312,7 @@ The six source pins, trait signatures, entrypoints and test fixtures depend on e
     run: npm run build
   ```
 
-  Add `python3 -m unittest discover -s tests/wire-contract -p 'test_*.py' -v` to an existing suitable PR job so the committed wire comparator remains checked. Do not add network captures to ordinary unit CI.
+  Add `node --test tests/wire-contract/wire_contract.test.mjs` to an existing suitable PR job so the committed wire comparator remains checked. Do not add network captures to ordinary unit CI.
 - [x] Update tool versions, the fallible App construction examples, request accessors and the incorrect “validation returns 400” statement (validator failures are 422). Keep AGENTS as the short pointer to CLAUDE; change its fallback only when necessary. Do not copy the known stale EdgeZero examples listed in spec §12.2.
 - [x] Document 1 MiB auction/APS and 8 MiB mediation caps; 10 s bid/30 s default read budgets; 2 s observed config-read expiry; exact config error statuses and Retry-After; Axum HTTP/1 limits and no-Content-Type acceptance. Describe normalized-head limits without promising raw framing rejection.
 - [x] Document no JWKS redirects, five-second observed outbound budget, final buffered 64 KiB cap, successful decoding/negotiation changes and error precedence/sanitization. Explain canonical 32-entry/2 MiB owned-allocation charging and ten-minute local residency, including that provider caching can refill stale keys. Do not present the budget as total memory or guaranteed rotation freshness.
@@ -366,8 +366,8 @@ The six source pins, trait signatures, entrypoints and test fixtures depend on e
 - [x] Create a separate disposable candidate checkout at the final implementation commit, with its own target/config state, just as for the baseline. Run its Axum server and CLI from that checkout's root, leaving the developer's original ignored config untouched. Run the final corpus using Task 1's exact host, port, scrubbed environment and two separate startup scenarios. Commands for each captured scenario are:
 
   ```sh
-  python3 tests/wire-contract/wire_contract.py capture --base-url http://127.0.0.1:8787 --scenario seeded --out "$MIGRATION_EVIDENCE/after/seeded"
-  python3 tests/wire-contract/wire_contract.py compare --before "$MIGRATION_EVIDENCE/before/seeded" --after "$MIGRATION_EVIDENCE/after/seeded"
+  node tests/wire-contract/wire_contract.mjs capture --base-url http://127.0.0.1:8787 --scenario seeded --out "$MIGRATION_EVIDENCE/after/seeded"
+  node tests/wire-contract/wire_contract.mjs compare --before "$MIGRATION_EVIDENCE/before/seeded" --after "$MIGRATION_EVIDENCE/after/seeded"
   ```
 
   Repeat with `unseeded`. Require no differences beyond the case-specific accepted wire changes, with each difference identified by number and exact field. Attach raw TCP characterization separately. Do not pass unexpected differences by broadening masks or replacing byte comparison with semantic JSON equality.
@@ -410,7 +410,7 @@ Document checks: Markdown parse, all nine shell-block syntax checks, fence/link 
 - Baseline source uses an exact-SHA `git archive` snapshot because workspace permissions deny creating `.git/worktrees` metadata. The archive preserves the reviewed application files without changing repository metadata.
 - Source/adapter proposal agents independently confirmed the audited-pin strategy; latest upstream wire changes are deferred to a separate adoption review.
 
-- Task 1 implementation: 85 seeded + 2 unseeded cases; 25 Python regressions pass, independent spec and quality reviews pass. Expanded baseline/repeat captures at `baseline-v4/{seeded,unseeded}` and `baseline-repeat-v4/{seeded,unseeded}` self-compare successfully. Raw characterization is saved under `baseline-raw`.
+- Task 1 implementation: 85 seeded + 2 unseeded cases; 25 comparator regressions pass, independent spec and quality reviews pass. Expanded baseline/repeat captures at `baseline-v4/{seeded,unseeded}` and `baseline-repeat-v4/{seeded,unseeded}` self-compare successfully. Raw characterization is saved under `baseline-raw`.
 - Baseline validation nondeterminism: APS and mediation derive validators render fixed `min`/`value` parameters in either order. Spec §8 and the comparator now permit only the two exact observed bodies for those named cases, with mutation guards. Auction uses its deterministic custom media validator for the 422 case.
 - Forced port / cache checkpoints: native verification 44 tests pass; Fastly 4 contracts and Spin 2 contracts pass. Cloudflare 5 wasm contracts pass, including signed fetch followed by a cache hit, using wasm-bindgen runner 0.2.128 with cached Firefox 155.0 selected by task-local WebDriver configuration. The installed Firefox 158.0 cannot start while a 158.0.1 update is pending; no global browser state was changed.
 - Endpoint policy fixtures first reproduced missing clock/head enforcement through routing-only dispatch, then passed after using normalized validation, admission and `dispatch_admitted`. All reachable config-error cases are asserted on both AppConfig routes, including exact messages/Retry-After; controlled-clock expiry distinguishes config 503 from body 408.
@@ -658,3 +658,52 @@ delegates destination authorization to applications; it adds no portable
 resolved-IP or DNS-pinning control. The user's destination-policy question and
 its merge gate remain open. Hosted qualification and shipping-tag adoption
 also remain separate; local tests do not promote provider guarantees.
+
+### Node wire tooling conversion (2026-10-25, R11)
+
+The user requires shell or Node scripts instead of committed Python. Replace
+the two PR-added Python files with `tests/wire-contract/wire_contract.mjs` and
+`wire_contract.test.mjs`, using Node 24 built-ins and curl with no packages.
+Keep the exact corpus/digest, archive layout, ordered Buffer comparisons, UUID
+masking and all F/C exceptions. Retain all 49 regression cases and their mutation
+loops, including malformed-case continuation and strict archived-request checks.
+
+- [x] Port the regression suite first and record expected failures with the
+  missing Node implementation. Use the same exported helper names and positional
+  optional reference arguments to minimize translation changes.
+- [x] Port capture/compare/raw characterization to Node. Preserve strict UTF-8,
+  escaped JSON string spans, UUID version/variant and byte/length checks. Use
+  bounded JSON scanning and retain raw TCP observations separately.
+- [x] Remove both Python files; update CLI examples, CLAUDE CI notes and the
+  existing Node-equipped workflow job to `node --test` without npm dependencies.
+- [x] Run all regressions, current and historical saved comparisons/mutations,
+  plus a fresh 85 seeded + 2 unseeded Node capture and raw framing check. Keep
+  prior captures immutable; run required Rust and docs checks.
+- [x] Obtain independent spec/quality review. Publish through the same draft
+  PR #131 and issue #130; their live records carry remote-head/CI state. Leave
+  the d47 pin and application policies intact.
+
+Read-only test/API and CI/docs audits both recommend the built-in Node runner.
+Use the existing format-docs Node setup rather than provisioning another job;
+converting to shell would add fragile binary/JSON handling and runtime tools.
+
+Final verification: **56 Node tests** (all 49 original cases plus seven port/CLI
+guards), **52 archived comparisons / 2,262 case checks**, and **435 fresh case
+checks** covering both baselines, archived d47, self and independent restart
+repeat comparisons. Each scenario pair retains all **85 seeded + 2 unseeded**
+cases. Both raw TCP request byte sequences match the archived baseline. The
+corpus is unchanged. Required **201 workspace tests**, Rust fmt/strict Clippy/
+feature compilation, docs lint/format/build and Node formatting passed. No Rust
+source, dependency or application behavior changed.
+
+Evidence: `/tmp/mocktioneer-node-wire-20261025.W3ShCSqJ/`, especially
+`archive-comparisons-final/qualification.json`, `live-final/qualification.json`,
+`node-final-green.log` and required Rust/docs logs. The initial repeat capture
+properly failed on a curl55 connection reset for the 9 MiB mediation upload; it
+remains under `live/`. All request bytes matched the archive, and the unchanged
+d47 server logged 413. Sixteen direct identical archived/Node requests returned
+413; the full fresh rerun and final run passed. An early-response/unread-upload
+transport race is plausible, not proven. No request, timeout, retry or comparator
+rule was changed to hide the failure. Final raw observations retain their local
+host-parser scope; earlier provider runtime evidence is historical and was not
+unnecessarily rerun for this tooling-only conversion.

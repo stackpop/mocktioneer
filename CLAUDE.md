@@ -142,6 +142,7 @@ through `render.rs`. Do not inline ad markup in handlers.
 
 ### Style Rules
 
+- Use shell or Node scripts for repository tooling; do not add Python code.
 - **WASM compatibility first**: avoid Tokio and runtime-specific deps in core.
   Use `async-trait` without `Send` bounds.
 - **Colocate tests** with implementation modules (`#[cfg(test)]` in the same file).
@@ -192,7 +193,7 @@ Every PR must pass:
 6. Playwright e2e tests (`tests/playwright/`)
 7. ESLint + Prettier + `npm run build` on `docs/`
 8. Offline wire-contract comparator tests:
-   `python3 -m unittest discover -s tests/wire-contract -p 'test_*.py' -v`
+   `node --test tests/wire-contract/wire_contract.test.mjs`
 
 Docker image is built and pushed to `ghcr.io/stackpop/mocktioneer` on push to
 main and on releases.

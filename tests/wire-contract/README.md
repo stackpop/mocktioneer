@@ -1,6 +1,6 @@
 # HTTP/1 wire contract
 
-This Python standard-library harness implements migration design §8. The committed
+This Node built-in harness implements migration design §8. The committed
 `requests.json` contains 85 seeded cases and two unseeded cases with fixed caller
 IDs, literal UTF-8 bodies and ordered request headers. Large requests use the
 documented deterministic generators. Exact 1 MiB auction/APS and 8 MiB mediation
@@ -9,7 +9,7 @@ the size boundaries. Padding is JSON whitespace, so response metadata stays smal
 Captures belong outside the repository,
 for example under a fresh `/tmp/mocktioneer-wire/` directory.
 
-Use Python 3.9+ and `curl`. There are no Python packages to install. All traffic
+Use the Node version in `.tool-versions` and `curl`. No npm packages are needed. All traffic
 stays at `http://127.0.0.1:8787`; redirects are captured without following them.
 
 Prepare separate disposable baseline and candidate trees. For **each revision**,
@@ -30,9 +30,9 @@ absent in that disposable tree before starting the server; do not push config.
 Keep crate versions, host, port and environment identical across revisions.
 
 ```sh
-python3 tests/wire-contract/wire_contract.py capture \
+node tests/wire-contract/wire_contract.mjs capture \
   --base-url http://127.0.0.1:8787 --scenario seeded --out /tmp/mocktioneer-wire/before/seeded
-python3 tests/wire-contract/wire_contract.py capture \
+node tests/wire-contract/wire_contract.mjs capture \
   --base-url http://127.0.0.1:8787 --scenario unseeded --out /tmp/mocktioneer-wire/before/unseeded
 ```
 
@@ -53,9 +53,9 @@ captures contain the same incorrect request. Historical captures are validated
 against their saved corpus rather than the current checkout's request list.
 
 ```sh
-python3 tests/wire-contract/wire_contract.py compare \
+node tests/wire-contract/wire_contract.mjs compare \
   --before /tmp/mocktioneer-wire/before/seeded --after /tmp/mocktioneer-wire/after/seeded
-python3 tests/wire-contract/wire_contract.py compare \
+node tests/wire-contract/wire_contract.mjs compare \
   --before /tmp/mocktioneer-wire/before/unseeded --after /tmp/mocktioneer-wire/after/unseeded
 ```
 
@@ -66,9 +66,9 @@ repeat the capture commands into `before-repeat/seeded` and
 detects nondeterminism beyond generated IDs and `Date` before comparing revisions.
 
 ```sh
-python3 tests/wire-contract/wire_contract.py compare \
+node tests/wire-contract/wire_contract.mjs compare \
   --before /tmp/mocktioneer-wire/before/seeded --after /tmp/mocktioneer-wire/before-repeat/seeded
-python3 tests/wire-contract/wire_contract.py compare \
+node tests/wire-contract/wire_contract.mjs compare \
   --before /tmp/mocktioneer-wire/before/unseeded --after /tmp/mocktioneer-wire/before-repeat/unseeded
 ```
 
@@ -139,7 +139,7 @@ candidate implements C8; the admitted-dispatch tests assert that requirement.
 
 The corpus digest changes when C8 or F14 is added. Capture the pre-PR baseline,
 the immediately preceding PR revision, an independent repeat of each baseline,
-and the candidate again, using this checkout's `wire_contract.py` for every
+and the candidate again, using this checkout's `wire_contract.mjs` for every
 capture so each saves the same revised `requests.json`. Require both baseline
 repeat comparisons and each baseline→candidate comparison to pass for both
 startup scenarios. Keep prior captures intact; their saved corpus and digests
@@ -151,7 +151,7 @@ current F14 cap cases require the complete fields on both responses.
 Record raw framing **separately** for each revision:
 
 ```sh
-python3 tests/wire-contract/wire_contract.py characterize-raw \
+node tests/wire-contract/wire_contract.mjs characterize-raw \
   --base-url http://127.0.0.1:8787 --out /tmp/mocktioneer-wire/before/raw
 ```
 
@@ -163,7 +163,7 @@ The >100-header case may likewise return Hyper's empty 431 before normalized
 validation; a raw result does not establish admitted-dispatch validation.
 
 ```sh
-python3 -m unittest discover -s tests/wire-contract -p 'test_*.py'
+node --test tests/wire-contract/wire_contract.test.mjs
 ```
 
 The offline tests cover generated-ID/reference counts, UUID version/variant,

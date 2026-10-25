@@ -72,6 +72,10 @@
     preserving its existing routed-error CORS and routing/head-error scope.
     Upstream body overflow becomes 413 `payload_too_large` (F14), without
     changing caps, budgets, CORS or cache policy. The full local matrix is rerun.
+  - **R11:** the user's 2026-10-25 language preference replaces the PR-added
+    Python harness/tests with Node built-ins and curl. Archive layout, corpus
+    bytes/digest and the wire contracts below are unchanged; CI runs the Node
+    regressions with the existing pinned Node setup.
 
 ## 0. Confirmed scope (2026-10-20)
 
@@ -990,6 +994,9 @@ exact message.
 
 **Automated (CI):**
 
+- **Wire comparator:** `node --test tests/wire-contract/wire_contract.test.mjs`
+  in the existing Node-equipped `format-docs` job. No npm dependency is needed
+  for the harness or tests; archive comparisons retain their original bytes.
 - `cargo fmt`, strict clippy, `cargo test --workspace --all-targets`, the
   `fastly cloudflare` feature check, and `config validate --strict` (the
   `test.yml` invocation).

@@ -46,9 +46,6 @@ jobs:
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
 
-      - name: Test wire-contract comparator (offline)
-        run: python3 -m unittest discover -s tests/wire-contract -p 'test_*.py' -v
-
       - name: Run cargo fmt
         run: cargo fmt --all -- --check
 
@@ -76,6 +73,10 @@ jobs:
           node-version: ${{ steps.node-version.outputs.node-version }}
           cache: "npm"
           cache-dependency-path: docs/package.json
+
+      - name: Test wire-contract comparator (offline)
+        working-directory: .
+        run: node --test tests/wire-contract/wire_contract.test.mjs
 
       - name: Install dependencies
         run: npm ci
