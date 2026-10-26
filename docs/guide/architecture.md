@@ -51,9 +51,13 @@ Each adapter crate is minimal - it just wires up the EdgeZero runtime:
 
 ```rust
 // mocktioneer-adapter-axum/src/main.rs
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    edgezero_adapter_axum::dev_server::run_app::<mocktioneer_core::MocktioneerApp>()?;
-    Ok(())
+fn main() {
+    if let Err(err) =
+        edgezero_adapter_axum::dev_server::run_app::<mocktioneer_core::MocktioneerApp>()
+    {
+        eprintln!("mocktioneer adapter failed: {err}");
+        std::process::exit(1);
+    }
 }
 ```
 

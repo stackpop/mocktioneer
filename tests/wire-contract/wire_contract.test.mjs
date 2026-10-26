@@ -221,10 +221,18 @@ function capture_pair(root = temporary(), scenario = "seeded") {
   return directories;
 }
 
-function compare_captures(directories) {
+function compare_captures(directories, options = []) {
   const result = spawnSync(
     process.execPath,
-    [SCRIPT, "compare", "--before", directories[0], "--after", directories[1]],
+    [
+      SCRIPT,
+      "compare",
+      "--before",
+      directories[0],
+      "--after",
+      directories[1],
+      ...options,
+    ],
     { encoding: "utf8" },
   );
   assert.ifError(result.error);
@@ -273,6 +281,190 @@ function body_cap_f14(name = "auction-over-1mib") {
   }
   return [caseDefinition, before, ...errors];
 }
+
+function body_cap_captures(name, beforeStatus, afterStatus, overrides = {}) {
+  const corpus = readJson(join(HERE, "requests.json"));
+  const cap = {
+    ...corpus.cases.find((item) => item.id === name),
+    ...overrides,
+  };
+  const reference = corpus.cases.find((item) => item.id === cap.reference);
+  corpus.cases = [reference, cap];
+  const corpusBytes = Buffer.from(JSON.stringify(corpus));
+  const [, auctionSuccess, oldError, newError] = body_cap_f14(name);
+  let success = auctionSuccess;
+  if (cap.mask === "aps") {
+    const body = Buffer.from(
+      JSON.stringify({
+        contextual: {
+          slots: [{ amzniid: UUID_A, crid: UUID_A + "-mocktioneer" }],
+        },
+      }),
+    );
+    success = response(
+      body,
+      200,
+      auctionSuccess.lines
+        .slice(1)
+        .map((line) =>
+          line.toString().startsWith("content-length:")
+            ? `content-length: ${body.length}`
+            : line,
+        ),
+    );
+  }
+  const responses = new Map([
+    [200, success],
+    [400, oldError],
+    [413, newError],
+  ]);
+  const root = temporary();
+  const directories = ["before", "after"].map((side) => join(root, side));
+  for (const [index, directory] of directories.entries()) {
+    mkdirSync(directory);
+    writeFileSync(join(directory, "requests.json"), corpusBytes);
+    writeJson(join(directory, "capture.json"), {
+      scenario: "seeded",
+      base_url: wire.BASE_URL,
+      corpus_sha256: sha256(corpusBytes),
+      cases: corpus.cases.map((item) => item.id),
+    });
+    for (const caseDefinition of corpus.cases) {
+      const destination = join(directory, caseDefinition.id);
+      mkdirSync(destination);
+      const [path, headers, body] = wire.request_bytes(caseDefinition);
+      writeJson(join(destination, "request.json"), {
+        method: caseDefinition.method,
+        path,
+        headers,
+      });
+      writeFileSync(join(destination, "request.body"), body);
+      writeFileSync(join(destination, "curl.exit"), "0\n");
+      const captured =
+        caseDefinition === reference
+          ? success
+          : responses.get([beforeStatus, afterStatus][index]);
+      writeFileSync(join(destination, "response.headers"), captured.head);
+      writeFileSync(join(destination, "response.body"), captured.body);
+    }
+  }
+  return directories;
+}
+
+test("test_cli_candidate_comparisons_require_f14_overflow_status", () => {
+  for (const name of [
+    "auction-over-1mib",
+    "aps-over-1mib",
+    "mediation-over-8mib",
+  ]) {
+    for (const [before, after] of [
+      [200, 200],
+      [400, 400],
+      [413, 413],
+      [200, 413],
+      [400, 413],
+    ]) {
+      const result = compare_captures(body_cap_captures(name, before, after));
+      if (after === 413) {
+        assert.equal(result.status, 0, result.stderr);
+        assert.ok(result.stdout.includes(`PASS ${name}`), result.stdout);
+      } else {
+        assert.notEqual(result.status, 0, `${name}: ${before}/${after} passed`);
+        assert.ok(
+          result.stderr.includes("F14 candidate requires 413"),
+          result.stderr,
+        );
+      }
+    }
+  }
+});
+
+test("test_cli_baseline_repeat_requires_unchanged_f14_cap_status", () => {
+  for (const name of [
+    "auction-over-1mib",
+    "aps-over-1mib",
+    "mediation-over-8mib",
+  ]) {
+    for (const [before, after] of [
+      [200, 200],
+      [400, 400],
+      [413, 413],
+      [200, 413],
+      [400, 413],
+    ]) {
+      const result = compare_captures(body_cap_captures(name, before, after), [
+        "--baseline-repeat",
+      ]);
+      if (before === after) {
+        assert.equal(result.status, 0, result.stderr);
+        assert.ok(result.stdout.includes(`PASS ${name}`), result.stdout);
+      } else {
+        assert.notEqual(result.status, 0);
+        assert.ok(
+          result.stderr.includes(
+            "F14 baseline repeat requires unchanged status",
+          ),
+          result.stderr,
+        );
+      }
+    }
+  }
+});
+
+test("test_cli_historical_body_caps_keep_their_saved_contract", () => {
+  for (const name of [
+    "auction-over-1mib",
+    "aps-over-1mib",
+    "mediation-over-8mib",
+  ]) {
+    const differences = [
+      name === "mediation-over-8mib" ? "F7" : "C3",
+      "C8",
+      "F10",
+    ];
+    for (const [before, after] of [
+      [200, 200],
+      [400, 400],
+      [200, 400],
+    ]) {
+      const result = compare_captures(
+        body_cap_captures(name, before, after, { differences }),
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(result.stdout.includes(`PASS ${name}`), result.stdout);
+    }
+  }
+});
+
+test("test_cli_f14_roles_do_not_relax_the_named_case_scope", () => {
+  for (const overrides of [
+    { id: "unlisted-cap" },
+    { transition: "unlisted-transition" },
+  ]) {
+    for (const options of [[], ["--baseline-repeat"]]) {
+      const result = compare_captures(
+        body_cap_captures("auction-over-1mib", 413, 413, overrides),
+        options,
+      );
+      assert.notEqual(result.status, 0);
+      assert.ok(
+        result.stderr.includes(
+          "F14 used outside its three named body-cap cases",
+        ),
+        result.stderr,
+      );
+    }
+  }
+});
+
+test("test_cli_compare_help_lists_the_optional_baseline_repeat_flag", () => {
+  const result = spawnSync(process.execPath, [SCRIPT, "compare", "--help"], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(result.stdout.includes("[--baseline-repeat]"), result.stdout);
+  assert.ok(!result.stdout.includes("--baseline-repeat <"), result.stdout);
+});
 
 test("test_cli_compare_accepts_complete_scenarios", () => {
   for (const [scenario, count] of [

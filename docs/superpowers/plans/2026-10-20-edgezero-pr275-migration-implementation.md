@@ -18,7 +18,7 @@ The 2026-10-23 second review adds a JWKS destination-admission decision that
 remains open. The previous implementation checkpoints are complete; merge
 qualification additionally requires resolving this new security policy.
 
-Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R11. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
+Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R12. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
 
 Review on 2026-10-20 checked the exact proposed upstream pin `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`, not merely the upstream checkout's HEAD. PR #275 remains draft and unmerged. Its current head, `7cccaf10734914161803317aec6c55c22c2bccc9`, adds seven documentation files relative to that pin; it changes no implementation, dependencies or toolchain. Reconcile the spec's stale head metadata and its repinning rule in Task 0; do not silently change Cargo source identity.
 
@@ -707,3 +707,81 @@ transport race is plausible, not proven. No request, timeout, retry or comparato
 rule was changed to hide the failure. Final raw observations retain their local
 host-parser scope; earlier provider runtime evidence is historical and was not
 unnecessarily rerun for this tooling-only conversion.
+
+### Third review follow-up (2026-10-25, R12)
+
+Review target `91ffbd3` precedes the Node conversion at actual head `e119453`.
+Read-only cache/security, router/lifecycle and comparator/CI/docs audits verified
+the findings before selecting these minimal changes. No Python is introduced.
+
+- [x] Make ordinary F14 candidate comparisons require 413 on the after side.
+  Add explicit `compare --baseline-repeat` for exact historical 200/200 and
+  400/400 self/repeat captures; reject changed cap statuses in that mode. Keep
+  corpus/archive bytes, helper signatures and historical no-F14 contracts.
+- [x] Add a signed auction through the actual router with injected client,
+  seeded config, real signature, creative verification metadata and captured
+  GET/URL/count assertions. Use a separate uncached publisher for the no-client
+  negative; cached keys can legitimately verify without a client.
+- [x] Share one immutable Arc between miss result, cache and hit; charge actual
+  retained allocations. Add pointer/accounting/fetch-count regression, avoid
+  unnecessary removal on plain misses, and honestly name the synthetic oversized
+  insertion test rather than claiming it exercises the bounded network loader.
+- [x] Require a private canonical syntax-validated hostname at fetch_jwks.
+  This type is not destination authorization or resolved-IP/DNS safety.
+- [x] Separate synthetic provider framing fixtures from real handlers; add real
+  OPTIONS/204 coverage and a raw build_response204 no-length assertion. Keep
+  the private helper and existing 304/204 wire guards. Remove redundant Spin cfg.
+- [x] Correct the Axum architecture snippet, document all review dispositions,
+  run relevant Rust/Node/provider/docs and wire checks, obtain independent review
+  and publish through the existing draft PR/issue.
+
+Disposition constraints: destination admission remains an unanswered user choice
+and merge gate. d47 exposes no public default admission-policy getter/delegate;
+the small pinned copy must be reviewed on repin. CORS renderer bypass and legacy
+Proxy wording are documented choices; timeout/cache policies remain approved.
+The four bounded-read test implementations already call the upstream helper and
+have distinct fixtures; do not add production support APIs merely to deduplicate
+them. The comparator already runs independently of Rust lint in format-docs.
+
+Third-review dispositions:
+
+| Finding | Disposition |
+| --- | --- |
+| 1: internal destination fetch | Confirmed and still open pending the user's destination policy; syntax typing does not resolve it. Keep merge gated. |
+| 2: copied admission defaults | No public default getter/delegate at d47. Retain the small pinned copy; source comment and shipping-repin audit explicitly require reviewing completion/grant drift. |
+| 3: signed router coverage | Added real signed admitted/router dispatch, seeded pricing, verification metadata and outbound request assertions, plus an uncached no-client negative. Removing client injection failed the Verified assertion before restoration. |
+| 4: cap 200/200 comparison | Normal CLI candidates now require 413; explicit baseline-repeat permits only unchanged cap statuses. All three cap cases have CLI positive/negative matrix coverage. |
+| 5: unchecked fetch string | Added private canonical syntax-validated hostname boundary. Destination authorization remains separate. |
+| 6: custom renderer bypass | Retained the documented CORS trade-off; this application does not install a custom renderer. |
+| 7: oversized test scope | Renamed as defensive insertion-contract coverage, shares caller-held keys and checks accounting; does not claim to exercise the 64 KiB network loader. |
+| 8: synthetic framing | Kept synthetic provider status fixtures separately named. Real 400/302/OPTIONS 204 cover actual handlers; raw constructor 204 assertion catches the pre-egress guard regression. |
+| 9: cache miss copies | One Arc is now shared by miss result/cache/hit, with pointer identity, single-fetch and actual-capacity accounting assertions. |
+| 10: CI lint visibility | Already resolved by e119453: comparator is in format-docs, independently of the Rust lint job. |
+| 11: Axum architecture example | Shows actual print-error/exit 1 startup behavior. |
+| 12: Proxy wording | Kept the approved wire string; docs explicitly connect it to an absent optional outbound-http client. |
+| 13: repeated test helpers | Kept thin bounded-read wrappers using the public upstream finish helper and distinct fixtures; kept platform-specific completion modes instead of adding production support APIs. |
+| 14: miss/remove and Spin cfg | Plain misses no longer remove; expired removal remains. Removed redundant integration-test cfg(test). |
+
+Fresh R12 verification passed: **202 workspace tests** (174 unit, 12 APS, 15
+endpoint, 1 CLI), required strict workspace Clippy/fmt/features/build, **61 Node
+tests**, **Fastly 5 / Cloudflare 6 / Spin 4** target contracts and docs lint/format/build.
+**52 archive comparisons / 2,262 case checks** pass with explicit baseline roles;
+ordinary candidate mode rejects all **six** real original/preceding cap cases.
+Fresh native **85 seeded + 2 unseeded** cases pass against both baselines and the
+archived d47 candidate, plus self and independent restart repeat (**435 checks**).
+Raw framing requests remain byte-identical to their archived baselines. The raw
+204 guard mutation failed the new assertion; restoring it passed. Independent
+spec and quality reviews approved the final delta.
+
+Evidence: `/tmp/mocktioneer-pr131-review3-20261025.FV1e1OlA/`, especially
+`workspace-final.log`, `clippy-final.log`, `node-final.log`, provider
+`routes-*-contract-final.log`, `archives/qualification.json` and
+`live/qualification.json`. All source work uses Rust/Node/shell; corpus and all
+six d47 pins remain unchanged. Prior live Docker/workerd/Spin/Fastly and
+Playwright qualification is historical, not claimed as a fresh R12 run.
+
+An extra optional WASM-target strict Clippy probe reported 28 Fastly contract-file
+lint errors and 3 Cloudflare library lints (wildcard imports, missing error docs,
+missing inline). No baseline comparison proved every diagnostic pre-existing;
+this is not the required native workspace gate, which passed. The target
+contract suites passed. No broad unrelated lint cleanup was added.

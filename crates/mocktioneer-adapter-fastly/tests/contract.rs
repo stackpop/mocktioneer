@@ -159,7 +159,7 @@ fn complete_envelope(envelope: edgezero_core::ResponseEgressEnvelope) -> Respons
 }
 
 #[test]
-fn empty_statuses_have_zero_length_through_fastly_prepared_egress() {
+fn synthetic_empty_statuses_have_zero_length_through_fastly_prepared_egress() {
     for status in [
         StatusCode::BAD_REQUEST,
         StatusCode::UNAUTHORIZED,
@@ -196,21 +196,46 @@ fn empty_statuses_have_zero_length_through_fastly_prepared_egress() {
         assert!(attempt.begin_writing());
         assert!(attempt.complete(clock.now()));
     }
+}
 
+#[test]
+fn mocktioneer_empty_handlers_preserve_status_specific_framing() {
     let app =
         edgezero_core::app::App::build::<MocktioneerApp>(edgezero_adapter_fastly::FASTLY_PLATFORM)
             .expect("build Mocktioneer app");
-    for (path, status) in [
-        ("/sync/start?ts_domain=bad%2Fhost", StatusCode::BAD_REQUEST),
-        ("/sync/start?ts_domain=ts.publisher.com", StatusCode::FOUND),
+    for (method, path, status, content_length) in [
+        (
+            FastlyMethod::GET,
+            "/sync/start?ts_domain=bad%2Fhost",
+            StatusCode::BAD_REQUEST,
+            Some("0"),
+        ),
+        (
+            FastlyMethod::GET,
+            "/sync/start?ts_domain=ts.publisher.com",
+            StatusCode::FOUND,
+            Some("0"),
+        ),
+        (
+            FastlyMethod::OPTIONS,
+            "/openrtb2/auction",
+            StatusCode::NO_CONTENT,
+            None,
+        ),
     ] {
         let response = complete_envelope(
             FastlyService::new(&app)
-                .capture_egress_for_test(fastly_request(FastlyMethod::GET, path))
+                .capture_egress_for_test(fastly_request(method, path))
                 .expect("Mocktioneer egress"),
         );
         assert_eq!(response.status(), status);
-        assert_eq!(response.headers().get("content-length").unwrap(), "0");
+        assert_eq!(
+            response
+                .headers()
+                .get("content-length")
+                .map(|value| value.to_str().unwrap()),
+            content_length
+        );
         if status == StatusCode::FOUND {
             assert!(
                 response

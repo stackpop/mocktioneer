@@ -34,7 +34,8 @@ fn configure_app(app: &mut App) -> Result<(), EdgeError> {
         } else {
             DEFAULT_INBOUND_READ_BUDGET
         };
-        // Completion and grant match this pin's private default admission policy.
+        // Completion/grant match d47c8026's private default policy. Upstream has
+        // no public delegate/getter; recheck these values when reviewing a repin.
         AdmissionDecision::Admit {
             completion: ResponseEgressCompletion::empty(),
             grant: IngressGrant::empty(),

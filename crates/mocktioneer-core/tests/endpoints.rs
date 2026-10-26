@@ -8,21 +8,25 @@ mod tests {
     use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHandle};
     use edgezero_core::http::HeaderName;
     use edgezero_core::http::{
-        HeaderValue, Method, Request, Response, StatusCode, header, request_builder,
+        HeaderMap, HeaderValue, Method, Request, Response, StatusCode, header, request_builder,
+    };
+    use edgezero_core::outbound::{
+        ContentTypeProvenance, HttpClient, OutboundBatch, OutboundHttpClient, OutboundRequest,
+        OutboundResponse,
     };
     use edgezero_core::response_egress_framing::ResponseEgressFramingMode;
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
     use edgezero_core::{
-        Deadline, IngressBeginOutcome, IngressDispatchOutcome, IngressFraming,
+        Deadline, EdgeError, IngressBeginOutcome, IngressDispatchOutcome, IngressFraming,
         IngressHeadAccounting, IngressHeadParts, MonotonicClock, MonotonicInstant,
     };
     use futures::executor::block_on;
     use futures::stream::poll_fn;
     use std::io::Error as IoError;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::task::Poll;
-    use std::time::Duration;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     #[derive(Clone)]
     enum StoreReply {
@@ -76,6 +80,40 @@ mod tests {
                 max_backend_bytes,
                 max_value_bytes,
             )
+        }
+    }
+
+    struct JwksClient {
+        calls: Arc<AtomicUsize>,
+        reply: Vec<u8>,
+    }
+
+    #[async_trait(?Send)]
+    impl OutboundHttpClient for JwksClient {
+        async fn send(&self, request: OutboundRequest) -> Result<OutboundResponse, EdgeError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            let parts = request.into_parts();
+            assert_eq!(parts.method, Method::GET);
+            assert_eq!(
+                parts.uri.to_string(),
+                "https://signed-router-auction.example/.well-known/trusted-server.json"
+            );
+            Ok(OutboundResponse::new(
+                parts.method,
+                StatusCode::OK,
+                HeaderMap::new(),
+                Body::from_bytes(self.reply.clone()),
+                MonotonicClock::default(),
+                ContentTypeProvenance::Unknown,
+            ))
+        }
+
+        fn start_batch_until(
+            &self,
+            requests: Vec<OutboundRequest>,
+            _cutoff: Deadline,
+        ) -> OutboundBatch {
+            OutboundBatch::cutoff(requests.len())
         }
     }
 
@@ -570,6 +608,90 @@ mod tests {
         let payload: serde_json::Value = serde_json::from_slice(&body_bytes(response)).unwrap();
         assert_eq!(payload["id"], "r1");
         assert!(payload["seatbid"].is_array());
+    }
+
+    fn signed_auction_request(domain: &str) -> (Request, Vec<u8>) {
+        use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
+        use ed25519_dalek::{Signer as _, SigningKey};
+
+        let request_id = "signed-router-request";
+        let key_id = "signed-router-key";
+        let timestamp = u64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
+        )
+        .unwrap();
+        let signing_key = SigningKey::from_bytes(&[73_u8; 32]);
+        // Trusted Server v1.1 signs this exact field order.
+        let payload = format!(
+            r#"{{"version":"1.1","kid":"{key_id}","host":"{domain}","scheme":"https","id":"{request_id}","ts":{timestamp}}}"#
+        );
+        let body = Body::json(&serde_json::json!({
+            "id": request_id,
+            "site": { "domain": domain },
+            "imp": [{ "id": "1", "banner": { "w": 300_i32, "h": 250_i32 } }],
+            "ext": { "trusted_server": {
+                "version": "1.1", "kid": key_id, "request_host": domain,
+                "request_scheme": "https", "ts": timestamp,
+                "signature": URL_SAFE_NO_PAD.encode(signing_key.sign(payload.as_bytes()).to_bytes())
+            } }
+        }))
+        .unwrap();
+        let reply = serde_json::to_vec(&serde_json::json!({ "jwks": { "keys": [{
+            "kid": key_id, "x": URL_SAFE_NO_PAD.encode(signing_key.verifying_key().as_bytes())
+        }] } }))
+        .unwrap();
+        let mut request = make_request(Method::POST, "/openrtb2/auction", body);
+        request.extensions_mut().insert(config_registry(0.35_f64));
+        (request, reply)
+    }
+
+    fn auction_signature_metadata(response: Response) -> serde_json::Value {
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_cors(&response);
+        let payload: serde_json::Value = serde_json::from_slice(&body_bytes(response)).unwrap();
+        let bid = &payload["seatbid"][0]["bid"][0];
+        assert_eq!(bid["price"], 0.35_f64);
+        let metadata_json = bid["adm"]
+            .as_str()
+            .unwrap()
+            .split_once("<!-- MOCKTIONEER_METADATA\n")
+            .unwrap()
+            .1
+            .split_once("\n-->")
+            .unwrap()
+            .0;
+        let metadata: serde_json::Value = serde_json::from_str(metadata_json).unwrap();
+        metadata["signature"].clone()
+    }
+
+    #[test]
+    fn signed_auction_verifies_through_router_with_request_http_client() {
+        let application = app();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (mut request, reply) = signed_auction_request("signed-router-auction.example");
+        request
+            .extensions_mut()
+            .insert(HttpClient::with_client(JwksClient {
+                calls: Arc::clone(&calls),
+                reply,
+            }));
+        let signature = auction_signature_metadata(dispatch(&application, request));
+        assert_eq!(signature["status"], "Verified");
+        assert_eq!(signature["details"]["kid"], "signed-router-key");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        // A distinct uncached host prevents the global JWKS cache masking a missing client.
+        let (request_without_client, _) = signed_auction_request("signed-router-no-client.example");
+        let failure = auction_signature_metadata(dispatch(&application, request_without_client));
+        assert_eq!(failure["status"], "Failed");
+        assert_eq!(
+            failure["details"]["reason"],
+            "HTTP error: Proxy not available"
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]

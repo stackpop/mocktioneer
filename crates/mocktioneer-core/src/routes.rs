@@ -1073,10 +1073,12 @@ mod tests {
                 .contains_key(header::CONTENT_LENGTH)
         );
         for body in [Body::empty(), Body::from("suppressed")] {
+            let raw_response = build_response(StatusCode::NO_CONTENT, body);
+            assert!(!raw_response.headers().contains_key(header::CONTENT_LENGTH));
             let response = prepare_response_egress(
                 ResponseEgressFramingMode::ExplicitBufferedLength,
                 &Method::GET,
-                build_response(StatusCode::NO_CONTENT, body),
+                raw_response,
             )
             .unwrap()
             .into_response();

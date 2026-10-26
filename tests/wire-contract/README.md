@@ -59,18 +59,29 @@ node tests/wire-contract/wire_contract.mjs compare \
   --before /tmp/mocktioneer-wire/before/unseeded --after /tmp/mocktioneer-wire/after/unseeded
 ```
 
-First self-compare the baseline capture by passing its directory to both flags.
+First self-compare the baseline capture with `--baseline-repeat`, passing its
+directory to both path flags.
 An independent second baseline capture is required for both startup scenarios:
 repeat the capture commands into `before-repeat/seeded` and
-`before-repeat/unseeded`, then require both comparisons below to pass. This
+`before-repeat/unseeded`, then require the self and repeat comparisons below to pass. This
 detects nondeterminism beyond generated IDs and `Date` before comparing revisions.
 
 ```sh
-node tests/wire-contract/wire_contract.mjs compare \
+node tests/wire-contract/wire_contract.mjs compare --baseline-repeat \
+  --before /tmp/mocktioneer-wire/before/seeded --after /tmp/mocktioneer-wire/before/seeded
+node tests/wire-contract/wire_contract.mjs compare --baseline-repeat \
+  --before /tmp/mocktioneer-wire/before/unseeded --after /tmp/mocktioneer-wire/before/unseeded
+node tests/wire-contract/wire_contract.mjs compare --baseline-repeat \
   --before /tmp/mocktioneer-wire/before/seeded --after /tmp/mocktioneer-wire/before-repeat/seeded
-node tests/wire-contract/wire_contract.mjs compare \
+node tests/wire-contract/wire_contract.mjs compare --baseline-repeat \
   --before /tmp/mocktioneer-wire/before/unseeded --after /tmp/mocktioneer-wire/before-repeat/unseeded
 ```
+
+Ordinary comparisons treat the after capture as a candidate and require 413 for
+F14 overflow cases. `--baseline-repeat` permits their historical 200/200 and
+400/400 repetitions, and requires unchanged overflow statuses. Use it for both
+original and immediately preceding baseline self/repeat checks. Candidate
+self/repeat and baseline→candidate comparisons use the ordinary command.
 
 Comparator failures exit nonzero and report the case. Accepted differences print
 their F/C number and changed fields. All F1–F14
@@ -103,8 +114,9 @@ in candidate self-comparisons. A 200 baseline is verified against its successful
 small-body reference before accepting 200→413. An immediately preceding
 baseline's exact 400 `bad_request` overflow payload may become that exact 413
 payload. Only status, literal body and its length may change; CORS, cookies and
-all other ordered headers stay exact. Exact 200, 400 and 413 repeats remain
-comparable, while 200→400 fails with F14. Malformed JSON stays 400, validation
+all other ordered headers stay exact. Exact 200 and 400 repeats require
+`--baseline-repeat`; exact 413 repeats also pass ordinary candidate comparisons.
+200→400 fails with F14. Malformed JSON stays 400, validation
 stays 422 and deadline expiry stays 408.
 F8 requires the exact baseline streaming-body error and checks the new success
 against the matching successful reference. F5 target errors require their exact
@@ -118,8 +130,8 @@ C8 covers exactly 15 named matched error cases and their fixed statuses:
 nonstandard image and creative, missing pixel query, malformed and invalid
 auction/APS/mediation JSON, missing sync query, both missing-config cases, and
 the three body-cap cases. Only those three use 413 when F14 is present; their
-exact old 400 baseline repeats also remain valid. Existing errors may gain
-exactly one of each field:
+exact old 400 baseline repeats remain valid with `--baseline-repeat`. Existing
+errors may gain exactly one of each field:
 
 ```text
 access-control-allow-origin: *
@@ -146,7 +158,9 @@ startup scenarios. Keep prior captures intact; their saved corpus and digests
 are historical evidence. Saved body-cap cases without F14 retain the exact
 historical 200→400 contract, including C8's historical 400 allowlist. Saved cases
 without C8 also retain their original, narrowly scoped CORS removal exception;
-current F14 cap cases require the complete fields on both responses.
+current F14 cap cases require the complete fields on both responses. The CLI
+role checks apply only to F14, so historical corpora without F14 keep their
+existing comparison commands.
 
 Record raw framing **separately** for each revision:
 

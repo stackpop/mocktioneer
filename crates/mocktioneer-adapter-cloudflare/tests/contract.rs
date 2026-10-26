@@ -243,7 +243,7 @@ async fn auction_uses_seeded_cpm_through_cloudflare_adapter() {
 }
 
 #[wasm_bindgen_test]
-async fn empty_statuses_have_zero_length_through_cloudflare_egress() {
+async fn synthetic_empty_statuses_have_zero_length_through_cloudflare_egress() {
     for status in [400_u16, 401, 403, 302, 500] {
         let router = edgezero_core::router::RouterBuilder::new()
             .get(
@@ -272,24 +272,42 @@ async fn empty_statuses_have_zero_length_through_cloudflare_egress() {
         );
         assert!(response.bytes().await.expect("empty bytes").is_empty());
     }
+}
 
+#[wasm_bindgen_test]
+async fn mocktioneer_empty_handlers_preserve_status_specific_framing() {
     let app = edgezero_core::app::App::build::<MocktioneerApp>(
         edgezero_adapter_cloudflare::CLOUDFLARE_PLATFORM,
     )
     .expect("build Mocktioneer app");
-    for (path, status) in [
-        ("/sync/start?ts_domain=bad%2Fhost", 400_u16),
-        ("/sync/start?ts_domain=ts.publisher.com", 302_u16),
+    for (method, path, status, content_length) in [
+        (
+            CfMethod::Get,
+            "/sync/start?ts_domain=bad%2Fhost",
+            400_u16,
+            Some("0"),
+        ),
+        (
+            CfMethod::Get,
+            "/sync/start?ts_domain=ts.publisher.com",
+            302_u16,
+            Some("0"),
+        ),
+        (CfMethod::Options, "/openrtb2/auction", 204_u16, None),
     ] {
         let (env, ctx) = test_env_ctx();
         let mut response = CloudflareService::new(&app)
-            .dispatch(cf_request(CfMethod::Get, path), env, ctx)
+            .dispatch(cf_request(method, path), env, ctx)
             .await
             .expect("Mocktioneer response");
         assert_eq!(response.status_code(), status);
         assert_eq!(
-            response.headers().get("content-length").expect("header"),
-            Some("0".to_owned())
+            response
+                .headers()
+                .get("content-length")
+                .expect("header")
+                .as_deref(),
+            content_length
         );
         if status == 302 {
             assert!(
@@ -311,6 +329,8 @@ async fn empty_statuses_have_zero_length_through_cloudflare_egress() {
     }
 }
 
+// CloudflareService installs its provider client without a stub-injection hook.
+// Signed auction routing is covered natively; this browser fixture covers the WASM verifier/cache.
 #[wasm_bindgen_test]
 #[expect(
     clippy::expect_used,

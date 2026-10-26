@@ -203,7 +203,8 @@ and cannot satisfy the required 200 status. A defensive read for a custom client
 still use `HTTP error: Stream read failed: ...`.
 
 `HTTP error: Proxy not available` is retained legacy wording for a missing
-outbound client in the request context. It does not refer to the removed proxy
+outbound client in the request context, such as when the optional `outbound-http`
+capability is unavailable. It does not refer to the removed proxy
 API. Fastly dynamic-backend failures occur when the installed client sends.
 
 The local cache uses a portable monotonic clock with a **10-minute TTL**, at most
@@ -214,9 +215,10 @@ metadata, fixed reference-counting overhead, transient parsing buffers, and
 request-local values, so it does not
 bound total process memory or RSS. Expired entries are removed before the oldest
 entries are evicted. A value too large to cache can still verify the current
-request; a poisoned cache lock bypasses lookup and insertion and logs a debug
-diagnostic. Cache hits share immutable key storage instead of copying it under
-the cache mutex; fetch misses retain their existing allocation accounting.
+request; this per-entry rejection path is defensive because normal fetches are
+already bounded to 64 KiB. A poisoned cache lock bypasses lookup and insertion
+and logs a debug diagnostic. A fetched key set is shared by its current request,
+the cached entry and later hits; the charge uses those retained allocations.
 
 Outbound caching uses `PlatformDefault`. Cloudflare's committed compatibility
 date (`2023-05-01`) does not support `Bypass` without a later date or the

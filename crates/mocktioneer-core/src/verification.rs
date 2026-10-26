@@ -50,6 +50,23 @@ struct JwksResponse {
     keys: Vec<JwkKey>,
 }
 
+// Canonical hostname syntax only; this does not authorize destinations or validate DNS answers.
+struct ValidatedJwksHost(String);
+
+impl ValidatedJwksHost {
+    fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn into_string(self) -> String {
+        self.0
+    }
+
+    fn new(domain: &str) -> Result<Self, VerificationError> {
+        validate_jwks_host(domain).map(Self)
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 struct TrustedServerResponse {
     jwks: JwksResponse,
@@ -96,14 +113,14 @@ impl JwksCache {
                 return Some(Arc::clone(&entry.jwks));
             }
             log::debug!("JWKS cache expired for {host}");
+            self.remove(host);
         } else {
             log::debug!("JWKS cache miss for {host}");
         }
-        self.remove(host);
         None
     }
 
-    fn insert(&mut self, host: String, jwks: JwksResponse, now: MonotonicInstant) {
+    fn insert(&mut self, host: String, jwks: Arc<JwksResponse>, now: MonotonicInstant) {
         // A rejected replacement must also discard the previous version.
         self.remove(&host);
         let Some(charge) = jwks_charge(
@@ -144,7 +161,7 @@ impl JwksCache {
             host,
             CachedJwks {
                 fetched_at: now,
-                jwks: Arc::new(jwks),
+                jwks,
                 charge,
             },
         );
@@ -198,8 +215,11 @@ fn jwks_transport_error(error: &EdgeError, stage: &str) -> VerificationError {
     }
 }
 
-// The loader validates the canonical DNS host before cache lookup or fetch.
-async fn fetch_jwks(ctx: &RequestContext, host: &str) -> Result<JwksResponse, VerificationError> {
+async fn fetch_jwks(
+    ctx: &RequestContext,
+    validated_host: &ValidatedJwksHost,
+) -> Result<JwksResponse, VerificationError> {
+    let host = validated_host.as_str();
     log::debug!("Fetching JWKS for {host}");
     let jwks_url = format!("https://{host}/.well-known/trusted-server.json");
     let request = OutboundRequest::get(&jwks_url)
@@ -236,22 +256,24 @@ async fn load_jwks(
     ctx: &RequestContext,
     domain: &str,
 ) -> Result<Arc<JwksResponse>, VerificationError> {
-    let host = validate_jwks_host(domain)?;
+    let host = ValidatedJwksHost::new(domain)?;
     match cache.lock() {
         Ok(mut cached) => {
-            if let Some(jwks) = cached.get(&host, clock.now()) {
+            if let Some(jwks) = cached.get(host.as_str(), clock.now()) {
                 return Ok(jwks);
             }
         }
-        Err(_) => log::debug!("JWKS cache lock poisoned; bypassing cache for {host}"),
+        Err(_) => log::debug!(
+            "JWKS cache lock poisoned; bypassing cache for {}",
+            host.as_str()
+        ),
     }
 
-    let jwks = fetch_jwks(ctx, &host).await?;
-    // Measure the clone actually retained by the cache; cloning may shrink capacity.
+    let jwks = Arc::new(fetch_jwks(ctx, &host).await?);
     if let Ok(mut cached) = cache.lock() {
-        cached.insert(host, jwks.clone(), clock.now());
+        cached.insert(host.into_string(), Arc::clone(&jwks), clock.now());
     }
-    Ok(Arc::new(jwks))
+    Ok(jwks)
 }
 
 fn find_public_key<'jwks>(
@@ -793,10 +815,13 @@ mod tests {
             br#"{"jwks":{"keys":[]}}"#.to_vec(),
         ));
         assert!(
-            block_on(fetch_jwks(&ctx, "example.com"))
-                .unwrap()
-                .keys
-                .is_empty()
+            block_on(fetch_jwks(
+                &ctx,
+                &ValidatedJwksHost::new("example.com").unwrap(),
+            ))
+            .unwrap()
+            .keys
+            .is_empty()
         );
         let requests = captured.lock().unwrap();
         assert_eq!(requests.len(), 1);
@@ -918,16 +943,22 @@ mod tests {
         ] {
             let (ctx, _, _) = client_context(reply);
             assert_eq!(
-                block_on(fetch_jwks(&ctx, "example.com"))
-                    .unwrap_err()
-                    .to_string(),
+                block_on(fetch_jwks(
+                    &ctx,
+                    &ValidatedJwksHost::new("example.com").unwrap(),
+                ))
+                .unwrap_err()
+                .to_string(),
                 expected
             );
         }
         assert_eq!(
-            block_on(fetch_jwks(&create_test_context(), "example.com"))
-                .unwrap_err()
-                .to_string(),
+            block_on(fetch_jwks(
+                &create_test_context(),
+                &ValidatedJwksHost::new("example.com").unwrap(),
+            ))
+            .unwrap_err()
+            .to_string(),
             "HTTP error: Proxy not available"
         );
     }
@@ -1463,12 +1494,12 @@ mod tests {
         let mut cache = JwksCache::default();
         cache.insert(
             "example.com".to_owned(),
-            JwksResponse {
+            Arc::new(JwksResponse {
                 keys: vec![JwkKey {
                     kid: "key".to_owned(),
                     x: "public-key".to_owned(),
                 }],
-            },
+            }),
             now,
         );
         let charged = cache.charged_bytes;
@@ -1487,7 +1518,7 @@ mod tests {
     fn cache_ttl_boundary_and_backwards_clock_expire() {
         let now = MonotonicInstant::now();
         let mut cache = JwksCache::default();
-        cache.insert("example.com".to_owned(), empty_jwks(), now);
+        cache.insert("example.com".to_owned(), Arc::new(empty_jwks()), now);
         assert!(
             cache
                 .get(
@@ -1502,7 +1533,7 @@ mod tests {
         assert_accounting(&cache);
         cache.insert(
             "example.com".to_owned(),
-            empty_jwks(),
+            Arc::new(empty_jwks()),
             now + Duration::from_secs(1),
         );
         assert!(cache.get("example.com", now).is_none());
@@ -1517,13 +1548,13 @@ mod tests {
         for i in 0..MAX_JWKS_CACHE_ENTRIES {
             cache.insert(
                 format!("host-{i:02}.example"),
-                empty_jwks(),
+                Arc::new(empty_jwks()),
                 now + Duration::from_secs(u64::try_from(i).unwrap()),
             );
         }
         cache.insert(
             "new.example".to_owned(),
-            empty_jwks(),
+            Arc::new(empty_jwks()),
             now + Duration::from_secs(32),
         );
         assert!(!cache.entries.contains_key("host-00.example"));
@@ -1531,9 +1562,9 @@ mod tests {
         assert_accounting(&cache);
         let mut cache_2 = JwksCache::default();
         for i in (0..MAX_JWKS_CACHE_ENTRIES).rev() {
-            cache_2.insert(format!("host-{i:02}.example"), empty_jwks(), now);
+            cache_2.insert(format!("host-{i:02}.example"), Arc::new(empty_jwks()), now);
         }
-        cache_2.insert("new.example".to_owned(), empty_jwks(), now);
+        cache_2.insert("new.example".to_owned(), Arc::new(empty_jwks()), now);
         assert!(!cache_2.entries.contains_key("host-00.example"));
         assert_accounting(&cache_2);
     }
@@ -1551,13 +1582,13 @@ mod tests {
         });
         let expected = host.capacity() + jwks.keys.capacity() * size_of::<JwkKey>() + 160;
         let mut cache = JwksCache::default();
-        cache.insert(host, jwks, now);
+        cache.insert(host, Arc::new(jwks), now);
         assert_eq!(cache.charged_bytes, expected);
         assert_accounting(&cache);
         let mut cache_2 = JwksCache::default();
         cache_2.insert(
             "budget.example".to_owned(),
-            jwks_with_charge("budget.example", MAX_JWKS_CACHE_BYTES),
+            Arc::new(jwks_with_charge("budget.example", MAX_JWKS_CACHE_BYTES)),
             now,
         );
         assert_eq!(cache_2.charged_bytes, MAX_JWKS_CACHE_BYTES);
@@ -1565,7 +1596,7 @@ mod tests {
         let mut cache_3 = JwksCache::default();
         cache_3.insert(
             "budget.example".to_owned(),
-            jwks_with_charge("budget.example", MAX_JWKS_CACHE_BYTES + 1),
+            Arc::new(jwks_with_charge("budget.example", MAX_JWKS_CACHE_BYTES + 1)),
             now,
         );
         assert!(cache_3.entries.is_empty());
@@ -1584,19 +1615,23 @@ mod tests {
     fn cache_replacement_expiry_and_byte_eviction_preserve_accounting() {
         let now = MonotonicInstant::now();
         let mut cache = JwksCache::default();
-        cache.insert("old.example".to_owned(), empty_jwks(), now);
+        cache.insert("old.example".to_owned(), Arc::new(empty_jwks()), now);
         cache.insert(
             "live.example".to_owned(),
-            empty_jwks(),
+            Arc::new(empty_jwks()),
             now + Duration::from_secs(1),
         );
-        cache.insert("new.example".to_owned(), empty_jwks(), now + JWKS_CACHE_TTL);
+        cache.insert(
+            "new.example".to_owned(),
+            Arc::new(empty_jwks()),
+            now + JWKS_CACHE_TTL,
+        );
         assert!(!cache.entries.contains_key("old.example"));
         assert!(cache.entries.contains_key("live.example"));
         assert_accounting(&cache);
         cache.insert(
             "live.example".to_owned(),
-            jwks_with_charge("live.example", MAX_JWKS_CACHE_BYTES),
+            Arc::new(jwks_with_charge("live.example", MAX_JWKS_CACHE_BYTES)),
             now + JWKS_CACHE_TTL,
         );
         assert_eq!(cache.entries.len(), 1);
@@ -1604,7 +1639,7 @@ mod tests {
         assert_accounting(&cache);
         cache.insert(
             "live.example".to_owned(),
-            empty_jwks(),
+            Arc::new(empty_jwks()),
             now + JWKS_CACHE_TTL,
         );
         assert_eq!(cache.charged_bytes, "live.example".len());
@@ -1615,11 +1650,11 @@ mod tests {
     fn oversized_replacement_removes_old_without_evicting_other_hosts() {
         let now = MonotonicInstant::now();
         let mut cache = JwksCache::default();
-        cache.insert("old.example".to_owned(), empty_jwks(), now);
-        cache.insert("other.example".to_owned(), empty_jwks(), now);
+        cache.insert("old.example".to_owned(), Arc::new(empty_jwks()), now);
+        cache.insert("other.example".to_owned(), Arc::new(empty_jwks()), now);
         cache.insert(
             "old.example".to_owned(),
-            jwks_with_charge("old.example", MAX_JWKS_CACHE_BYTES + 1),
+            Arc::new(jwks_with_charge("old.example", MAX_JWKS_CACHE_BYTES + 1)),
             now,
         );
         assert!(!cache.entries.contains_key("old.example"));
@@ -1638,7 +1673,7 @@ mod tests {
         let mut cache = JwksCache::default();
         cache.insert(
             "many.example".to_owned(),
-            parsed.jwks,
+            Arc::new(parsed.jwks),
             MonotonicInstant::now(),
         );
         assert!(cache.charged_bytes > bytes.len());
@@ -1697,25 +1732,33 @@ mod tests {
     }
 
     #[test]
-    fn loader_charges_the_stored_clone_after_capacity_shrinks() {
+    fn loader_miss_cache_and_hit_share_storage_and_actual_capacity_charge() {
         let bytes = br#"{"jwks":{"keys":[{"kid":"1","x":"x"},{"kid":"2","x":"x"},{"kid":"3","x":"x"},{"kid":"4","x":"x"},{"kid":"5","x":"x"}]}}"#.to_vec();
-        let parsed: TrustedServerResponse = serde_json::from_slice(&bytes).unwrap();
-        assert!(parsed.jwks.keys.capacity() > parsed.jwks.keys.len());
-        let cloned = parsed.jwks.clone();
-        let expected = jwks_charge(
-            "example.com".len(),
-            cloned.keys.capacity(),
-            cloned
-                .keys
-                .iter()
-                .map(|key| (key.kid.capacity(), key.x.capacity())),
-        )
-        .unwrap();
-        let (ctx, _, _) = client_context(StubReply::Bytes(StatusCode::OK, bytes));
+        let (ctx, _, calls) = client_context(StubReply::Bytes(StatusCode::OK, bytes));
         let cache = Mutex::new(JwksCache::default());
         let (clock, _) = controlled_clock();
-        block_on(load_jwks(&cache, &clock, &ctx, "example.com")).unwrap();
-        assert_eq!(cache.lock().unwrap().charged_bytes, expected);
+        let miss = block_on(load_jwks(&cache, &clock, &ctx, "example.com")).unwrap();
+        assert!(miss.keys.capacity() > miss.keys.len());
+        let charged = {
+            let cached = cache.lock().unwrap();
+            let (host, entry) = cached.entries.get_key_value("example.com").unwrap();
+            assert!(Arc::ptr_eq(&miss, &entry.jwks));
+            let expected = jwks_charge(
+                host.capacity(),
+                miss.keys.capacity(),
+                miss.keys
+                    .iter()
+                    .map(|key| (key.kid.capacity(), key.x.capacity())),
+            )
+            .unwrap();
+            assert_eq!(cached.charged_bytes, expected);
+            assert_accounting(&cached);
+            cached.charged_bytes
+        };
+        let hit = block_on(load_jwks(&cache, &clock, &ctx, "example.com")).unwrap();
+        assert!(Arc::ptr_eq(&miss, &hit));
+        assert_eq!(cache.lock().unwrap().charged_bytes, charged);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -1750,7 +1793,7 @@ mod tests {
     }
 
     #[test]
-    fn oversized_owned_jwks_still_verifies_the_current_signature() {
+    fn oversized_cache_entry_rejection_preserves_signature_material() {
         let domain = "oversized.example";
         let (ext, reply) = signed_fixture(domain);
         let mut parsed: TrustedServerResponse = serde_json::from_slice(&reply).unwrap();
@@ -1758,13 +1801,16 @@ mod tests {
             kid: "unused".to_owned(),
             x: "x".repeat(MAX_JWKS_CACHE_BYTES),
         });
+        // This insertion fixture exceeds the network body's 64 KiB limit.
+        let jwks = Arc::new(parsed.jwks);
         let mut cache = JwksCache::default();
         cache.insert(
             domain.to_owned(),
-            parsed.jwks.clone(),
+            Arc::clone(&jwks),
             MonotonicInstant::now(),
         );
         assert!(cache.entries.is_empty());
+        assert_accounting(&cache);
         let trusted = &ext["trusted_server"];
         let payload = build_signing_payload(
             "req-success",
@@ -1776,7 +1822,7 @@ mod tests {
         )
         .unwrap();
         verify_ed25519_signature(
-            find_public_key(&parsed.jwks, "kid-success").unwrap(),
+            find_public_key(&jwks, "kid-success").unwrap(),
             trusted["signature"].as_str().unwrap(),
             &payload,
         )

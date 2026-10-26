@@ -6,7 +6,6 @@
 //! these tests do not exercise its request conversion or provider response writer.
 
 #![cfg(all(feature = "spin", target_arch = "wasm32"))]
-#![cfg(test)]
 
 use edgezero_adapter_spin::SPIN_PLATFORM;
 use edgezero_core::app::App;

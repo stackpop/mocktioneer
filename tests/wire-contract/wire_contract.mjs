@@ -835,14 +835,23 @@ function compare(args) {
         require(readFileSync(join(before, id, name)).equals(
           readFileSync(join(after, id, name)),
         ), "request bytes differ");
-      const reference = case_.reference;
+      const reference = case_.reference,
+        before_response = read_response(before, id),
+        after_response = read_response(after, id);
       const changes = compare_response(
         case_,
-        read_response(before, id),
-        read_response(after, id),
+        before_response,
+        after_response,
         reference ? read_response(before, reference) : null,
         reference ? read_response(after, reference) : null,
       );
+      // The helper also compares baselines; CLI candidates additionally require 413.
+      if (case_.differences?.includes("F14"))
+        require(args["baseline-repeat"]
+          ? before_response.status === after_response.status
+          : after_response.status === 413, args["baseline-repeat"]
+          ? "F14 baseline repeat requires unchanged status"
+          : "F14 candidate requires 413");
       console.log(
         `PASS ${id}${changes.length ? ": " + changes.join("; ") : ""}`,
       );
@@ -923,12 +932,15 @@ async function main() {
     args,
     options: {
       ...Object.fromEntries(keys.map((key) => [key, { type: "string" }])),
+      ...(command === "compare"
+        ? { "baseline-repeat": { type: "boolean" } }
+        : {}),
       help: { type: "boolean", short: "h" },
     },
   });
   if (values.help) {
     console.log(
-      `Usage: node wire_contract.mjs ${command} ${keys.map((key) => `--${key} <${key === "scenario" ? "seeded|unseeded" : "value"}>`).join(" ")}`,
+      `Usage: node wire_contract.mjs ${command} ${keys.map((key) => `--${key} <${key === "scenario" ? "seeded|unseeded" : "value"}>`).join(" ")}${command === "compare" ? " [--baseline-repeat]" : ""}`,
     );
     return;
   }

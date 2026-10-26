@@ -76,6 +76,11 @@
     Python harness/tests with Node built-ins and curl. Archive layout, corpus
     bytes/digest and the wire contracts below are unchanged; CI runs the Node
     regressions with the existing pinned Node setup.
+  - **R12:** the third review makes CLI candidate cap validation strict, with
+    explicit historical baseline-repeat mode. Adds signed-router and real
+    OPTIONS/204 regressions, shares the initial fetch Arc with cached hits and
+    uses a private canonical hostname type at the fetch boundary. This type
+    guarantees syntax only; destination admission remains an open merge gate.
 
 ## 0. Confirmed scope (2026-10-20)
 
@@ -641,7 +646,7 @@ Viceroy inherits arbitrary host variables into the guest.
     - This charges owned string and vector allocation capacities, including
       spare capacity. It excludes map buckets, fixed container structs, mutex
       metadata, allocator overhead, and transient fetch/parser buffers or
-      request-local clones. The 32-entry cap bounds container population; this
+      request-local values. The 32-entry cap bounds container population; this
       is not a total-memory or RSS guarantee.
     - Under the insertion lock, remove any existing entry for the same host and
       subtract its charge first. If the replacement alone exceeds the budget
@@ -661,10 +666,12 @@ Viceroy inherits arbitrary host variables into the guest.
     when the lock is poisoned and emit a debug diagnostic; a successful fetch must still reach signature
     verification without failing on a second lock acquisition.
   - Release the lock before awaiting the fetch, as today.
-  - Cache hits clone an `Arc` to immutable key storage instead of deep-cloning
-    strings under the mutex. Insertion still charges the owned clone retained by
-    the cache; fixed Arc metadata and values retained by in-flight requests are
-    outside the cache allocation budget.
+  - Allocate one `Arc` after a successful fetch and share it with the cache and
+    subsequent hits. Insertion charges the actual retained parsed capacities;
+    no key/string clone is created for the initial request. Fixed Arc metadata
+    and values held by in-flight requests after eviction are outside the cache
+    allocation budget. Synthetic over-budget insertion tests exercise defensive
+    cache admission, not a network value that could pass the 64 KiB fetch cap.
 - **Why now and not later:** the cache outlives requests today on Axum, the
   Cloudflare isolate and Spin. Spin's WASI P3 components are subject to instance
   reuse. Once the clock is fixed, the Cloudflare cache starts filling, so the
@@ -990,6 +997,12 @@ exact message.
      characterization separately and identify any host-parser differences under
      F5/F9; do not count it as proof of raw framing validation.
 
+     The CLI additionally requires every F14 candidate cap response to be 413,
+     including candidate self-comparisons. Use explicit `--baseline-repeat`
+     only for historical self/repeat checks: cap statuses must stay equal
+     (original 200, preceding 400 or candidate 413). This role is selected at
+     comparison time without changing saved corpus or capture bytes.
+
 ## 9. Verification
 
 **Automated (CI):**
@@ -1141,6 +1154,9 @@ Passing CI does not substitute for these checks.
     413 and framing changes. It does not automatically follow subsequent heads.
   - Before adopting any newer revision, review its implementation/API/wire delta,
     update this spec and the plan, and rerun §9 in full.
+    Specifically compare the private default ingress completion/grant policy
+    with Mocktioneer's pinned copy: d47 exposes no public getter or delegate, so
+    a future default change cannot be inherited automatically.
 - **Re-pin when #275 ships:**
   1. Diff the CHANGELOG and public API from the rev to the tag.
   2. Rerun §9, including the wire diff.
