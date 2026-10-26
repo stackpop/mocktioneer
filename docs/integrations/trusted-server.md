@@ -170,6 +170,66 @@ Pull sync allows trusted-server to resolve a buyer UID on demand by calling Mock
 
 See the [Resolve API reference](/api/resolve) for full endpoint details.
 
+## Signature Verification and JWKS
+
+Signed OpenRTB requests use the keys at
+`https://{site.domain}/.well-known/trusted-server.json`. Mocktioneer validates and
+canonicalizes DNS hostname syntax before fetching or consulting its cache.
+Verification failure is logged and reflected in the bid's creative metadata;
+it does not reject an otherwise valid auction.
+
+Hostname syntax validation does not establish that DNS resolves to a public IP.
+IP literals, localhost and dotless names are rejected, but other names can still
+resolve internally. Wildcard outbound declarations are not destination security
+controls. Public deployments need operator-controlled destination admission and
+DNS/IP egress controls; see [OWASP's SSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
+
+The outbound request does **not follow redirects**. It has a five-second timeout
+and buffers at most **64 KiB after recognized gzip, Brotli, or deflate decoding**.
+Axum and Fastly default `Accept-Encoding` to `identity` when absent. Recognized
+encoded responses are decoded, so a valid decoded JWKS can now verify even if
+the old client rejected its encoded form. Outbound timeout enforcement is Native
+on Axum and BestEffort on Fastly, Cloudflare, and Spin; the budget does not
+promise finite provider teardown.
+
+The client buffers before returning the response. Send-time framing, size,
+body-read, decode, and timeout failures therefore take precedence over a non-200
+status. Size failures keep `HTTP error: JWKS response body exceeds 65536 byte limit`.
+Other send failures use `HTTP error: JWKS fetch failed: ...`; internal-kind errors
+use `internal error` instead of exposing details. Only a successful send reaches
+the status check, which requires 200. A non-200 status is reported without
+parsing its JSON. Partial (206) responses retain their original content coding
+and cannot satisfy the required 200 status. A defensive read for a custom client that returns a stream can
+still use `HTTP error: Stream read failed: ...`.
+
+`HTTP error: Proxy not available` is retained legacy wording for a missing
+outbound client in the request context, such as when the optional `outbound-http`
+capability is unavailable. It does not refer to the removed proxy
+API. Fastly dynamic-backend failures occur when the installed client sends.
+
+The local cache uses a portable monotonic clock with a **10-minute TTL**, at most
+**32 canonical-host entries**, and a **2 MiB owned-allocation charge**. The charge
+counts host-string capacity, key-vector capacity (including each key struct),
+and each key's `kid`/`x` string capacities. It excludes map buckets, allocator
+metadata, fixed reference-counting overhead, transient parsing buffers, and
+request-local values, so it does not
+bound total process memory or RSS. Expired entries are removed before the oldest
+entries are evicted. A value too large to cache can still verify the current
+request; this per-entry rejection path is defensive because normal fetches are
+already bounded to 64 KiB. A poisoned cache lock bypasses lookup and insertion
+and logs a debug diagnostic. A fetched key set is shared by its current request,
+the cached entry and later hits; the charge uses those retained allocations.
+
+Outbound caching uses `PlatformDefault`. Cloudflare's committed compatibility
+date (`2023-05-01`) does not support `Bypass` without a later date or the
+`cache_option_enabled` flag. Provider caches can refill the local cache with a
+stale response after its TTL expires: the TTL limits local residency, not the
+maximum delay before a rotated key becomes visible.
+
+Fastly still requires dynamic backends for this fetch. See the
+[adapter capability table](/guide/adapters/#capability-support) and
+[Cloudflare setup](/guide/adapters/cloudflare) for deployment prerequisites.
+
 ## Bidstream Identity Decoration
 
 After sync, trusted-server decorates OpenRTB bid requests with EC identity data. Mocktioneer parses these fields and reflects them in creative metadata for visual debugging.

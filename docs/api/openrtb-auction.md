@@ -4,7 +4,7 @@ The `/openrtb2/auction` endpoint accepts OpenRTB 2.x bid requests and returns de
 
 ::: warning Requires a pushed config
 This endpoint reads `bid_cpm` from the typed app config via the fail-loud
-`AppConfig` extractor, so it returns an error (`config_out_of_date`) until the
+`AppConfig` extractor, so it returns 503 `config_out_of_date` with `Retry-After: 60` until the
 config blob has been pushed once for the target adapter:
 
 ```bash
@@ -22,6 +22,12 @@ without it.)
 POST /openrtb2/auction
 Content-Type: application/json
 ```
+
+Requests are capped at **1 MiB** with a **10-second body-read budget**. JSON
+is accepted without a `Content-Type` header and with `text/plain`, although
+`application/json` is recommended. `AppConfig` is extracted before the body, so
+config failures take precedence over parsing and size errors. See
+[request limits and config errors](./#request-limits-and-deadlines).
 
 ## Request Format
 
@@ -190,38 +196,26 @@ curl -X POST http://127.0.0.1:8787/openrtb2/auction \
 
 ## Error Responses
 
-### Missing Impressions (422)
+| Failure                                                           | Status | `error.kind`        |
+| ----------------------------------------------------------------- | ------ | ------------------- |
+| Empty impressions or an impression without a supported media type | 422    | `validation`        |
+| Malformed JSON or missing required JSON fields                    | 400    | `bad_request`       |
+| Body over 1 MiB                                                   | 413    | `payload_too_large` |
+| Observed body-read deadline expiry                                | 408    | `request_timeout`   |
+
+An oversized body returns 413 without `Retry-After`:
 
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "imp: must have at least 1 item"
+    "kind": "payload_too_large",
+    "message": "request body too large",
+    "status": 413
   }
 }
 ```
 
-### Missing Media Type (422)
-
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "imp[0]: must have banner, video, or native"
-  }
-}
-```
-
-### Invalid JSON (400)
-
-```json
-{
-  "error": {
-    "code": "PARSE_ERROR",
-    "message": "expected value at line 1 column 1"
-  }
-}
-```
+Config failures have their own [503/500 response rules](./#bid-route-config-errors).
 
 ## Request Signature Verification
 
@@ -247,4 +241,16 @@ The signed payload is canonical JSON:
 }
 ```
 
-The JWKS is fetched from `https://{site.domain}/.well-known/trusted-server.json`. Verification failures are logged but don't reject the request.
+The JWKS is fetched from `https://{site.domain}/.well-known/trusted-server.json`
+without following redirects, with a five-second timeout and a 64 KiB final
+buffered-body cap after recognized gzip, Brotli, or deflate decoding. Axum and
+Fastly default `Accept-Encoding` to `identity` when it is absent. A valid decoded
+JWKS can therefore verify successfully even when its encoded form was previously
+rejected.
+
+Buffered send-time framing, body, size, decode, and timeout failures take
+precedence over a non-200 status. Transport/body/decode failures use the
+`HTTP error: JWKS fetch failed:` prefix, while size failures keep
+`HTTP error: JWKS response body exceeds 65536 byte limit`. Internal details are
+redacted. Verification failures are logged and included in creative metadata;
+the auction still serves bids. See the [JWKS policy and cache details](/integrations/trusted-server#signature-verification-and-jwks).

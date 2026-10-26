@@ -12,7 +12,9 @@ mocktioneer/
 │   ├── mocktioneer-core/   # Shared business logic
 │   ├── mocktioneer-adapter-axum/       # Native HTTP server
 │   ├── mocktioneer-adapter-fastly/     # Fastly Compute binary
-│   └── mocktioneer-adapter-cloudflare/ # Cloudflare Workers binary
+│   ├── mocktioneer-adapter-cloudflare/ # Cloudflare Workers binary
+│   ├── mocktioneer-adapter-spin/       # Spin component
+│   └── mocktioneer-cli/                # CLI and typed config commands
 └── examples/               # Helper scripts
 ```
 
@@ -50,7 +52,12 @@ Each adapter crate is minimal - it just wires up the EdgeZero runtime:
 ```rust
 // mocktioneer-adapter-axum/src/main.rs
 fn main() {
-    edgezero_adapter_axum::serve(mocktioneer_core::build_app());
+    if let Err(err) =
+        edgezero_adapter_axum::dev_server::run_app::<mocktioneer_core::MocktioneerApp>()
+    {
+        eprintln!("mocktioneer adapter failed: {err}");
+        std::process::exit(1);
+    }
 }
 ```
 
@@ -67,21 +74,42 @@ The adapter crates handle platform-specific concerns:
 The core crate uses the `edgezero_core::app!` macro to generate the app structure:
 
 ```rust
-edgezero_core::app!("../../edgezero.toml", MocktioneerApp);
+edgezero_core::app!("../../edgezero.toml", MocktioneerApp, configure = crate::configure_app);
 ```
 
 This macro:
 
 1. Parses `edgezero.toml` at compile time
 2. Generates route registration code
-3. Creates the `MocktioneerApp` type with a `build_app()` method
+3. Creates the `MocktioneerApp` hooks type, including a fallible configuration hook
+
+Runtime entrypoints assemble the app with platform metadata and propagate any
+configuration error. Tests can build it directly:
+
+```rust
+use edgezero_core::app::App;
+use edgezero_core::PlatformMetadata;
+use mocktioneer_core::MocktioneerApp;
+
+let app = App::build::<MocktioneerApp>(PlatformMetadata::default())
+    .expect("build Mocktioneer app");
+```
+
+The configuration hook sets a two-second config-extraction deadline and a
+10-second body-read budget for the three POST bid routes, whose manifest class
+is `bid`. Other routes keep the 30-second default. See [request limits](/api/#request-limits-and-deadlines).
 
 ### Middleware
 
-Middleware is applied to all routes in order:
+Middleware is applied to matched routes in order:
 
-1. **RequestLogger** - Logs incoming requests
-2. **Cors** - Adds CORS headers to responses
+1. **Cors** - Renders errors and adds CORS headers to responses
+2. **RequestLogger** - Logs handler results before errors are rendered
+
+Cors uses the framework's default error renderer. Middleware that needs the
+original error must run inside Cors. A future custom app error renderer needs a
+framework hook that makes it available at this boundary; simply setting an app
+renderer would not change the errors already rendered by Cors.
 
 ### Request Context
 
@@ -90,7 +118,12 @@ Handlers receive a `RequestContext` that provides:
 - Request body and headers
 - Path parameters
 - Query string parsing
-- Validated JSON extraction
+- Validated JSON extraction and bounded body reads
+- Outbound HTTP via `ctx.http_client()` and a portable `ctx.monotonic_clock()`
+
+Read method, URI, and headers through `ctx.method()`, `ctx.uri()`, and
+`ctx.headers()`. Converting the context back to a request is fallible:
+`ctx.into_request()?`.
 
 ## Data Flow
 
@@ -136,11 +169,17 @@ HTTP handlers for all endpoints. Uses extractors for type-safe request parsing:
 pub async fn handle_openrtb_auction(
     RequestContext(ctx): RequestContext,
     ForwardedHost(host): ForwardedHost,
-    ValidatedJson(req): ValidatedJson<OpenRTBRequest>,
+    AppConfig(config): AppConfig<MocktioneerConfig>,
+    ValidatedJsonWithin(req): ValidatedJsonWithin<OpenRTBRequest, MAX_BID_REQUEST_BYTES>,
 ) -> Result<Response, EdgeError> {
     // ...
 }
 ```
+
+`MAX_BID_REQUEST_BYTES` is 1 MiB; config extraction happens before the body.
+Mediation retains `ValidatedJson` with the default 8 MiB cap. Imports come from
+`edgezero_core::extractor`, `edgezero_core::context`, and
+`edgezero_core::http::Response`, with `EdgeError` and `action` from `edgezero_core`.
 
 ### openrtb.rs
 
