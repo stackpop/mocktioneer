@@ -33,5 +33,8 @@ spin-sdk = { workspace = true }
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 futures = { workspace = true }
 
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+toml = { workspace = true }
+
 [lints]
 workspace = true

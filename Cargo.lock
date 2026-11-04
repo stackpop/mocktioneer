@@ -1855,6 +1855,7 @@ dependencies = [
  "futures",
  "mocktioneer-core",
  "spin-sdk",
+ "toml",
 ]
 
 [[package]]

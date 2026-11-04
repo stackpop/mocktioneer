@@ -223,6 +223,12 @@ level = "info"
 echo_stdout = true
 ```
 
+The runtime config gives that KV label an explicit SQLite `path`,
+`.spin/sqlite_key_value.db` beside `runtime-config.toml`. That is the file
+`config push --adapter spin --local` writes. Without a `path`, Spin keeps a
+`type = "spin"` store in memory, so `spin up` never sees pushed config and the
+auction and APS endpoints return `503 config_out_of_date`.
+
 ## Typed App Config
 
 `mocktioneer.toml` (repo root) maps 1:1 onto the `MocktioneerConfig` struct —
