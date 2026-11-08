@@ -1,4 +1,4 @@
-ARG RUST_VERSION=1.95.0
+ARG RUST_VERSION=1.98
 FROM rust:${RUST_VERSION}-slim-bookworm AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -33,7 +33,7 @@ COPY mocktioneer.toml.example ./mocktioneer.toml
 RUN ./target/release/mocktioneer-cli config push --adapter axum --yes
 
 # Pin the runtime base to the same Debian release as the builder
-# (`rust:1.95.0-slim-bookworm`) so the runtime glibc can't drift out from under
+# (`rust:1.98-slim-bookworm`) so the runtime glibc can't drift out from under
 # the build env on a later rebuild.
 FROM debian:bookworm-slim AS runtime
 
