@@ -33,7 +33,7 @@ The EdgeZero CLI provides a unified interface for all adapters, but it is mainta
 If you have access to the EdgeZero repo:
 
 ```bash
-cargo install --git https://github.com/IABTechLab/edgezero.git --rev d47c8026a941a2361182c9e2042bebdcb8be4d04 edgezero-cli --features cli
+cargo install --git https://github.com/IABTechLab/edgezero.git --rev 1467e28a4d04115cd1f2576df404d00529ee127f edgezero-cli --features cli
 ```
 
 Or run it from a local EdgeZero checkout:
@@ -81,7 +81,7 @@ push; Axum snapshots the config at startup.
 ### Option 2: Using the CLI
 
 ```bash
-edgezero-cli serve --adapter axum
+edgezero serve --adapter axum
 # or, in-repo (no external install):
 cargo run -p mocktioneer-cli -- serve --adapter axum
 ```
@@ -89,7 +89,7 @@ cargo run -p mocktioneer-cli -- serve --adapter axum
 ### Option 3: Fastly Local Development
 
 ```bash
-edgezero-cli serve --adapter fastly
+edgezero serve --adapter fastly
 # Or directly:
 fastly compute serve -C crates/mocktioneer-adapter-fastly
 ```
@@ -101,7 +101,7 @@ The committed compatibility flags `enable_request_signal`, `enable_weak_ref`
 and `internal_stream_byob_return_view` are required; a store-name variable alone does not create the KV binding.
 
 ```bash
-edgezero-cli serve --adapter cloudflare
+edgezero serve --adapter cloudflare
 # Or directly:
 wrangler dev --cwd crates/mocktioneer-adapter-cloudflare
 ```
@@ -111,6 +111,7 @@ wrangler dev --cwd crates/mocktioneer-adapter-cloudflare
 Use Spin CLI 4.1 or newer:
 
 ```bash
+cargo run -p mocktioneer-cli -- config push --adapter spin --local --yes
 cargo run -p mocktioneer-cli -- serve --adapter spin
 ```
 

@@ -102,16 +102,16 @@ The EdgeZero CLI provides a unified interface for all adapters. It's maintained 
 
 ```bash
 # Install (requires access to EdgeZero repo)
-cargo install --git https://github.com/IABTechLab/edgezero.git --rev d47c8026a941a2361182c9e2042bebdcb8be4d04 edgezero-cli --features cli
+cargo install --git https://github.com/IABTechLab/edgezero.git --rev 1467e28a4d04115cd1f2576df404d00529ee127f edgezero-cli --features cli
 
 # Serve any adapter
-edgezero-cli serve --adapter axum
-edgezero-cli serve --adapter fastly
-edgezero-cli serve --adapter cloudflare
-edgezero-cli serve --adapter spin        # needs a Spin 4.1+ runtime
+edgezero serve --adapter axum
+edgezero serve --adapter fastly
+edgezero serve --adapter cloudflare
+edgezero serve --adapter spin        # needs a Spin 4.1+ runtime
 
 # Build any adapter
-edgezero-cli build --adapter fastly
+edgezero build --adapter fastly
 ```
 
 The CLI reads `edgezero.toml` for adapter commands and configuration. Fastly
@@ -138,7 +138,7 @@ cargo run -p mocktioneer-cli -- config push --adapter axum --yes
 ```
 
 `serve`/`build`/`deploy`/`auth`/`provision` work from either the external
-`edgezero-cli` or `mocktioneer-cli`; the typed `config validate` / `config diff` /
+`edgezero` or `mocktioneer-cli`; the typed `config validate` / `config diff` /
 `config push` commands are only in `mocktioneer-cli`.
 
 ## Common Configuration

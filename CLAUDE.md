@@ -54,10 +54,10 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo run -p mocktioneer-adapter-axum
 
 # Run via EdgeZero CLI
-edgezero-cli serve --adapter cloudflare   # Cloudflare on :8787
-edgezero-cli serve --adapter fastly       # Fastly on :7676
-edgezero-cli serve --adapter spin         # Spin on :3000 — needs Spin >= 4.1
-                                          # (spin-sdk 7 imports wasi:http@0.3.0,
+edgezero serve --adapter cloudflare   # Cloudflare on :8787
+edgezero serve --adapter fastly       # Fastly on :7676
+edgezero serve --adapter spin         # Spin on :3000 — needs Spin >= 4.1
+                                          # (spin-sdk 8 uses WASIp3 interfaces,
                                           # which Spin 4.0.x does not provide).
                                           # Spin isn't in `.tool-versions`;
                                           # install from spinframework.dev.

@@ -199,8 +199,9 @@ Other send failures use `HTTP error: JWKS fetch failed: ...`; internal-kind erro
 use `internal error` instead of exposing details. Only a successful send reaches
 the status check, which requires 200. A non-200 status is reported without
 parsing its JSON. Partial (206) responses retain their original content coding
-and cannot satisfy the required 200 status. A defensive read for a custom client that returns a stream can
-still use `HTTP error: Stream read failed: ...`.
+and cannot satisfy the required 200 status. The shared finalizer also buffers
+custom head clients, so their body failures use the send-time prefix. The
+defensive post-send read retains `HTTP error: Stream read failed: ...`.
 
 `HTTP error: Proxy not available` is retained legacy wording for a missing
 outbound client in the request context, such as when the optional `outbound-http`

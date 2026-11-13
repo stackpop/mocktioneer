@@ -65,7 +65,7 @@ are capped at 1 MiB; overflow returns 413 `payload_too_large` with
 cargo test                              # Run tests
 cargo run -p mocktioneer-adapter-axum   # Local server (Axum) on :8787
 
-# Serve other adapters via the in-repo CLI (or the external edgezero-cli):
+# Serve other adapters via the in-repo CLI (or the external edgezero executable):
 cargo run -p mocktioneer-cli -- serve --adapter cloudflare # Cloudflare on :8787
 cargo run -p mocktioneer-cli -- serve --adapter fastly     # Fastly on :7676
 

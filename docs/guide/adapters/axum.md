@@ -29,7 +29,7 @@ endpoints work without a pushed config.)
 ## Using the CLI
 
 ```bash
-edgezero-cli serve --adapter axum
+edgezero serve --adapter axum
 # or, in-repo (no external install):
 cargo run -p mocktioneer-cli -- serve --adapter axum
 ```

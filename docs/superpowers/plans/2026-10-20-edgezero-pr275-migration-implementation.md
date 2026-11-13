@@ -18,7 +18,7 @@ The 2026-10-23 second review adds a JWKS destination-admission decision that
 remains open. The previous implementation checkpoints are complete; merge
 qualification additionally requires resolving this new security policy.
 
-Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R12. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
+Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R13. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
 
 Review on 2026-10-20 checked the exact proposed upstream pin `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`, not merely the upstream checkout's HEAD. PR #275 remains draft and unmerged. Its current head, `7cccaf10734914161803317aec6c55c22c2bccc9`, adds seven documentation files relative to that pin; it changes no implementation, dependencies or toolchain. Reconcile the spec's stale head metadata and its repinning rule in Task 0; do not silently change Cargo source identity.
 
@@ -785,3 +785,116 @@ lint errors and 3 Cloudflare library lints (wildcard imports, missing error docs
 missing inline). No baseline comparison proved every diagnostic pre-existing;
 this is not the required native workspace gate, which passed. The target
 contract suites passed. No broad unrelated lint cleanup was added.
+
+### Latest PR head adoption (2026-11-13, R13)
+
+User request: update to the latest EdgeZero PR #275. Captured head is
+`1467e28a4d04115cd1f2576df404d00529ee127f`, open and no longer draft, compared
+with the currently pinned `d47c8026`. PR #131 now targets main. Three independent
+core/lifecycle, outbound and provider/build audits selected required consumer
+changes only; the upstream delta contains 183 commits and its API compare file
+list is capped, so materialized source comparisons are authoritative.
+
+- [x] Preserve a freshly built `31880d5` native baseline and source identity.
+  Repin all six EdgeZero dependencies consistently and align direct Spin SDK
+  to exact registry 8.0.0; refresh only necessary lockfile dependencies.
+- [x] Record initial compile failures, then replace the two retired Body enum
+  patterns with borrowed byte accessors. Keep response framing guards intact.
+- [x] Migrate the three test clients to head-first dispatch and shared
+  finalization. Keep production send/cache policy unchanged and apply response
+  decoding/limits once. Update stream-failure fixture expectation to the send
+  stage, where the mandatory shared buffered finalizer now observes it.
+- [x] Keep standard adapter entrypoints: the Axum server owns/drives its new
+  native outbound executor itself. Preserve config APIs, route classes, CORS,
+  admission completion/grant, existing budgets/cache, no-follow behavior and
+  unresolved destination-policy gate. No new hooks, optimizer or fan-out APIs.
+- [x] Run native tests/fmt/strict Clippy/features/config/browser/docs and Node
+  regressions; qualify WASM targets with matching runners and SDK uniqueness.
+  Rebuild original and immediately preceding baselines as needed because the
+  historical /tmp captures/tools have been cleaned; preserve fresh captures.
+- [x] Verify seeded/unseeded wire cases, independent repeats, actual local
+  Docker/Fastly/workerd/Spin behavior and Spin drift rejection, recording exact
+  artifact/tool/source identities and hosted/runtime limitations.
+- [x] Update current-pin/SDK/API docs and spec, including the external `edgezero`
+  executable name (the Cargo package remains `edgezero-cli`) and local Spin seeding.
+- [x] Complete separate independent spec-compliance and code-quality reviews;
+  both approve the final integrated delta with no must-fix findings. Recheck
+  upstream head: still `1467e28a`, open, ready for review and unmerged.
+
+Publication reuses existing PR #131 and issue #130; new-head GitHub check status
+is tracked there. Historical CI is not substituted for current-head results.
+No PR merge or deployment is included.
+
+Evidence directory: `/tmp/mocktioneer-pr275-20261113.RndJbwwe`. Existing Rust
+1.98.1, Node 24.20.0, Viceroy 0.21.0 and Wasmtime 48.0.2 pins remain appropriate.
+Fastly/Workers already resolve to upstream's exact 0.13.1/0.8.5 SDKs. Reinstall
+matching task-local wasm-bindgen 0.2.128 and Wasmtime 48.0.2 tools; do not replace
+global installations or mistake stock Viceroy checks for upstream's stronger
+patched-runtime timing qualification. All scripts remain Node or shell.
+
+R13 verification and integration record:
+
+- The original application `e6c298216` and preceding `31880d5` native baselines
+  were rebuilt and preserved before comparisons. Fresh wire qualification has
+  **12 captures / 522 requests**, **16 comparisons / 696 case checks**, covering
+  all **85 seeded + 2 unseeded** cases and independent restarts/repeats. The
+  corpus hash stays `524c2555445b7e57e2af56676902557c97008dae34b0d94afc2968bb9478f1a4`.
+  Historical original-cap 200s require explicit baseline-repeat mode; ordinary
+  candidates still require 413. No request retries or allowlist widening.
+- **202 workspace tests** passed before integration. PR #118 was squash-merged
+  on November 8, and #131 now targets `main`. Integrating `main` at `26ef43c`
+  resolves its conflicting old pins/tool versions while preserving the current
+  six/eight source identities. The only additional prerequisite commit was
+  `605b2b7`: the same explicit Spin SQLite path, documentation and a native
+  regression. That regression and native TOML dev dependency are retained.
+  The integrated result passes **203 tests** (174 unit, 12 APS, 15 endpoint,
+  1 CLI and 1 Spin runtime-config), fmt, strict all-feature workspace Clippy,
+  `fastly cloudflare spin` feature compilation and docs lint/format/build.
+- **61 Node regressions**, **41 Playwright tests**, strict config validation
+  and an isolated CLI push/HTTP roundtrip at **CPM 0.35** pass. Native outbound
+  ownership is also exercised by a temporary exact-pin Axum executor probe:
+  one bounded loopback response succeeds; dropping the owner makes a retained
+  client fail with typed Internal before further I/O. This is not public HTTPS
+  JWKS or hosted-network qualification.
+- Actual target contracts pass: **Fastly 5 / Cloudflare 6 / Spin 4**. Cached
+  Firefox builds failed profile startup before tests; logs and the direct
+  browser control are retained. Existing Chrome for Testing **156.0.8078.4**
+  plus its matching task-local driver executed all six unchanged Cloudflare
+  tests with wasm-bindgen **0.2.128**. No tests were dropped. Optional CF-target
+  Clippy still reports three unchanged library lints; the required native
+  strict workspace gate passes.
+- Fresh local **Docker linux/amd64, stock Viceroy 0.21.0, real workerd and
+  Spin 4.1.0** delivery checks pass. Spin originally returned missing-blob 503
+  with an implicit in-memory named store; adding the explicit relative path
+  made fresh local config push and actual CLI serve share SQLite and return
+  the seeded price. This independently reproduced the fix now imported from
+  main. Spin outbound-host drift rejects with exit 2, then the manifest is
+  restored. No serve command change is required.
+- Workerd runs with the retained **2023-05-01 date and all three flags**, a
+  disposable local KV binding and no browser polyfill. Root, seeded auction,
+  GIF, empty 400/302 and 413/CORS delivery pass; direct origin proves root
+  length before Wrangler HTML rewriting. The test does not establish overflow
+  recovery or hosted delivery. All task listeners and the Docker container
+  are stopped. Wrangler debug logs stay local because they contain proxy data.
+- Audits used separate core/lifecycle, outbound and provider/build reviewers;
+  required consumer changes were chosen over entrypoint rewrites or additional
+  capabilities. The provider audit verified all nine capability table rows
+  against the exact pin. Local functional passes do not strengthen provider
+  deadline/cancellation or complete allocation guarantees.
+
+Evidence indexes in the directory above: `provider-verification.json`,
+`wire-qualification.json`, `runtime-verification.json`,
+`native-outbound-probe-result.json`, `live-cloudflare/results.json`,
+`integrated-source-identities.json` and the consolidated `verification-index.json`, plus
+`workspace-final.log`, `clippy-final.log`, `features-final.log` and
+`docs-*-final.log`. Initial compile, fixture-expectation, browser startup and
+Spin persistence failures remain recorded separately. No cleaned October
+temporary directory is claimed as present-day evidence. Runtime/wire artifacts
+precede documentation and the imported native-only Spin regression; final
+source identity differences and qualification limits are recorded explicitly.
+
+Remaining security/release gates are unchanged: choose and test JWKS
+destination admission, and review the upstream shipping delta before replacing
+the unmerged revision with a release tag. The private default admission
+completion/grant copy still matches `1467e28a`; its next repin requires another
+source comparison because no public delegate/getter exists.

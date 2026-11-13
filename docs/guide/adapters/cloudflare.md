@@ -45,7 +45,7 @@ Run locally using Wrangler's local mode:
 
 ```bash
 # Using the CLI
-edgezero-cli serve --adapter cloudflare
+edgezero serve --adapter cloudflare
 # or, in-repo (no external install):
 cargo run -p mocktioneer-cli -- serve --adapter cloudflare
 
@@ -86,7 +86,7 @@ Static/pixel/sizes endpoints work without any of this.
 
 ```bash
 # Using EdgeZero CLI
-edgezero-cli build --adapter cloudflare
+edgezero build --adapter cloudflare
 
 # Or directly
 cargo build --release --target wasm32-unknown-unknown -p mocktioneer-adapter-cloudflare
@@ -134,7 +134,7 @@ target/wasm32-unknown-unknown/release/mocktioneer_adapter_cloudflare.wasm
 
 ```bash
 # Using EdgeZero CLI
-edgezero-cli deploy --adapter cloudflare
+edgezero deploy --adapter cloudflare
 
 # Or directly
 wrangler deploy --config crates/mocktioneer-adapter-cloudflare/wrangler.toml

@@ -4,20 +4,20 @@
 - **Branch:** `feat/edgezero-pr275-migration`, cut from PR #118
   (`worktree-deps-rust-1.98-align-ez366`, head `e6c2982`)
 - **Upstream:** [IABTechLab/edgezero#275](https://github.com/IABTechLab/edgezero/pull/275),
-  "implement portable outbound HTTP and request lifecycle contracts". **Draft,
-  open, unmerged.**
-  - Current implementation pin: `d47c8026a941a2361182c9e2042bebdcb8be4d04`,
-    the PR head observed for the user's 2026-10-23 latest-revision request.
+  "implement portable outbound HTTP and request lifecycle contracts". **Open,
+  ready for review, unmerged.**
+  - Current implementation pin: `1467e28a4d04115cd1f2576df404d00529ee127f`,
+    the PR head observed for the user's 2026-11-13 latest-revision request.
     The original R1–R9 audit used `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`;
-    R10 records the implementation/API/wire delta rather than treating its old
+    R10–R12 used `d47c8026`; R13 records the latest implementation/API delta rather than treating old
     source line references as a fresh audit of every upstream subsystem.
   - Preflight head on 2026-10-21: `852ec74bbb72139dca2809f3537689bb1ee5f0c6`,
     base `main`. Final pre-handoff refresh observed `619c69bd2b2b24f35210c482b560cb46b1b96888`;
-    PR #275 remains draft/open/unmerged. R10 supersedes the earlier frozen-pin
+    PR #275 was draft/open/unmerged at those checkpoints. R10 supersedes the earlier frozen-pin
     decision with the explicitly requested latest-head adoption (§11).
   - It contains release `v0.0.10` and the IABTechLab transfer (#419). Nothing on
     edgezero `main` is missing from it.
-- **Status:** migration and review fixes implemented; latest-head qualification is recorded in R10. Upstream merge/release and JWKS destination admission remain gated. Execution is tracked in
+- **Status:** migration and review fixes implemented; latest-head qualification is tracked in R13. Upstream merge/release and JWKS destination admission remain gated. Execution is tracked in
   the [implementation plan](../plans/2026-10-20-edgezero-pr275-migration-implementation.md).
 - **Revision history:**
   - **R1:** initial draft.
@@ -81,6 +81,12 @@
     OPTIONS/204 regressions, shares the initial fetch Arc with cached hits and
     uses a private canonical hostname type at the fetch boundary. This type
     guarantees syntax only; destination admission remains an open merge gate.
+  - **R13:** latest PR head adoption on 2026-11-13, `1467e28a`. Replace retired
+    Body enum matching with borrowed accessors; migrate test clients to raw-head
+    dispatch and the shared buffered finalizer; align exact Spin SDK 8.0.0.
+    Standard entrypoints retain adapter-owned native execution. Preserve all
+    request/cache policies, CORS and framing contracts. An explicit relative
+    Spin SQLite path makes local config push and CLI serve share persistence.
 
 ## 0. Confirmed scope (2026-10-20)
 
@@ -201,7 +207,7 @@ calls for confirmation.
 - **The CI gates in `CLAUDE.md` must pass,** plus the three contract jobs in
   `test.yml`.
 - **Pin:** the six `edgezero-*` entries use
-  `git = "https://github.com/IABTechLab/edgezero.git", rev = "d47c8026a941a2361182c9e2042bebdcb8be4d04"`.
+  `git = "https://github.com/IABTechLab/edgezero.git", rev = "1467e28a4d04115cd1f2576df404d00529ee127f"`.
   There is no seventh edgezero dependency (§6.1).
 - **PR target (my call):** open the PR against `main`.
   - Every workflow triggers only on `pull_request: branches: [main]`, so a PR
@@ -279,8 +285,9 @@ the compile probe.
       - `wasm-bindgen-test` and `-macro`: 0.3.71 → 0.3.78, with
         `wasm-bindgen-test-shared` at 0.2.128
       - `minicov`: 0.3.9 → 0.3.8
-  - **Unmoved:** `fastly`, `spin-sdk`, `bytes` and `reqwest` were already at the
-    pinned versions.
+  - **Unmoved at the original checkpoint:** `fastly`, `spin-sdk`, `bytes` and
+    `reqwest` were already at the pinned versions. R13 moves `spin-sdk` to exact
+    registry 8.0.0 to match `1467e28a`.
   - **Check that the family resolved together:**
     `cargo tree -p mocktioneer-adapter-cloudflare --target wasm32-unknown-unknown -e normal,dev -i js-sys`
     shows a single `js-sys` version. Run the same check for `wasm-bindgen` and
@@ -414,9 +421,11 @@ adoption step.
     reason without parsing its JSON. Then read a 200 with
     `resp.into_bytes_bounded(MAX_JWKS_BODY_BYTES).await`,
     then `serde_json::from_slice::<TrustedServerResponse>`.
-  - The second bounded read is defensive: standard clients return an already
-    buffered body for this request. If a custom client returns a stream, a
-    non-limit drain error still uses `Stream read failed: {detail}`.
+  - The second bounded read is defensive. At R13, the shared facade finalizes
+    buffered responses even for custom head clients before send returns; source
+    errors therefore use `JWKS fetch failed: {detail}`. Retain the defensive
+    post-send mapping `Stream read failed: {detail}` without claiming a custom
+    head implementation can bypass the shared buffered policy.
   - Do **not** use `json_bounded`. It replaces serde's message with a fixed
     "failed to decode upstream JSON", which would change the parse-failure
     reason.
@@ -430,7 +439,7 @@ adoption step.
   | Send, including buffered body failures | `HTTP error: JWKS fetch failed: {detail}` | Includes transport, decoding, body-read and timeout errors from `send()`. On Fastly and Cloudflare, failures previously observed while draining a response can move here from `Stream read failed:` (F12). |
   | Non-200 after a successful send | `HTTP error: JWKS server returned status: {status}` | String unchanged. Send-time failures take precedence; a payload-bearing non-200 can fail collection before this check (F12). |
   | Over cap | `HTTP error: JWKS response body exceeds 65536 byte limit` | String unchanged. Match `EdgeError::ResponseTooLarge { .. }` with `matches!`, both from `send()` (declared-length checks or bounded collection) and from the defensive `into_bytes_bounded()`. Keep `jwks_body_too_large_error`. |
-  | Defensive body drain, other errors | `HTTP error: Stream read failed: {detail}` | Only for a custom client returning a stream despite buffered mode. Standard adapter body errors occur during `send()` and use its prefix. The detail text changes **(my call)**. |
+  | Defensive body drain, other errors | `HTTP error: Stream read failed: {detail}` | Defensive retained branch. R13's shared finalizer buffers even custom head clients during send, so source failures use the send prefix. |
   | Parse | `HTTP error: JWKS parse failed: {serde}` | Unchanged. |
   | Cache lock | `HTTP error: Cache lock poisoned: {detail}` | Removed. A poisoned lock becomes a cache miss (§6.2). |
 
@@ -453,21 +462,28 @@ adoption step.
   `collect_jwks_body_rejects_oversized_once_body`. The over-cap path is covered
   by a stub-client test instead.
 - **Stub client for tests:**
-  - Implement `OutboundHttpClient` with `send`, plus `start_batch_until`
-    returning `OutboundBatch::cutoff(n)`.
-  - Build responses with
-    `OutboundResponse::new(method, status, headers, body, clock, ContentTypeProvenance::Unknown)`.
+  - At R13, implement `OutboundHttpClient` with `begin`, `dispatch_head`,
+    `progress`, `start_batch_until`, `time` and `validate_supported_options`.
+    The fixtures support the public `HttpClient::send` path; no batch fan-out
+    behavior is required. Unused begin paths reject, and cutoff fixtures use
+    the context from `OutboundPreparedBatch::into_slots()`.
+  - Return a raw `OutboundHead` from `dispatch_head`, preserving dispatch
+    context, raw header fidelity, source stream and `OutboundExchangeOwner`.
+    The facade applies shared buffering, decoding and limits once. Do not
+    pre-finalize a response in the client or copy production shaping code.
   - Insert `HttpClient::with_client(stub)` into the request extensions.
-  - At `d47c8026`, `ResponseBodyPolicy` also requires `response_decoding` and
+  - Standalone decoding fixtures still use `ResponseBodyPolicy`, including `response_decoding` and
     `status`. Copy the former from the actual request parts and pass the reply's
     actual status; decode fixtures use 200. Default decoding remains enabled,
     but 206 preserves original content coding. Non-200 JWKS still fails
     verification after a successful buffered send; partial-response collection
     can therefore change which upstream failure precedes that status check.
   - Capture the request and assert buffered response mode, a 65536-byte limit,
-    and a five-second timeout. On success the stub returns a buffered body.
-    Model buffered body failures as errors returned by `send`, rather than
-    returning a stream that postpones the failure until application collection.
+    and a five-second timeout. On success the facade returns a buffered body.
+    Raw source-stream failures are observed by the buffered finalizer during
+    `send`, before application collection. Immediate fixture replies use
+    independent progress and a pending timer; these fixtures do not qualify
+    runtime timeout enforcement.
   - Cover:
     - success
     - a missing client
@@ -478,8 +494,9 @@ adoption step.
     - a buffered body-read or decode error, which uses `JWKS fetch failed:`
     - a typed timeout error and its reason mapping (C7)
     - a parse error
-    - the defensive custom-client stream-drain error, tested separately from
-      the standard buffered-client cases
+    - a raw custom-head source failure, observed at send by shared buffered
+      finalization; retain defensive application collection without claiming
+      a bypass of the mandatory finalizer
   - Each case asserts its full reason string.
 
 ### 5.7 Test doubles and contract tests
@@ -538,7 +555,7 @@ adoption step.
 ### 5.8 Empty-body framing (my call)
 
 #275 streams responses that have no `Content-Length` on Fastly and Cloudflare.
-Ordinary mocktioneer responses with an empty `Body::Once` currently lack an
+At the original checkpoint, ordinary mocktioneer responses with an empty buffered body lacked an
 explicit length, including:
 
 - `/sync/start`'s 400 and 403 (`routes.rs:706, 716`)
@@ -1147,15 +1164,17 @@ Passing CI does not substitute for these checks.
 
 ## 11. Risks and follow-ups
 
-- **The draft is moving.** `d47c8026` sits on a draft branch.
+- **The PR is moving.** R13 pins the open, unmerged PR at `1467e28a`.
   - A force-push leaves it unreferenced, and a later GC breaks `cargo fetch`.
   - The user explicitly requested latest-head adoption on 2026-10-23. R10
-    reviews the delta from `f6c708cc`, pins `d47c8026`, and adopts its required
-    413 and framing changes. It does not automatically follow subsequent heads.
+    reviewed the delta from `f6c708cc` to `d47c8026` and adopted its 413 and
+    framing changes. The user renewed latest-head adoption on 2026-11-13;
+    R13 reviews the hard API cut to `1467e28a`. Neither follows future heads
+    automatically.
   - Before adopting any newer revision, review its implementation/API/wire delta,
     update this spec and the plan, and rerun §9 in full.
     Specifically compare the private default ingress completion/grant policy
-    with Mocktioneer's pinned copy: d47 exposes no public getter or delegate, so
+    with Mocktioneer's pinned copy: `1467e28a` still exposes no public getter or delegate, so
     a future default change cannot be inherited automatically.
 - **Re-pin when #275 ships:**
   1. Diff the CHANGELOG and public API from the rev to the tag.

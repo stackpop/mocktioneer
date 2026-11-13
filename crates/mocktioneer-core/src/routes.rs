@@ -273,7 +273,7 @@ fn apply_cors(headers: &mut HeaderMap) {
 
 fn build_response(status: StatusCode, body: Body) -> Response {
     let mut builder = response_builder().status(status);
-    if let Body::Once(bytes) = &body
+    if let Some(bytes) = body.as_bytes()
         // Inserting then removing a 204 length would reorder the other headers.
         && status != StatusCode::NO_CONTENT
         && (status != StatusCode::NOT_MODIFIED || !bytes.is_empty())
@@ -1109,9 +1109,7 @@ mod tests {
             .expect("representation length is valid when the body is suppressed");
             assert_eq!(prepared.declared_length(), Some(14));
             assert!(!prepared.transmits_body());
-            assert!(
-                matches!(prepared.into_response().body(), Body::Once(bytes) if bytes.is_empty())
-            );
+            assert_eq!(prepared.into_response().body().as_bytes(), Some(&[][..]));
         }
     }
 

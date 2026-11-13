@@ -1,6 +1,6 @@
 [package]
 name = "mocktioneer-adapter-spin"
-description = "Spin / Fermyon adapter for Mocktioneer (wasm32-wasip1)."
+description = "Spin / Fermyon adapter for Mocktioneer (wasm32-wasip2)."
 authors = { workspace = true }
 edition = { workspace = true }
 license = { workspace = true }
@@ -32,6 +32,9 @@ spin-sdk = { workspace = true }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 futures = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+toml = { workspace = true }
 
 [lints]
 workspace = true

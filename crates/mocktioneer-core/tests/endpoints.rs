@@ -11,8 +11,10 @@ mod tests {
         HeaderMap, HeaderValue, Method, Request, Response, StatusCode, header, request_builder,
     };
     use edgezero_core::outbound::{
-        ContentTypeProvenance, HttpClient, OutboundBatch, OutboundHttpClient, OutboundRequest,
-        OutboundResponse,
+        HttpClient, IndependentOutboundProgress, OutboundBatch, OutboundDispatchRequest,
+        OutboundExchangeOwner, OutboundFuture, OutboundHead, OutboundHeaderFidelity,
+        OutboundHeaderInput, OutboundHttpClient, OutboundPending, OutboundPreparedBatch,
+        OutboundProgressRuntime, OutboundRequest, OutboundSendMode, OutboundTime,
     };
     use edgezero_core::response_egress_framing::ResponseEgressFramingMode;
     use edgezero_core::store_registry::{ConfigRegistry, ConfigStoreBinding, StoreRegistry};
@@ -21,8 +23,10 @@ mod tests {
         IngressHeadAccounting, IngressHeadParts, MonotonicClock, MonotonicInstant,
     };
     use futures::executor::block_on;
-    use futures::stream::poll_fn;
+    use futures::future::{pending, ready};
+    use futures::stream::{iter, poll_fn};
     use std::io::Error as IoError;
+    use std::rc::Rc;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::sync::{Arc, Mutex};
     use std::task::Poll;
@@ -88,32 +92,53 @@ mod tests {
         reply: Vec<u8>,
     }
 
-    #[async_trait(?Send)]
     impl OutboundHttpClient for JwksClient {
-        async fn send(&self, request: OutboundRequest) -> Result<OutboundResponse, EdgeError> {
+        fn begin(&self, _request: OutboundDispatchRequest) -> Result<OutboundPending, EdgeError> {
+            Err(EdgeError::internal(IoError::other(
+                "signed auction fixture does not support pending sends",
+            )))
+        }
+
+        fn dispatch_head(&self, request: OutboundDispatchRequest) -> OutboundFuture<OutboundHead> {
             self.calls.fetch_add(1, Ordering::SeqCst);
-            let parts = request.into_parts();
+            let (parts, context) = request.into_parts();
             assert_eq!(parts.method, Method::GET);
             assert_eq!(
                 parts.uri.to_string(),
                 "https://signed-router-auction.example/.well-known/trusted-server.json"
             );
-            Ok(OutboundResponse::new(
-                parts.method,
+            Box::pin(ready(OutboundHead::new(
                 StatusCode::OK,
-                HeaderMap::new(),
-                Body::from_bytes(self.reply.clone()),
-                MonotonicClock::default(),
-                ContentTypeProvenance::Unknown,
-            ))
+                OutboundHeaderInput::new(
+                    "mocktioneer-router-test",
+                    HeaderMap::new(),
+                    OutboundHeaderFidelity::AdapterVisibleFields,
+                ),
+                Box::pin(iter([Ok(self.reply.clone().into())])),
+                context,
+                OutboundExchangeOwner::new(|| {}),
+            )))
         }
 
-        fn start_batch_until(
+        fn progress(&self) -> Rc<dyn OutboundProgressRuntime> {
+            Rc::new(IndependentOutboundProgress)
+        }
+
+        fn start_batch_until(&self, _batch: OutboundPreparedBatch) -> OutboundBatch {
+            panic!("signed auction fixture does not support batch sends");
+        }
+
+        fn time(&self) -> OutboundTime {
+            // Replies are immediately ready; expiry errors have separate fixtures.
+            OutboundTime::new(MonotonicClock::default(), |_, _| Box::pin(pending()))
+        }
+
+        fn validate_supported_options(
             &self,
-            requests: Vec<OutboundRequest>,
-            _cutoff: Deadline,
-        ) -> OutboundBatch {
-            OutboundBatch::cutoff(requests.len())
+            _request: &OutboundRequest,
+            _mode: OutboundSendMode,
+        ) -> Result<(), EdgeError> {
+            Ok(())
         }
     }
 

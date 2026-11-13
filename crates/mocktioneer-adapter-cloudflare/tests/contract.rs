@@ -8,14 +8,19 @@ use edgezero_core::config_store::{ConfigStore, ConfigStoreError, ConfigStoreHand
 use edgezero_core::context::RequestContext;
 use edgezero_core::http::{HeaderMap, Method, StatusCode, request_builder};
 use edgezero_core::outbound::{
-    ContentTypeProvenance, HttpClient, OutboundBatch, OutboundHttpClient, OutboundRequest,
-    OutboundResponse,
+    HttpClient, IndependentOutboundProgress, OutboundBatch, OutboundDispatchRequest,
+    OutboundExchangeOwner, OutboundFuture, OutboundHead, OutboundHeaderFidelity,
+    OutboundHeaderInput, OutboundHttpClient, OutboundPending, OutboundPreparedBatch,
+    OutboundProgressRuntime, OutboundRequest, OutboundSendMode, OutboundTime,
 };
 use edgezero_core::params::PathParams;
-use edgezero_core::{Deadline, EdgeError, MonotonicClock};
+use edgezero_core::{EdgeError, MonotonicClock};
+use futures::future::{pending, ready};
+use futures::stream::iter;
 use mocktioneer_core::MocktioneerApp;
 use mocktioneer_core::verification::verify_request_id_signature;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use wasm_bindgen_test::{wasm_bindgen_test, wasm_bindgen_test_configure};
@@ -65,33 +70,57 @@ struct JwksClient {
     reply: Vec<u8>,
 }
 
-#[async_trait(?Send)]
 impl OutboundHttpClient for JwksClient {
-    async fn send(&self, request: OutboundRequest) -> Result<OutboundResponse, EdgeError> {
+    fn begin(&self, _request: OutboundDispatchRequest) -> Result<OutboundPending, EdgeError> {
+        Err(EdgeError::bad_request("JWKS fixture supports Send only"))
+    }
+
+    fn dispatch_head(&self, request: OutboundDispatchRequest) -> OutboundFuture<OutboundHead> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        let parts = request.into_parts();
+        let (parts, context) = request.into_parts();
         assert_eq!(parts.method, Method::GET, "JWKS uses GET");
         assert_eq!(
             parts.uri.to_string(),
             "https://jwks-cache-contract.mocktioneer.example/.well-known/trusted-server.json",
             "JWKS uses the canonical publisher host"
         );
-        Ok(OutboundResponse::new(
-            parts.method,
+        Box::pin(ready(OutboundHead::new(
             StatusCode::OK,
-            HeaderMap::new(),
-            Body::from_bytes(self.reply.clone()),
-            MonotonicClock::default(),
-            ContentTypeProvenance::Unknown,
-        ))
+            OutboundHeaderInput::new(
+                "cloudflare",
+                HeaderMap::new(),
+                OutboundHeaderFidelity::AdapterVisibleFields,
+            ),
+            Box::pin(iter([Ok(self.reply.clone().into())])),
+            context,
+            OutboundExchangeOwner::new(|| {}),
+        )))
     }
 
-    fn start_batch_until(
+    fn progress(&self) -> Rc<dyn OutboundProgressRuntime> {
+        Rc::new(IndependentOutboundProgress)
+    }
+
+    fn start_batch_until(&self, batch: OutboundPreparedBatch) -> OutboundBatch {
+        let (context, slots) = batch.into_slots();
+        drop(slots);
+        OutboundBatch::cutoff(context)
+    }
+
+    fn time(&self) -> OutboundTime {
+        OutboundTime::new(MonotonicClock::default(), |_, _| Box::pin(pending()))
+    }
+
+    fn validate_supported_options(
         &self,
-        requests: Vec<OutboundRequest>,
-        _cutoff: Deadline,
-    ) -> OutboundBatch {
-        OutboundBatch::cutoff(requests.len())
+        _request: &OutboundRequest,
+        mode: OutboundSendMode,
+    ) -> Result<(), EdgeError> {
+        if mode == OutboundSendMode::Send {
+            Ok(())
+        } else {
+            Err(EdgeError::bad_request("JWKS fixture supports Send only"))
+        }
     }
 }
 

@@ -237,15 +237,36 @@ of the repository. See [Cloudflare setup](./adapters/cloudflare).
 
 ### Spin Adapter
 
-Spin targets `wasm32-wasip2` (spin-sdk 7). Its config store is KV-backed, so the
+Spin targets `wasm32-wasip2` (exact spin-sdk 8.0.0). Its config store is KV-backed, so the
 `serve` command passes a `--runtime-config-file` declaring the KV label
 (`spin deploy` is plugin-mediated and provisions KV itself, so it takes no
-runtime-config flag):
+runtime-config flag).
+
+The checked-in runtime config explicitly selects persistent local SQLite:
+
+```toml
+[key_value_store.mocktioneer_config]
+type = "spin"
+path = ".spin/sqlite_key_value.db"
+```
+
+Spin resolves this path relative to `runtime-config.toml`, so both local config
+push and serve use `crates/mocktioneer-adapter-spin/.spin/sqlite_key_value.db`.
+Seed it before serving:
+
+```bash
+cargo run -p mocktioneer-cli -- config push --adapter spin --local --yes
+cargo run -p mocktioneer-cli -- serve --adapter spin
+```
+
+Keep `--local` for local seeding; the configured `spin deploy` command makes a
+push without it select Fermyon Cloud.
 
 ::: tip Requires Spin 4.1 or newer
-`spin-sdk 7` imports `wasi:http@0.3.0`, which Spin 4.0.x and earlier do not
-provide — `spin up` on those fails to link with `a matching implementation was
-not found in the linker`. Spin 4.1.0 ships that interface and boots the adapter.
+`spin-sdk 8` uses WASIp3 interfaces (the lock resolves `wasip3` 0.10.0 with
+WASI 0.3.2 bindings). Spin 4.0.x and earlier lack the required interfaces;
+the adapter is locally checked with Spin 4.1.0. A build alone does not establish
+runtime compatibility.
 
 Spin is not pinned in `.tool-versions` (no widely used asdf plugin), so install
 it separately from [spinframework.dev/install](https://spinframework.dev/install).

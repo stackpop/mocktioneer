@@ -601,19 +601,23 @@ async fn verify_request_id_signature_with_cache(
 
 #[cfg(test)]
 mod tests {
-    use edgezero_core::Deadline;
     use edgezero_core::http::{HeaderMap, HeaderValue};
     use edgezero_core::outbound::{
-        HttpClient, OutboundBatch, OutboundHttpClient, OutboundRequestParts, OutboundResponse,
+        HttpClient, IndependentOutboundProgress, OutboundBatch, OutboundDispatchRequest,
+        OutboundExchangeOwner, OutboundFuture, OutboundHead, OutboundHeaderFidelity,
+        OutboundHeaderInput, OutboundHttpClient, OutboundPending, OutboundPreparedBatch,
+        OutboundProgressRuntime, OutboundRequestParts, OutboundSendMode, OutboundTime,
         ResponseBodyPolicy, ResponseMode,
     };
     use futures::stream::iter;
+    use std::future::{pending, ready};
     use std::io::Error as IoError;
     use std::panic::catch_unwind;
     use std::ptr::eq;
+    use std::rc::Rc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    use edgezero_core::body::Body;
+    use edgezero_core::body::{Body, BodyStream};
     use edgezero_core::http::Method;
     use edgezero_core::http::request_builder;
     use edgezero_core::params::PathParams;
@@ -656,39 +660,41 @@ mod tests {
         reply: StubReply,
     }
 
-    #[async_trait::async_trait(?Send)]
-    impl OutboundHttpClient for StubClient {
-        async fn send(&self, request: OutboundRequest) -> Result<OutboundResponse, EdgeError> {
-            use edgezero_core::outbound::{ContentTypeProvenance, OutboundResponse};
+    impl StubClient {
+        fn head(&self, request: OutboundDispatchRequest) -> Result<OutboundHead, EdgeError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             if let Some(on_send) = &self.on_send {
                 on_send();
             }
-            let parts = request.into_parts();
-            self.captured.lock().unwrap().push(CapturedRequest {
-                uri: parts.uri.to_string(),
-                method: parts.method.clone(),
-                mode: parts.response_mode,
-                timeout: parts.timeout,
-                cache: parts.cache_policy,
-            });
-            let (status, body) = match &self.reply {
-                StubReply::Bytes(status, bytes) => (*status, Body::from_bytes(bytes.clone())),
+            let (parts, context) = request.into_parts();
+            self.captured
+                .lock()
+                .map_err(|_error| {
+                    EdgeError::internal(IoError::other("JWKS test request capture lock poisoned"))
+                })?
+                .push(CapturedRequest {
+                    uri: parts.uri.to_string(),
+                    method: parts.method.clone(),
+                    mode: parts.response_mode,
+                    timeout: parts.timeout,
+                    cache: parts.cache_policy,
+                });
+            let mut headers = HeaderMap::new();
+            let (status, stream): (_, BodyStream) = match &self.reply {
+                StubReply::Bytes(status, bytes) => {
+                    (*status, Box::pin(iter([Ok(bytes.clone().into())])))
+                }
                 StubReply::BoundedResponse {
                     status,
                     declared,
                     chunks,
                     body_error,
                 } => {
-                    use edgezero_core::outbound::{
-                        apply_response_body_policy, collect_response_stream,
-                    };
-                    let policy = response_body_policy(&parts, *status);
-                    let mut headers = HeaderMap::new();
                     if let Some(length) = declared {
                         headers.insert(
                             "content-length",
-                            HeaderValue::from_str(&length.to_string()).unwrap(),
+                            HeaderValue::from_str(&length.to_string())
+                                .map_err(EdgeError::internal)?,
                         );
                     }
                     let mut stream_chunks: Vec<_> = chunks
@@ -700,13 +706,7 @@ mod tests {
                         stream_chunks
                             .push(Err(EdgeError::bad_gateway("upstream response body failed")));
                     }
-                    let stream = apply_response_body_policy(
-                        Box::pin(iter(stream_chunks)),
-                        &mut headers,
-                        policy,
-                    )?;
-                    let bytes = collect_response_stream(stream, MAX_JWKS_BODY_BYTES).await?;
-                    (*status, Body::from_bytes(bytes))
+                    (*status, Box::pin(iter(stream_chunks)))
                 }
                 StubReply::Transport => {
                     return Err(EdgeError::bad_gateway("upstream transport failed"));
@@ -729,30 +729,66 @@ mod tests {
                 }
                 StubReply::StreamError => (
                     StatusCode::OK,
-                    Body::from_stream(iter([Err(EdgeError::bad_gateway(
+                    Box::pin(iter([Err(EdgeError::bad_gateway(
                         "upstream response body failed",
                     ))])),
                 ),
-                StubReply::StreamLimit => {
-                    (StatusCode::OK, Body::from_bytes(vec![b' '; 0x0001_0001]))
-                }
+                StubReply::StreamLimit => (
+                    StatusCode::OK,
+                    Box::pin(iter([Ok(vec![b' '; 0x0001_0001].into())])),
+                ),
             };
-            Ok(OutboundResponse::new(
-                parts.method,
+            OutboundHead::new(
                 status,
-                HeaderMap::new(),
-                body,
-                edgezero_core::MonotonicClock::default(),
-                ContentTypeProvenance::Unknown,
+                OutboundHeaderInput::new(
+                    "mocktioneer-test",
+                    headers,
+                    OutboundHeaderFidelity::AdapterVisibleFields,
+                ),
+                stream,
+                context,
+                OutboundExchangeOwner::new(|| {}),
+            )
+        }
+    }
+
+    impl OutboundHttpClient for StubClient {
+        fn begin(&self, _request: OutboundDispatchRequest) -> Result<OutboundPending, EdgeError> {
+            Err(EdgeError::bad_request(
+                "JWKS test client only supports send",
             ))
         }
 
-        fn start_batch_until(
+        fn dispatch_head(&self, request: OutboundDispatchRequest) -> OutboundFuture<OutboundHead> {
+            Box::pin(ready(self.head(request)))
+        }
+
+        fn progress(&self) -> Rc<dyn OutboundProgressRuntime> {
+            Rc::new(IndependentOutboundProgress)
+        }
+
+        fn start_batch_until(&self, batch: OutboundPreparedBatch) -> OutboundBatch {
+            assert!(
+                batch
+                    .observation_cutoff()
+                    .is_expired_at(batch.clock().now()),
+                "JWKS test client only supports expired batch cutoff"
+            );
+            let (context, _slots) = batch.into_slots();
+            OutboundBatch::cutoff(context)
+        }
+
+        fn time(&self) -> OutboundTime {
+            // Replies are immediate; timeout cases return their scripted error above.
+            OutboundTime::new(MonotonicClock::default(), |_, _| Box::pin(pending()))
+        }
+
+        fn validate_supported_options(
             &self,
-            requests: Vec<OutboundRequest>,
-            _cutoff: Deadline,
-        ) -> OutboundBatch {
-            OutboundBatch::cutoff(requests.len())
+            _request: &OutboundRequest,
+            _mode: OutboundSendMode,
+        ) -> Result<(), EdgeError> {
+            Ok(())
         }
     }
 
@@ -930,7 +966,7 @@ mod tests {
             ),
             (
                 StubReply::StreamError,
-                "HTTP error: Stream read failed: upstream response body failed",
+                "HTTP error: JWKS fetch failed: upstream response body failed",
             ),
             (
                 StubReply::Bytes(StatusCode::BAD_GATEWAY, b"invalid json".to_vec()),

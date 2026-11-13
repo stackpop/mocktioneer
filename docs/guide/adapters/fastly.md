@@ -45,7 +45,7 @@ Run locally using Fastly's Viceroy runtime:
 
 ```bash
 # Using the CLI
-edgezero-cli serve --adapter fastly
+edgezero serve --adapter fastly
 # or, in-repo (no external install):
 cargo run -p mocktioneer-cli -- serve --adapter fastly
 
@@ -59,7 +59,7 @@ This starts a local server that emulates the Fastly Compute environment.
 
 ```bash
 # Using EdgeZero CLI
-edgezero-cli build --adapter fastly
+edgezero build --adapter fastly
 
 # Or directly
 cargo build --release --target wasm32-wasip1 -p mocktioneer-adapter-fastly
@@ -179,6 +179,10 @@ still returns bids. See the [JWKS policy](/integrations/trusted-server#signature
 The CLI declares outbound HTTP as optional and warns about Fastly's BestEffort
 support. Hosted provider qualification is outside this migration; see the
 [capability table](./#capability-support).
+
+The local checks use stock Viceroy 0.21.0. Upstream's stronger timing and
+readiness checks used a reviewed patched runtime; the local contract passes
+do not establish those guarantees.
 
 ### fastly.toml
 
