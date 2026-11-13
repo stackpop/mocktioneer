@@ -11,8 +11,8 @@ The `edgezero.toml` file lives at the root of the mocktioneer workspace:
 name = "mocktioneer"
 entry = "crates/mocktioneer-core"
 middleware = [
-  "edgezero_core::middleware::RequestLogger",
-  "mocktioneer_core::routes::Cors"
+  "mocktioneer_core::routes::Cors",
+  "edgezero_core::middleware::RequestLogger"
 ]
 
 [stores.config]
@@ -56,16 +56,18 @@ id = "openrtb_auction"
 path = "/openrtb2/auction"
 methods = ["POST"]
 handler = "mocktioneer_core::routes::handle_openrtb_auction"
+class = "bid"
 adapters = ["axum", "cloudflare", "fastly", "spin"]
 ```
 
-| Field      | Description                                |
-| ---------- | ------------------------------------------ |
-| `id`       | Unique route identifier                    |
-| `path`     | URL path (supports `{param}` placeholders) |
-| `methods`  | HTTP methods to accept                     |
-| `handler`  | Rust function path                         |
-| `adapters` | Which adapters support this route          |
+| Field      | Description                                              |
+| ---------- | -------------------------------------------------------- |
+| `id`       | Unique route identifier                                  |
+| `path`     | URL path (supports `{param}` placeholders)               |
+| `methods`  | HTTP methods to accept                                   |
+| `handler`  | Rust function path                                       |
+| `class`    | Optional non-empty route class used by ingress admission |
+| `adapters` | Which adapters support this route                        |
 
 ### Available Routes
 
@@ -88,7 +90,11 @@ adapters = ["axum", "cloudflare", "fastly", "spin"]
 | `/_mocktioneer/config`     | GET     | `introspection::config`   | Effective app config     |
 | `/_mocktioneer/routes`     | GET     | `introspection::routes`   | Route table as JSON      |
 
-All routes also have OPTIONS handlers for CORS preflight.
+All routes also have OPTIONS handlers for CORS preflight. Only the three POST
+routes carry `class = "bid"`; their body-read budget is 10 seconds from ingress
+start. Other routes keep the 30-second default. Auction and APS use a 1 MiB
+body cap; mediation retains the 8 MiB default. See the
+[API limits and error rules](/api/#request-limits-and-deadlines).
 
 ### Introspection Routes
 
@@ -103,6 +109,11 @@ handlers from `edgezero_core::introspection`, bound like any other route in
   unresolved key-name references (secret-safe).
 - **`routes`** — the live route table as `[{ "method", "path" }]`.
 
+The config diagnostic is a pre-existing framework exception: it reads with an
+unbounded store `get`, without the `AppConfig` extraction timeout or size/structure
+limits. On Cloudflare it materializes the whole value. The limits below apply
+to the two bid handlers, not this diagnostic.
+
 ::: warning Unauthenticated
 These endpoints are unauthenticated wherever bound — restrict access at the
 network/middleware layer before exposing them publicly. `manifest` emits
@@ -110,6 +121,30 @@ network/middleware layer before exposing them publicly. `manifest` emits
 redacted), so keep secrets out of `[environment.variables]`. Mocktioneer
 declares no `[environment]` section, so nothing sensitive is exposed today.
 :::
+
+## Outbound HTTP Capability
+
+The optional outbound HTTP capability supports trusted-server JWKS fetching:
+
+```toml
+[capabilities]
+optional = ["outbound-http"]
+
+[capabilities.outbound]
+hosts = ["https://*:*"]
+```
+
+The CLI warns on Fastly because outbound HTTP support is BestEffort there;
+it is Native on the other adapters. The host list must match
+`allowed_outbound_hosts` in `crates/mocktioneer-adapter-spin/spin.toml`.
+`mocktioneer-cli build`, `serve`, and `deploy` check for drift; `spin build`
+and `spin up` alone do not. See [capability support](./adapters/#capability-support).
+
+JWKS requests use `PlatformDefault` outbound caching and a five-second timeout.
+Cloudflare's `2023-05-01` compatibility date prevents using `Bypass` without a
+later date or `cache_option_enabled`. See the
+[JWKS policy](/integrations/trusted-server#signature-verification-and-jwks),
+including the distinction between local cache TTL and provider freshness.
 
 ## Adapter Configuration
 
@@ -185,17 +220,53 @@ level = "info"
 echo_stdout = true
 ```
 
+Cloudflare also requires these settings in `wrangler.toml`:
+
+```toml
+compatibility_date = "2023-05-01"
+compatibility_flags = ["enable_request_signal", "enable_weak_ref", "internal_stream_byob_return_view"]
+```
+
+An actual `[[kv_namespaces]]` binding named `mocktioneer_config` is required:
+run `mocktioneer-cli provision --adapter cloudflare`, then
+`mocktioneer-cli config push --adapter cloudflare`. Store-name Worker variables
+only rename the binding lookup; they do not create a namespace or binding.
+Without the binding, `enable_weak_ref` or `internal_stream_byob_return_view`, bid routes return 503
+`service_unavailable` without `Retry-After`. Keep production namespace IDs out
+of the repository. See [Cloudflare setup](./adapters/cloudflare).
+
 ### Spin Adapter
 
-Spin targets `wasm32-wasip2` (spin-sdk 7). Its config store is KV-backed, so the
+Spin targets `wasm32-wasip2` (exact spin-sdk 8.0.0). Its config store is KV-backed, so the
 `serve` command passes a `--runtime-config-file` declaring the KV label
 (`spin deploy` is plugin-mediated and provisions KV itself, so it takes no
-runtime-config flag):
+runtime-config flag).
+
+The checked-in runtime config explicitly selects persistent local SQLite:
+
+```toml
+[key_value_store.mocktioneer_config]
+type = "spin"
+path = ".spin/sqlite_key_value.db"
+```
+
+Spin resolves this path relative to `runtime-config.toml`, so both local config
+push and serve use `crates/mocktioneer-adapter-spin/.spin/sqlite_key_value.db`.
+Seed it before serving:
+
+```bash
+cargo run -p mocktioneer-cli -- config push --adapter spin --local --yes
+cargo run -p mocktioneer-cli -- serve --adapter spin
+```
+
+Keep `--local` for local seeding; the configured `spin deploy` command makes a
+push without it select Fermyon Cloud.
 
 ::: tip Requires Spin 4.1 or newer
-`spin-sdk 7` imports `wasi:http@0.3.0`, which Spin 4.0.x and earlier do not
-provide — `spin up` on those fails to link with `a matching implementation was
-not found in the linker`. Spin 4.1.0 ships that interface and boots the adapter.
+`spin-sdk 8` uses WASIp3 interfaces (the lock resolves `wasip3` 0.10.0 with
+WASI 0.3.2 bindings). Spin 4.0.x and earlier lack the required interfaces;
+the adapter is locally checked with Spin 4.1.0. A build alone does not establish
+runtime compatibility.
 
 Spin is not pinned in `.tool-versions` (no widely used asdf plugin), so install
 it separately from [spinframework.dev/install](https://spinframework.dev/install).
@@ -222,12 +293,6 @@ deploy = "spin deploy --from crates/mocktioneer-adapter-spin/spin.toml"
 level = "info"
 echo_stdout = true
 ```
-
-The runtime config gives that KV label an explicit SQLite `path`,
-`.spin/sqlite_key_value.db` beside `runtime-config.toml`. That is the file
-`config push --adapter spin --local` writes. Without a `path`, Spin keeps a
-`type = "spin"` store in memory, so `spin up` never sees pushed config and the
-auction and APS endpoints return `503 config_out_of_date`.
 
 ## Typed App Config
 
@@ -257,7 +322,16 @@ cargo run -p mocktioneer-cli -- config push --adapter axum --yes
 JSON + a SHA for drift detection) under the store's key — for axum that's
 `.edgezero/local-config-mocktioneer_config.json` as
 `{ "mocktioneer_config": "<envelope>" }`. The handlers read it back through the
-typed `AppConfig` extractor.
+typed `AppConfig` extractor, before reading the auction or APS request body.
+Its two-second config-read deadline is BestEffort on every adapter: synchronous
+provider calls can exceed it before expiry is observed. Observed expiry returns
+503 `service_unavailable` without `Retry-After`; missing, wrong-type, or
+validator-invalid config returns 503 `config_out_of_date` with `Retry-After: 60`.
+Other config failures are listed in the [API error matrix](/api/#bid-route-config-errors).
+
+Axum snapshots this file at startup, so restart Axum or its Docker container
+after `config push`, as before. The blob envelope format is unchanged; an older
+build can still read blobs pushed by this version when rolling back.
 
 ### Reclaiming leaked chunks (`config gc`)
 
