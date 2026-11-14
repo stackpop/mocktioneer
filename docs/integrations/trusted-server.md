@@ -185,10 +185,9 @@ controls. Public deployments need operator-controlled destination admission and
 DNS/IP egress controls; see [OWASP's SSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).
 
 The outbound request does **not follow redirects**. It has a five-second timeout
-and buffers at most **64 KiB after recognized gzip, Brotli, or deflate decoding**.
-Axum and Fastly default `Accept-Encoding` to `identity` when absent. Recognized
-encoded responses are decoded, so a valid decoded JWKS can now verify even if
-the old client rejected its encoded form. Outbound timeout enforcement is Native
+and accepts at most **64 KiB encoded** and **64 KiB after recognized gzip,
+Brotli, or deflate decoding**. All four adapters default `Accept-Encoding` to
+`identity` when absent. Recognized encoded responses are decoded before JSON parsing. Outbound timeout enforcement is Native
 on Axum and BestEffort on Fastly, Cloudflare, and Spin; the budget does not
 promise finite provider teardown.
 
@@ -202,6 +201,9 @@ parsing its JSON. Partial (206) responses retain their original content coding
 and cannot satisfy the required 200 status. The shared finalizer also buffers
 custom head clients, so their body failures use the send-time prefix. The
 defensive post-send read retains `HTTP error: Stream read failed: ...`.
+Parse failures expose only the serde error category and numeric location:
+`HTTP error: JWKS parse failed: Data at line 1 column 34`, for example. Fetched
+JSON values are never included in the parse reason.
 
 `HTTP error: Proxy not available` is retained legacy wording for a missing
 outbound client in the request context, such as when the optional `outbound-http`

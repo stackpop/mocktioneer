@@ -105,6 +105,7 @@ function response(body = Buffer.from("body"), status = 200, headers = []) {
     413: "Payload Too Large",
     414: "URI Too Long",
     422: "Unprocessable Entity",
+    431: "Request Header Fields Too Large",
     503: "Service Unavailable",
   }[status];
   const lines = [
@@ -411,7 +412,7 @@ test("test_cli_baseline_repeat_requires_unchanged_f14_cap_status", () => {
   }
 });
 
-test("test_cli_historical_body_caps_keep_their_saved_contract", () => {
+test("test_cli_historical_body_caps_require_a_rejecting_candidate", () => {
   for (const name of [
     "auction-over-1mib",
     "aps-over-1mib",
@@ -430,8 +431,11 @@ test("test_cli_historical_body_caps_keep_their_saved_contract", () => {
       const result = compare_captures(
         body_cap_captures(name, before, after, { differences }),
       );
-      assert.equal(result.status, 0, result.stderr);
-      assert.ok(result.stdout.includes(`PASS ${name}`), result.stdout);
+      assert.equal(result.status, after === 400 ? 0 : 1, result.stderr);
+      const repeated = compare_captures(
+        body_cap_captures(name, before, after, { differences }), ["--baseline-repeat"],
+      );
+      assert.equal(repeated.status, before === after ? 0 : 1, repeated.stderr);
     }
   }
 });
@@ -1837,5 +1841,99 @@ test("test_json_number_spelling_and_unicode_escape_bytes_are_protected", () => {
       () => compare({ mask: "auction" }, before, response(Buffer.from(text))),
       wire.ContractError,
     );
+  }
+});
+
+
+function cors_error_captures(id, status, withCors) {
+  const corpus = readJson(join(HERE, "requests.json"));
+  const item = corpus.cases.find((c) => c.id === id);
+  assert.ok(item.differences.includes("C8"));
+  corpus.cases = [item];
+  const bytes = Buffer.from(JSON.stringify(corpus));
+  const root = temporary();
+  return ["before", "after"].map((side) => {
+    const dir = join(root, side), dest = join(dir, id);
+    mkdirSync(dest, {recursive: true});
+    writeFileSync(join(dir, "requests.json"), bytes);
+    writeJson(join(dir, "capture.json"), {
+      scenario: item.scenario, base_url: wire.BASE_URL,
+      corpus_sha256: sha256(bytes), cases: [id],
+    });
+    const [path, headers, body] = wire.request_bytes(item);
+    writeJson(join(dest, "request.json"), {method: item.method, path, headers});
+    writeFileSync(join(dest, "request.body"), body);
+    writeFileSync(join(dest, "curl.exit"), "0\n");
+    const replyBody = wire.error_body(status, "validation", "fixture error");
+    const reply = response(replyBody, status, [
+      "content-length: " + replyBody.length, ...(withCors ? CORS_HEADERS : []),
+    ]);
+    writeFileSync(join(dest, "response.headers"), reply.head);
+    writeFileSync(join(dest, "response.body"), reply.body);
+    return dir;
+  });
+}
+
+test("test_cli_candidates_require_cors_on_render_pixel_and_sync_errors", () => {
+  for (const [id, status] of [
+    ["image-nonstandard",422], ["creative-nonstandard",404],
+    ["pixel-missing",400], ["sync-start-missing",400],
+  ]) {
+    const missing = cors_error_captures(id, status, false);
+    const candidate = compare_captures(missing);
+    assert.notEqual(candidate.status, 0, id);
+    assert.match(candidate.stderr, /expected one exact access-control-allow-origin header/);
+    const repeat = compare_captures(missing, ["--baseline-repeat"]);
+    assert.equal(repeat.status, 0, repeat.stderr);
+    const complete = compare_captures(cors_error_captures(id, status, true));
+    assert.equal(complete.status, 0, complete.stderr);
+  }
+});
+
+test("test_head_count_permits_only_the_exact_normalized_431_transition", () => {
+  const item = {transition: "head-count", differences: ["F5", "F9"]};
+  const before = response(Buffer.from("root"), 200, ["content-type: text/html; charset=utf-8", ...CORS_HEADERS]);
+  const body = wire.error_body(431,"request_header_fields_too_large","normalized request header count exceeds configured limit");
+  const after = response(body,431,["content-type: application/json"]);
+  assert.ok(wire.compare_response(item,before,after,before).length);
+  assert.throws(() => compare(item,before,after),wire.ContractError);
+  assert.throws(() => wire.compare_response(item,before,after,response(Buffer.from("changed"))),wire.ContractError);
+  for (const changed of [
+    response(Buffer.from("wrong"),431),
+    response(body,431,["content-type: application/json","x-extra: unsafe"]),
+    response(wire.error_body(431,"bad_request","normalized request header count exceeds configured limit"),431),
+    response(wire.error_body(431,"request_header_fields_too_large","changed"),431),
+  ]) assert.throws(() => wire.compare_response(item,before,changed,before),wire.ContractError);
+  const hyper = response(Buffer.alloc(0),431,["content-length: 0"]);
+  assert.deepEqual(compare(item,hyper,hyper),[]);
+});
+
+test("test_cli_identical_malformed_captures_fail_closed_and_continue", () => {
+  const malformed = [
+    {name:"curl timeout", exit:"28\n"},
+    {name:"truncated head", head:"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n"},
+    {name:"interim response", head:"HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n"},
+    {name:"HTTP/1.0", head:"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\n"},
+    {name:"masked raw chunks", head:"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n", body:"2\r\n{}\r\n0\r\n\r\n", mask:true},
+  ];
+  for (const fixture of malformed) {
+    const dirs = capture_pair();
+    for (const dir of dirs) {
+      if(fixture.mask) {
+        const corpus = readJson(join(dir,"requests.json"));
+        corpus.cases[0].mask="auction";
+        writeJson(join(dir,"requests.json"),corpus);
+      }
+      if(fixture.head)writeFileSync(join(dir,"one/response.headers"),fixture.head);
+      if(fixture.body)writeFileSync(join(dir,"one/response.body"),fixture.body);
+      if(fixture.exit)writeFileSync(join(dir,"one/curl.exit"),fixture.exit);
+    }
+    if(fixture.mask)change_manifest(dirs,{corpus_sha256:sha256(readFileSync(join(dirs[0],"requests.json")))});
+    const result=compare_captures(dirs);
+    assert.notEqual(result.status,0,fixture.name);
+    assert.match(result.stderr,/FAIL one/);
+    assert.doesNotMatch(result.stdout,/PASS one/);
+    assert.match(result.stdout,/PASS two/);
+    assert.ok(result.stderr.includes("1 wire case(s) failed"), result.stderr);
   }
 });

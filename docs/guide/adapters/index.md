@@ -48,7 +48,7 @@ flowchart TD
 
 ## Capability Support
 
-The audited EdgeZero revision declares this support:
+The adapters declare the following capability support:
 
 | Capability                       | Axum        | Fastly      | Cloudflare  | Spin        |
 | -------------------------------- | ----------- | ----------- | ----------- | ----------- |
@@ -65,8 +65,7 @@ The audited EdgeZero revision declares this support:
 BestEffort budgets do not guarantee provider cancellation or teardown by the
 deadline. Normalized-head checks do not establish raw-wire framing validation:
 host parsing may reject or normalize input first. This table describes framework
-capabilities; hosted provider qualification has not been performed for this
-migration. See [API limits](/api/#request-limits-and-deadlines).
+capabilities; local contract tests do not establish hosted provider guarantees. See [API limits](/api/#request-limits-and-deadlines).
 
 ## Choosing an Adapter
 
@@ -102,7 +101,7 @@ The EdgeZero CLI provides a unified interface for all adapters. It's maintained 
 
 ```bash
 # Install (requires access to EdgeZero repo)
-cargo install --git https://github.com/IABTechLab/edgezero.git --rev 1467e28a4d04115cd1f2576df404d00529ee127f edgezero-cli --features cli
+cargo install --git https://github.com/IABTechLab/edgezero.git --rev e9ffaa8f8057144155ffe164280994445fa0f6d8 edgezero-cli --features cli
 
 # Serve any adapter
 edgezero serve --adapter axum
@@ -147,6 +146,9 @@ All adapters read from the same `edgezero.toml`:
 
 - Routes are identical across platforms
 - Middleware is applied consistently
-- Logging levels are configurable per-adapter
+- Cloudflare and Spin runtime logging uses `EDGEZERO__LOGGING__LEVEL`; their
+  manifest logging tables do not configure the managed backend
+- Fastly uses manifest logging settings, with an optional startup level override
+  from its `edgezero_logging` ConfigStore
 
 See [Configuration](../configuration) for details.

@@ -235,13 +235,17 @@ A body over 8 MiB returns this response without `Retry-After`:
 }
 ```
 
+The messages below are illustrative; the error envelope uses `kind`, `message`
+and `status` on both failure paths.
+
 ### Malformed or Missing Fields (400)
 
 ```json
 {
   "error": {
-    "code": "BAD_REQUEST",
-    "message": "..."
+    "kind": "bad_request",
+    "message": "...",
+    "status": 400
   }
 }
 ```
@@ -251,8 +255,9 @@ A body over 8 MiB returns this response without `Retry-After`:
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "..."
+    "kind": "validation",
+    "message": "...",
+    "status": 422
   }
 }
 ```

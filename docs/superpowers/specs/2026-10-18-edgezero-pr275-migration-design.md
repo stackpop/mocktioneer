@@ -6,18 +6,20 @@
 - **Upstream:** [IABTechLab/edgezero#275](https://github.com/IABTechLab/edgezero/pull/275),
   "implement portable outbound HTTP and request lifecycle contracts". **Open,
   ready for review, unmerged.**
-  - Current implementation pin: `1467e28a4d04115cd1f2576df404d00529ee127f`,
-    the PR head observed for the user's 2026-11-13 latest-revision request.
+  - Current implementation pin: `e9ffaa8f8057144155ffe164280994445fa0f6d8`,
+    the PR head observed on 2026-11-14. R16 audits the managed Fastly logging cut;
+    R14 used `737f8452` for the earlier Cloudflare/Spin logging cut.
     The original R1–R9 audit used `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`;
-    R10–R12 used `d47c8026`; R13 records the latest implementation/API delta rather than treating old
-    source line references as a fresh audit of every upstream subsystem.
+    R10–R12 used `d47c8026`; R13 used `1467e28a`. R14 audits the next commit's
+    logging and upload delta rather than treating old source line references
+    as a fresh audit of every upstream subsystem.
   - Preflight head on 2026-10-21: `852ec74bbb72139dca2809f3537689bb1ee5f0c6`,
     base `main`. Final pre-handoff refresh observed `619c69bd2b2b24f35210c482b560cb46b1b96888`;
     PR #275 was draft/open/unmerged at those checkpoints. R10 supersedes the earlier frozen-pin
     decision with the explicitly requested latest-head adoption (§11).
   - It contains release `v0.0.10` and the IABTechLab transfer (#419). Nothing on
     edgezero `main` is missing from it.
-- **Status:** migration and review fixes implemented; latest-head qualification is tracked in R13. Upstream merge/release and JWKS destination admission remain gated. Execution is tracked in
+- **Status:** migration and review fixes implemented; review errata and latest-head qualification are tracked in R15/R16. R14 evidence is historical. Upstream merge/release and JWKS destination admission remain gated. Execution is tracked in
   the [implementation plan](../plans/2026-10-20-edgezero-pr275-migration-implementation.md).
 - **Revision history:**
   - **R1:** initial draft.
@@ -87,6 +89,13 @@
     Standard entrypoints retain adapter-owned native execution. Preserve all
     request/cache policies, CORS and framing contracts. An explicit relative
     Spin SQLite path makes local config push and CLI serve share persistence.
+  - **R14:** repeated latest-head adoption, `737f8452`. Cloudflare and Spin now
+    install managed Rust log backends before assembly through the existing
+    entrypoints. Runtime binding/environment level selection, independent
+    Warn boot filtering, idempotent same-level initialization and failure for
+    changed/foreign logger configuration are documented. Body's new optional
+    streamed forwarding-length metadata and upload counter are unused by our
+    bodyless JWKS GET; no new forwarding feature or cache charge is introduced.
 
 ## 0. Confirmed scope (2026-10-20)
 
@@ -207,7 +216,7 @@ calls for confirmation.
 - **The CI gates in `CLAUDE.md` must pass,** plus the three contract jobs in
   `test.yml`.
 - **Pin:** the six `edgezero-*` entries use
-  `git = "https://github.com/IABTechLab/edgezero.git", rev = "1467e28a4d04115cd1f2576df404d00529ee127f"`.
+  `git = "https://github.com/IABTechLab/edgezero.git", rev = "e9ffaa8f8057144155ffe164280994445fa0f6d8"`.
   There is no seventh edgezero dependency (§6.1).
 - **PR target (my call):** open the PR against `main`.
   - Every workflow triggers only on `pull_request: branches: [main]`, so a PR
@@ -401,6 +410,7 @@ adoption step.
   - It returns `EdgeError`, and `VerificationError` has no `From`, so it needs a
     `map_err`.
   - Set `.timeout(JWKS_FETCH_TIMEOUT)` (5 s) and
+    `.max_encoded_response_bytes(MAX_JWKS_BODY_BYTES)` and
     `.max_response_bytes(MAX_JWKS_BODY_BYTES)`. Change the constant to `u64`,
     because the restriction lints deny `as` casts.
   - The cache policy is §6.1.
@@ -412,7 +422,7 @@ adoption step.
   - Recognized gzip, Brotli and deflate responses are decoded before the final
     64 KiB buffered cap is applied. Old Axum did not decode these responses;
     other old adapters did not decode deflate. Encoded JWKS may now verify
-    successfully. Axum and Fastly also default `Accept-Encoding` to `identity`
+    successfully. All four adapters default `Accept-Encoding` to `identity`
     when absent. These negotiation/decoding differences are accepted in F12.
   - Map any send-time `ResponseTooLarge` to `jwks_body_too_large_error`, and
     every other send error to `JWKS fetch failed: {detail}` using the sanitizing
@@ -426,9 +436,8 @@ adoption step.
     errors therefore use `JWKS fetch failed: {detail}`. Retain the defensive
     post-send mapping `Stream read failed: {detail}` without claiming a custom
     head implementation can bypass the shared buffered policy.
-  - Do **not** use `json_bounded`. It replaces serde's message with a fixed
-    "failed to decode upstream JSON", which would change the parse-failure
-    reason.
+  - Do **not** use `json_bounded`. Parse explicitly and expose only serde's
+    category, line and column, as corrected in R15.
 - **Reason strings.** These are `err.to_string()` values that reach bid `adm`.
   The test asserts each full string.
 
@@ -440,7 +449,7 @@ adoption step.
   | Non-200 after a successful send | `HTTP error: JWKS server returned status: {status}` | String unchanged. Send-time failures take precedence; a payload-bearing non-200 can fail collection before this check (F12). |
   | Over cap | `HTTP error: JWKS response body exceeds 65536 byte limit` | String unchanged. Match `EdgeError::ResponseTooLarge { .. }` with `matches!`, both from `send()` (declared-length checks or bounded collection) and from the defensive `into_bytes_bounded()`. Keep `jwks_body_too_large_error`. |
   | Defensive body drain, other errors | `HTTP error: Stream read failed: {detail}` | Defensive retained branch. R13's shared finalizer buffers even custom head clients during send, so source failures use the send prefix. |
-  | Parse | `HTTP error: JWKS parse failed: {serde}` | Unchanged. |
+  | Parse | `HTTP error: JWKS parse failed: {category} at line {line} column {column}` | R15: use only serde category (`Io`, `Syntax`, `Data`, `Eof`) and numeric location; fetched values must never be reflected in public bid markup. |
   | Cache lock | `HTTP error: Cache lock poisoned: {detail}` | Removed. A poisoned lock becomes a cache miss (§6.2). |
 
 - **How `{detail}` is produced from an `EdgeError`** **(my call)**. The text goes
@@ -584,6 +593,33 @@ smokes cover reachable empty 400 and 302 responses; the Axum wire diff covers
 the configured auth/allowlist branches. Cloudflare cannot exercise those 403/401
 route branches because `std::env::var` is unsupported there. Do not assume that
 Viceroy inherits arbitrary host variables into the guest.
+
+### 5.9 Logging hard cut (R14)
+
+Mocktioneer keeps adapter-managed logging through the current standard
+entrypoints; its app does not claim logging ownership or install a competing
+backend. Cloudflare and Spin `run_app` call the new fallible
+`init_logger(LevelFilter) -> Result<(), ManagedLoggerError>` before assembly.
+The removed parameterless initializer must not be restored through an alias,
+no-op adapter or ignored initialization result.
+
+Cloudflare installs a Workers console backend; Spin installs stderr. The
+ordinary filter comes from the `EDGEZERO__LOGGING__LEVEL` Worker binding or
+Spin component environment, with Info for absent/invalid values. Their manifest
+logging tables are metadata and do not select this runtime filter. Boot
+Error/Warn on `edgezero::boot` retain their independent Warn filter.
+
+Same-level initialization is idempotent. A changed level or foreign global
+logger fails before assembly; do not turn it into a successful no-logging path.
+Manual lifecycle owners initialize before assembly because `dispatch_app`
+does not install a backend. Application-owned logging requires installation,
+backend/facade filtering and `Hooks::owns_logging()` returning true before
+entering the runner. Mocktioneer does not adopt that ownership mode.
+
+Qualify the actual changed `run_app` paths with repeated requests and default /
+Off logging. Core/service fixtures bypass initialization and cannot prove this
+boundary by themselves. Local application checks do not claim a fresh run of
+upstream's full logger conflict/boot/ownership matrix or hosted qualification.
 
 ## 6. New APIs adopted
 
@@ -820,7 +856,7 @@ regression.
 | F9 | Axum is HTTP/1 only. It caps connections at 256 and closes connections with no response after a 10 s head-read or idle timeout. Hyper enforces raw head limits. |
 | F10 | Egress strips hop-by-hop headers, canonicalizes `Content-Length`, and applies the 204/205/304/HEAD body rules. Removing/reinserting the length group moves the last application header group into its former slot and appends the canonical length. Duplicate values retain their order; host-added `Date` stays in place. With C6, ordinary empty responses insert length before other application fields, then undergo this same permutation. Responses with no length may stream on Fastly and Cloudflare; §5.8 preserves zero-length framing for all ordinary empty mocktioneer responses. |
 | F11 | The JWKS fetch no longer follows redirects. Axum and Cloudflare used to follow them. A redirecting JWKS URL now fails verification closed. |
-| F12 | Outbound error details change to the sanitized per-adapter messages in §5.6. Buffered fetching can move body-read and decode failures from `Stream read failed:` to `JWKS fetch failed:`. Send-time framing, size, body and timeout failures take precedence over the non-200 status reason, because the status is checked only after `send` succeeds. Size failures keep the legacy JWKS size-limit reason. Recognized gzip/Brotli/deflate decoding and Axum/Fastly default `Accept-Encoding: identity` negotiation are accepted changes, including formerly invalid encoded JWKS now verifying successfully. The 65536-byte final buffered cap applies after recognized decoding. |
+| F12 | Outbound error details change to the sanitized per-adapter messages in §5.6. Buffered fetching can move body-read and decode failures from `Stream read failed:` to `JWKS fetch failed:`. Send-time framing, size, body and timeout failures take precedence over the non-200 status reason, because the status is checked only after `send` succeeds. Size failures keep the legacy JWKS size-limit reason. Recognized gzip/Brotli/deflate decoding and all four adapters’ default `Accept-Encoding: identity` negotiation are accepted changes, including formerly invalid encoded JWKS now verifying successfully. The 65536-byte final buffered cap applies after recognized decoding. |
 | F13 | `/_mocktioneer/manifest` gains a `capabilities` object, which is always serialized, and `class` on the three bid triggers. |
 | F14 | At `d47c8026`, EdgeZero-owned inbound byte overflow returns 413 `payload_too_large` with fixed message "request body too large" and no `Retry-After`. This replaces the original pin's 400 `bad_request`; malformed JSON 400, validation 422, read-expiry 408 and config errors are unchanged. The corpus permits this only on the three named body-cap cases and preserves exact CORS/header/body comparisons. |
 
@@ -1164,17 +1200,19 @@ Passing CI does not substitute for these checks.
 
 ## 11. Risks and follow-ups
 
-- **The PR is moving.** R13 pins the open, unmerged PR at `1467e28a`.
+- **The PR is moving.** R16 pins the open, unmerged PR at `e9ffaa8f`.
   - A force-push leaves it unreferenced, and a later GC breaks `cargo fetch`.
   - The user explicitly requested latest-head adoption on 2026-10-23. R10
     reviewed the delta from `f6c708cc` to `d47c8026` and adopted its 413 and
     framing changes. The user renewed latest-head adoption on 2026-11-13;
-    R13 reviews the hard API cut to `1467e28a`. Neither follows future heads
-    automatically.
+    R13 reviews the hard API cut to `1467e28a`; R14 adopts the following
+    logging/upload repair on another explicit request. R16 audits the subsequent
+    managed Fastly logger cut to `e9ffaa8f`. No checkpoint follows
+    future heads automatically.
   - Before adopting any newer revision, review its implementation/API/wire delta,
     update this spec and the plan, and rerun §9 in full.
     Specifically compare the private default ingress completion/grant policy
-    with Mocktioneer's pinned copy: `1467e28a` still exposes no public getter or delegate, so
+    with Mocktioneer's pinned copy: `e9ffaa8f` still exposes no public getter or delegate, so
     a future default change cannot be inherited automatically.
 - **Re-pin when #275 ships:**
   1. Diff the CHANGELOG and public API from the rev to the tag.
@@ -1337,7 +1375,8 @@ These change what gets built or how it ships:
 8. **2 s config read timeout** (§6.3).
 9. **1 MiB cap** on auction and APS; mediation stays at 8 MiB (§6.4).
 10. **`PlatformDefault` cache policy** instead of `Bypass` (§6.1).
-11. **Reason strings:** keep `"Proxy not available"` and the strings in §5.6;
+11. **Reason strings:** keep `"Proxy not available"` and the strings in §5.6,
+    except the R15 parse category/location correction;
     accept the decoding, negotiation, buffered error-stage and precedence changes
     listed in F12.
 12. **JWKS cache:** 32 entries, a 2 MiB owned-allocation charge budget,
@@ -1356,3 +1395,64 @@ These change what gets built or how it ships:
     limits (C7).
 19. **Required local Cloudflare workerd smoke** despite the browser test
     polyfill (§9).
+
+
+### R15: implementation-review errata
+
+PR #131 review requires an explicit encoded JWKS limit in addition to the final
+buffered limit: both are 65,536 bytes. The five-second deadline, platform cache
+policy, ingress/config deadlines and cache admission/expiry policies stay as
+approved. Oversized encoded data is rejected even if its decoded JSON fits;
+it uses the existing public JWKS size-limit reason. Parse failures expose only
+serde category and numeric line/column, never fetched JSON strings. These are
+intentional observable corrections to §5.6 and F12.
+
+Codec tests must exercise `fetch_jwks` with raw encoded heads through the real
+shared finalizer, for gzip/Brotli/deflate success and decoded expansion. Encoded
+overflow needs declared-length and streaming regressions with valid gzip whose
+header alone exceeds the cap. Do not reimplement the response finalizer.
+
+Comparator CLI candidate checks require CORS on every named C8 error and the
+required cap status for current and historical corpora. Only the explicit
+`--baseline-repeat` mode permits identical historical non-CORS/cap behavior.
+Add exact F5 header-count 431 qualification and fail-closed saved-capture tests;
+keep the committed request corpus byte-identical. Capture provenance remains
+operator-selected, with its limitation documented.
+
+Correct public documentation and independent comparator CI execution. Reproduce
+Firefox 160 separately from Chrome; real workerd POST qualification is the
+production control. Report optional target Clippy separately from the required
+native gate without claiming unexecuted or failed checks pass. No provider
+compatibility shim, application logger ownership or retired API is introduced.
+
+Firefox 160 reproduces a browser-only Fetch API gap: `Request.body` is absent
+for both string and byte-backed POSTs, while independent `arrayBuffer()` reads
+retain the payload. The upstream Worker bridge intentionally consumes that
+stream getter. CI therefore selects Chrome with a matching driver explicitly;
+the fixture stays unchanged, and workerd POST qualification remains required.
+Firefox 160 is not claimed to pass. Browser choice changes no Worker runtime
+compatibility flag, production transport or request-body handling.
+
+
+### R16: latest upstream managed Fastly logging hard cut
+
+The current pin is `e9ffaa8f8057144155ffe164280994445fa0f6d8` (PR #275 remains
+open). The three-commit delta from R14 leaves Cargo/SDK pins, body/outbound,
+config extraction, ingress defaults, CF request streaming and Spin entrypoint
+unchanged. All six dependencies and eight lock source identities move together.
+
+Fastly now shares managed logger installation with Cloudflare/Spin: complete
+endpoint/level/stdout identity is immutable, identical setup is idempotent,
+changed or foreign setup fails, and unsupported-target initialization errors
+instead of silently succeeding. Custom Fastly lifecycle APIs require Hooks and
+propagation of ManagedLoggerError. Mocktioneer already uses standard `run_app`
+on every adapter and introduces no manual initialization, ownership override,
+retired-call shim or fallback backend. Boot Warn/Error remains independent of
+ordinary Off. Fastly records include the log target.
+
+Fastly optionally snapshots `EDGEZERO__LOGGING__LEVEL` from ConfigStore
+`edgezero_logging` once at logger setup, with a 16-byte read bound. Missing store
+or key retains the manifest level; invalid/oversized values select Info; other
+provider failures remain explicit. Public logging docs describe that behavior.
+Private default completion/grant values were rechecked and remain empty.
+R14 executed evidence is historical; R15/R16 are requalified together below.

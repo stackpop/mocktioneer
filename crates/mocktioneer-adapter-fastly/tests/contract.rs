@@ -131,8 +131,9 @@ fn auction_uses_seeded_cpm_through_fastly_adapter() {
         .expect("fastly response");
     let response = complete_envelope(response);
 
-    // Full path through the adapter: request translation -> config-store bind ->
-    // `AppConfig` extractor -> auction handler -> response translation.
+    // Request translation -> config-store binding -> AppConfig -> auction ->
+    // core egress envelope. This capture does not send a Fastly SDK response;
+    // production delivery is exercised separately by the Viceroy HTTP smoke.
     assert_eq!(response.status(), StatusCode::OK);
     let payload: serde_json::Value = serde_json::from_slice(
         &block_on(response.into_body().into_bytes_bounded(2 * 1024 * 1024)).expect("response body"),

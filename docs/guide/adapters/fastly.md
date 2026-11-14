@@ -170,19 +170,25 @@ Fastly logging requires a configured log endpoint. Create one in the Fastly cons
 
 Keep dynamic backends enabled for signed trusted-server verification; this
 requirement is unchanged. The JWKS fetch does not follow redirects, uses a
-five-second budget, and caps the final decoded buffer at 64 KiB. Fastly defaults
+five-second budget, and caps both encoded bytes and the final decoded buffer at
+64 KiB. Fastly defaults
 `Accept-Encoding` to `identity` when absent. Outbound HTTP and deadline support
 are BestEffort, so a configured timeout does not guarantee provider teardown.
 A fetch failure is reflected in creative signature metadata while the auction
 still returns bids. See the [JWKS policy](/integrations/trusted-server#signature-verification-and-jwks).
 
 The CLI declares outbound HTTP as optional and warns about Fastly's BestEffort
-support. Hosted provider qualification is outside this migration; see the
+support. See the
 [capability table](./#capability-support).
 
-The local checks use stock Viceroy 0.21.0. Upstream's stronger timing and
-readiness checks used a reviewed patched runtime; the local contract passes
-do not establish those guarantees.
+Local Viceroy contract tests exercise application behavior. They do not
+establish hosted timing, readiness or teardown guarantees.
+
+The managed Fastly logger uses manifest endpoint, level and stdout settings.
+An optional `edgezero_logging` ConfigStore can override the startup level;
+see [Logging Configuration](../configuration#logging-configuration). Repeated
+identical setup succeeds, while changed or foreign installation returns an
+error. Boot Warn/Error diagnostics remain visible when ordinary logging is Off.
 
 ### fastly.toml
 

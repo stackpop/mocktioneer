@@ -225,6 +225,7 @@ async fn fetch_jwks(
     let request = OutboundRequest::get(&jwks_url)
         .map_err(|error| VerificationError::HttpError(format!("Invalid JWKS URL: {error}")))?
         .timeout(JWKS_FETCH_TIMEOUT)
+        .max_encoded_response_bytes(MAX_JWKS_BODY_BYTES)
         .max_response_bytes(MAX_JWKS_BODY_BYTES)
         .cache_policy(OutboundCachePolicy::PlatformDefault);
     let client = ctx
@@ -244,8 +245,14 @@ async fn fetch_jwks(
         .into_bytes_bounded(MAX_JWKS_BODY_BYTES)
         .await
         .map_err(|error| jwks_transport_error(&error, "Stream read failed"))?;
-    let parsed: TrustedServerResponse = serde_json::from_slice(&bytes)
-        .map_err(|error| VerificationError::HttpError(format!("JWKS parse failed: {error}")))?;
+    let parsed: TrustedServerResponse = serde_json::from_slice(&bytes).map_err(|error| {
+        VerificationError::HttpError(format!(
+            "JWKS parse failed: {:?} at line {} column {}",
+            error.classify(),
+            error.line(),
+            error.column()
+        ))
+    })?;
     log::debug!("Fetched JWKS for {host}");
     Ok(parsed.jwks)
 }
@@ -606,8 +613,7 @@ mod tests {
         HttpClient, IndependentOutboundProgress, OutboundBatch, OutboundDispatchRequest,
         OutboundExchangeOwner, OutboundFuture, OutboundHead, OutboundHeaderFidelity,
         OutboundHeaderInput, OutboundHttpClient, OutboundPending, OutboundPreparedBatch,
-        OutboundProgressRuntime, OutboundRequestParts, OutboundSendMode, OutboundTime,
-        ResponseBodyPolicy, ResponseMode,
+        OutboundProgressRuntime, OutboundSendMode, OutboundTime, ResponseMode,
     };
     use futures::stream::iter;
     use std::future::{pending, ready};
@@ -629,6 +635,7 @@ mod tests {
     #[derive(Clone)]
     enum StubReply {
         BoundedResponse {
+            content_encoding: Option<&'static str>,
             body_error: bool,
             chunks: Vec<Vec<u8>>,
             declared: Option<u64>,
@@ -647,6 +654,7 @@ mod tests {
     #[derive(Debug)]
     struct CapturedRequest {
         cache: OutboundCachePolicy,
+        max_encoded_response_bytes: Option<u64>,
         method: Method,
         mode: ResponseMode,
         timeout: Option<Duration>,
@@ -673,6 +681,7 @@ mod tests {
                     EdgeError::internal(IoError::other("JWKS test request capture lock poisoned"))
                 })?
                 .push(CapturedRequest {
+                    max_encoded_response_bytes: parts.max_encoded_response_bytes,
                     uri: parts.uri.to_string(),
                     method: parts.method.clone(),
                     mode: parts.response_mode,
@@ -685,11 +694,15 @@ mod tests {
                     (*status, Box::pin(iter([Ok(bytes.clone().into())])))
                 }
                 StubReply::BoundedResponse {
+                    content_encoding,
                     status,
                     declared,
                     chunks,
                     body_error,
                 } => {
+                    if let Some(coding) = content_encoding {
+                        headers.insert("content-encoding", HeaderValue::from_static(coding));
+                    }
                     if let Some(length) = declared {
                         headers.insert(
                             "content-length",
@@ -792,22 +805,6 @@ mod tests {
         }
     }
 
-    fn response_body_policy(
-        parts: &OutboundRequestParts,
-        status: StatusCode,
-    ) -> ResponseBodyPolicy {
-        ResponseBodyPolicy {
-            max_brotli_window_bits: parts.max_brotli_window_bits,
-            max_chunk_bytes: parts.max_chunk_bytes,
-            max_decoded_response_bytes: parts.max_decoded_response_bytes,
-            max_decoder_bytes: parts.max_decoder_bytes,
-            max_encoded_response_bytes: parts.max_encoded_response_bytes,
-            response_decoding: parts.response_decoding,
-            response_mode: parts.response_mode,
-            status,
-        }
-    }
-
     fn client_context(
         reply: StubReply,
     ) -> (
@@ -871,6 +868,10 @@ mod tests {
                 max_bytes: 0x0001_0000
             }
         );
+        assert_eq!(
+            requests[0].max_encoded_response_bytes,
+            Some(MAX_JWKS_BODY_BYTES)
+        );
         assert_eq!(requests[0].method, Method::GET);
         assert_eq!(requests[0].timeout, Some(Duration::from_secs(5)));
         assert_eq!(requests[0].cache, OutboundCachePolicy::PlatformDefault);
@@ -919,6 +920,7 @@ mod tests {
             ),
             (
                 StubReply::BoundedResponse {
+                    content_encoding: None,
                     status: StatusCode::BAD_GATEWAY,
                     declared: Some(0x0001_0001),
                     chunks: vec![b"non-200 payload".to_vec()],
@@ -928,6 +930,7 @@ mod tests {
             ),
             (
                 StubReply::BoundedResponse {
+                    content_encoding: None,
                     status: StatusCode::BAD_GATEWAY,
                     declared: None,
                     chunks: vec![vec![b'x'; 0x8000], vec![b'x'; 0x8001]],
@@ -937,6 +940,7 @@ mod tests {
             ),
             (
                 StubReply::BoundedResponse {
+                    content_encoding: None,
                     status: StatusCode::BAD_GATEWAY,
                     declared: None,
                     chunks: vec![b"non-200 payload".to_vec()],
@@ -974,7 +978,7 @@ mod tests {
             ),
             (
                 StubReply::Bytes(StatusCode::OK, b"invalid json".to_vec()),
-                "HTTP error: JWKS parse failed: expected value at line 1 column 1",
+                "HTTP error: JWKS parse failed: Syntax at line 1 column 1",
             ),
         ] {
             let (ctx, _, _) = client_context(reply);
@@ -999,26 +1003,81 @@ mod tests {
         );
     }
 
-    fn decode_fixture(coding: &str, encoded: &[u8]) -> Result<Vec<u8>, EdgeError> {
-        use edgezero_core::outbound::{apply_response_body_policy, collect_response_stream};
-        let parts = OutboundRequest::get("https://example.com/")?
-            .max_response_bytes(MAX_JWKS_BODY_BYTES)
-            .into_parts();
-        let policy = response_body_policy(&parts, StatusCode::OK);
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "content-encoding",
-            HeaderValue::from_str(coding)
-                .map_err(|error| EdgeError::bad_request(error.to_string()))?,
-        );
-        let source = Box::pin(iter([Ok(encoded.to_vec().into())]));
-        let stream = apply_response_body_policy(source, &mut headers, policy)?;
-        block_on(collect_response_stream(stream, MAX_JWKS_BODY_BYTES)).map(|bytes| bytes.to_vec())
+    fn fetch_encoded_fixture(
+        coding: &'static str,
+        encoded: &[u8],
+    ) -> Result<JwksResponse, VerificationError> {
+        let (ctx, _, _) = client_context(StubReply::BoundedResponse {
+            content_encoding: Some(coding),
+            status: StatusCode::OK,
+            declared: None,
+            chunks: vec![encoded.to_vec()],
+            body_error: false,
+        });
+        block_on(fetch_jwks(&ctx, &ValidatedJwksHost::new("example.com")?))
+    }
+
+    #[test]
+    fn jwks_parse_errors_do_not_reflect_fetched_values() {
+        for body in [
+            br#"{"jwks":"PRIVATE_FETCHED_SENTINEL"}"#.as_slice(),
+            br#"{"jwks":{"keys":"PRIVATE_FETCHED_SENTINEL"}}"#.as_slice(),
+        ] {
+            let (ctx, _, _) = client_context(StubReply::Bytes(StatusCode::OK, body.to_vec()));
+            let reason = block_on(fetch_jwks(
+                &ctx,
+                &ValidatedJwksHost::new("example.com").unwrap(),
+            ))
+            .unwrap_err()
+            .to_string();
+            assert!(!reason.contains("PRIVATE_FETCHED_SENTINEL"), "{reason}");
+            let location = serde_json::from_slice::<TrustedServerResponse>(body).unwrap_err();
+            assert_eq!(
+                reason,
+                format!(
+                    "HTTP error: JWKS parse failed: Data at line {} column {}",
+                    location.line(),
+                    location.column()
+                )
+            );
+        }
+    }
+
+    #[test]
+    fn jwks_encoded_cap_rejects_small_json_with_a_large_gzip_header() {
+        // Valid gzip: FNAME may be arbitrarily long without changing decoded bytes.
+        let gzip = [
+            31, 139, 8, 8, 0, 0, 0, 0, 0, 19, 171, 86, 202, 42, 207, 46, 86, 178, 170, 86, 202, 78,
+            173, 44, 86, 178, 138, 142, 173, 173, 5, 0, 177, 230, 86, 195, 20, 0, 0, 0,
+        ];
+        let mut encoded = gzip[..10].to_vec();
+        encoded.extend(vec![b'x'; usize::try_from(MAX_JWKS_BODY_BYTES).unwrap()]);
+        encoded.push(0);
+        encoded.extend_from_slice(&gzip[10..]);
+        for declared in [None, Some(u64::try_from(encoded.len()).unwrap())] {
+            let (ctx, _, _) = client_context(StubReply::BoundedResponse {
+                content_encoding: Some("gzip"),
+                status: StatusCode::OK,
+                declared,
+                chunks: encoded.chunks(4096).map(<[u8]>::to_vec).collect(),
+                body_error: false,
+            });
+            let reason = block_on(fetch_jwks(
+                &ctx,
+                &ValidatedJwksHost::new("example.com").unwrap(),
+            ))
+            .unwrap_err()
+            .to_string();
+            assert_eq!(
+                reason,
+                "HTTP error: JWKS response body exceeds 65536 byte limit"
+            );
+        }
     }
 
     #[test]
     fn recognized_jwks_codings_decode_before_the_final_buffered_cap() {
-        let gzip_bytes = decode_fixture(
+        let gzip_jwks = fetch_encoded_fixture(
             "gzip",
             &[
                 31, 139, 8, 0, 0, 0, 0, 0, 0, 19, 171, 86, 202, 42, 207, 46, 86, 178, 170, 86, 202,
@@ -1026,9 +1085,8 @@ mod tests {
             ],
         )
         .unwrap();
-        let gzip_parsed: TrustedServerResponse = serde_json::from_slice(&gzip_bytes).unwrap();
-        assert!(gzip_parsed.jwks.keys.is_empty());
-        let brotli_bytes = decode_fixture(
+        assert!(gzip_jwks.keys.is_empty());
+        let brotli_jwks = fetch_encoded_fixture(
             "br",
             &[
                 139, 9, 128, 123, 34, 106, 119, 107, 115, 34, 58, 123, 34, 107, 101, 121, 115, 34,
@@ -1036,9 +1094,8 @@ mod tests {
             ],
         )
         .unwrap();
-        let brotli_parsed: TrustedServerResponse = serde_json::from_slice(&brotli_bytes).unwrap();
-        assert!(brotli_parsed.jwks.keys.is_empty());
-        let deflate_bytes = decode_fixture(
+        assert!(brotli_jwks.keys.is_empty());
+        let deflate_jwks = fetch_encoded_fixture(
             "deflate",
             &[
                 120, 156, 171, 86, 202, 42, 207, 46, 86, 178, 170, 86, 202, 78, 173, 44, 86, 178,
@@ -1046,10 +1103,9 @@ mod tests {
             ],
         )
         .unwrap();
-        let deflate_parsed: TrustedServerResponse = serde_json::from_slice(&deflate_bytes).unwrap();
-        assert!(deflate_parsed.jwks.keys.is_empty());
+        assert!(deflate_jwks.keys.is_empty());
         assert!(matches!(
-            decode_fixture(
+            fetch_encoded_fixture(
                 "gzip",
                 &[
                     31, 139, 8, 0, 0, 0, 0, 0, 0, 19, 237, 193, 129, 0, 0, 0, 0, 195, 32, 149, 249,
@@ -1059,14 +1115,14 @@ mod tests {
                     1, 0
                 ]
             ),
-            Err(EdgeError::ResponseTooLarge { .. })
+            Err(VerificationError::HttpError(reason)) if reason == "JWKS response body exceeds 65536 byte limit"
         ));
         assert!(matches!(
-            decode_fixture("br", &[91, 0, 0, 129, 95, 2, 36, 30, 11, 4, 116, 239, 1, 0]),
-            Err(EdgeError::ResponseTooLarge { .. })
+            fetch_encoded_fixture("br", &[91, 0, 0, 129, 95, 2, 36, 30, 11, 4, 116, 239, 1, 0]),
+            Err(VerificationError::HttpError(reason)) if reason == "JWKS response body exceeds 65536 byte limit"
         ));
         assert!(matches!(
-            decode_fixture(
+            fetch_encoded_fixture(
                 "deflate",
                 &[
                     120, 156, 237, 193, 129, 0, 0, 0, 0, 195, 32, 149, 249, 83, 254, 32, 85, 1, 0,
@@ -1075,7 +1131,7 @@ mod tests {
                     0, 0, 0, 0, 0, 0, 0, 0, 0, 192, 13, 17, 16, 2, 1
                 ]
             ),
-            Err(EdgeError::ResponseTooLarge { .. })
+            Err(VerificationError::HttpError(reason)) if reason == "JWKS response body exceeds 65536 byte limit"
         ));
     }
 

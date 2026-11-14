@@ -33,7 +33,7 @@ The EdgeZero CLI provides a unified interface for all adapters, but it is mainta
 If you have access to the EdgeZero repo:
 
 ```bash
-cargo install --git https://github.com/IABTechLab/edgezero.git --rev 1467e28a4d04115cd1f2576df404d00529ee127f edgezero-cli --features cli
+cargo install --git https://github.com/IABTechLab/edgezero.git --rev e9ffaa8f8057144155ffe164280994445fa0f6d8 edgezero-cli --features cli
 ```
 
 Or run it from a local EdgeZero checkout:

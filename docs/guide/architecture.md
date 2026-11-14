@@ -167,9 +167,9 @@ HTTP handlers for all endpoints. Uses extractors for type-safe request parsing:
 ```rust
 #[action]
 pub async fn handle_openrtb_auction(
+    AppConfig(config): AppConfig<MocktioneerConfig>,
     RequestContext(ctx): RequestContext,
     ForwardedHost(host): ForwardedHost,
-    AppConfig(config): AppConfig<MocktioneerConfig>,
     ValidatedJsonWithin(req): ValidatedJsonWithin<OpenRTBRequest, MAX_BID_REQUEST_BYTES>,
 ) -> Result<Response, EdgeError> {
     // ...

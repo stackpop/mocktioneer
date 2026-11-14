@@ -517,7 +517,7 @@ export function compare_response(
   }
   if (
     reference_before !== null &&
-    ["body-cap", "head-target"].includes(transition) &&
+    ["body-cap", "head-target", "head-count"].includes(transition) &&
     before.status === 200 &&
     before.status !== after.status
   ) {
@@ -549,17 +549,18 @@ export function compare_response(
       "F8: status/body/Content-Length/CORS (successful reference verified)",
     );
   }
-  if (transition === "head-target" && before.status !== after.status) {
+  if (["head-target", "head-count"].includes(transition) && before.status !== after.status) {
+    const target = transition === "head-target";
     require(allowed.includes("F5") &&
       before.status === 200 &&
-      after.status === 414, "unexpected normalized-target status transition");
+      after.status === (target ? 414 : 431), "unexpected normalized-head status transition");
     require(reference_before !==
       null, "F5 requires the baseline root reference capture");
     require(after.body.equals(
       error_body(
-        414,
-        "uri_too_long",
-        "normalized request target exceeds configured limit",
+        target ? 414 : 431,
+        target ? "uri_too_long" : "request_header_fields_too_large",
+        target ? "normalized request target exceeds configured limit" : "normalized request header count exceeds configured limit",
       ),
     ), "unlisted normalized-target error");
     a = normalize_length(remove_cors(a), before.body);
@@ -845,13 +846,18 @@ function compare(args) {
         reference ? read_response(before, reference) : null,
         reference ? read_response(after, reference) : null,
       );
-      // The helper also compares baselines; CLI candidates additionally require 413.
-      if (case_.differences?.includes("F14"))
+      // Baseline repeats preserve historical behavior; candidates must enforce it.
+      if (!args["baseline-repeat"] && case_.differences?.includes("C8"))
+        require_cors(after_response.lines);
+      if (BODY_CAP_CASES.has(case_.id) && case_.transition === "body-cap") {
+        const f14 = case_.differences?.includes("F14");
+        const expected = f14 ? 413 : CORS_ERROR_STATUSES[case_.id];
         require(args["baseline-repeat"]
           ? before_response.status === after_response.status
-          : after_response.status === 413, args["baseline-repeat"]
-          ? "F14 baseline repeat requires unchanged status"
-          : "F14 candidate requires 413");
+          : after_response.status === expected, args["baseline-repeat"]
+          ? `${f14 ? "F14" : "historical body-cap"} baseline repeat requires unchanged status`
+          : `${f14 ? "F14" : "historical body-cap"} candidate requires ${expected}`);
+      }
       console.log(
         `PASS ${id}${changes.length ? ": " + changes.join("; ") : ""}`,
       );

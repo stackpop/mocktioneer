@@ -127,7 +127,7 @@ target/wasm32-unknown-unknown/release/mocktioneer_adapter_cloudflare.wasm
 
 3. Deploy:
    ```bash
-   wrangler deploy --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
+   wrangler deploy --cwd crates/mocktioneer-adapter-cloudflare
    ```
 
 ### Subsequent Deployments
@@ -137,7 +137,7 @@ target/wasm32-unknown-unknown/release/mocktioneer_adapter_cloudflare.wasm
 edgezero deploy --adapter cloudflare
 
 # Or directly
-wrangler deploy --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
+wrangler deploy --cwd crates/mocktioneer-adapter-cloudflare
 ```
 
 ## Configuration
@@ -153,16 +153,37 @@ features = ["cloudflare"]
 
 ### Logging
 
+The manifest can record adapter logging metadata:
+
 ```toml
 [adapters.cloudflare.logging]
 level = "info"
 echo_stdout = true
 ```
 
-Cloudflare Workers logs are visible in:
+The Workers runner installs a Rust `log` backend using console methods before
+application assembly. It reads `EDGEZERO__LOGGING__LEVEL` from Worker bindings;
+the manifest table above does not configure its runtime filter. Set the binding
+in `wrangler.toml`:
+
+```toml
+[vars]
+EDGEZERO__LOGGING__LEVEL = "warn"
+```
+
+Levels are case-insensitive: `off`, `error`, `warn`, `info`, `debug`, `trace`.
+Absent or invalid values use Info. Boot Error/Warn records on `edgezero::boot`
+remain visible even when ordinary logging is Off. Logs are visible in:
 
 - `wrangler tail` for real-time logs
 - Workers Analytics in the dashboard
+
+Initialization is immutable within an isolate: repeating the same level succeeds;
+a changed level or foreign installed logger fails before assembly. For custom
+lifecycle code, call the fallible `init_logger(level)` before assembly;
+`dispatch_app` does not initialize logging. Application-owned logging must
+install and configure its backend and facade filter before the runner, with
+`Hooks::owns_logging()` returning true.
 
 ### wrangler.toml
 
@@ -233,7 +254,7 @@ Set environment variables in wrangler.toml:
 
 ```toml
 [vars]
-LOG_LEVEL = "debug"
+EDGEZERO__LOGGING__LEVEL = "debug"
 ```
 
 Or as secrets:
@@ -289,7 +310,7 @@ wrangler dev --cwd crates/mocktioneer-adapter-cloudflare --local
 wrangler whoami
 
 # Validate configuration
-wrangler deploy --dry-run --config crates/mocktioneer-adapter-cloudflare/wrangler.toml
+wrangler deploy --dry-run --cwd crates/mocktioneer-adapter-cloudflare
 ```
 
 ## Performance Considerations
@@ -303,10 +324,10 @@ Cloudflare Workers has these limits:
 | Script size | 1 MB   | 10 MB  |
 | Subrequests | 50     | 1000   |
 
-Bid routes read Workers KV, and signed trusted-server requests can make an
+Auction and APS bid routes read Workers KV, and signed trusted-server requests can make an
 outbound JWKS subrequest. The local cache's 2 MiB owned-allocation budget does
 not bound total Worker memory. Check current provider limits for your plan;
-this migration does not qualify hosted provider behavior.
+local checks do not establish hosted provider behavior.
 
 ## Workers KV Integration
 

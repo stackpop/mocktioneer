@@ -138,8 +138,7 @@ return empty error responses, as described on their endpoint pages:
 ### Request Limits and Deadlines
 
 `POST /openrtb2/auction` and `POST /e/dtb/bid` accept at most **1 MiB** of JSON.
-`POST /adserver/mediate` keeps the framework default of **8 MiB**. At the audited
-EdgeZero revision `1467e28a4d04115cd1f2576df404d00529ee127f`, overflow returns
+`POST /adserver/mediate` keeps the framework default of **8 MiB**. Overflow returns
 413 with `error.kind: "payload_too_large"` and `error.message: "request body too large"`,
 without `Retry-After`.
 Malformed JSON is 400; successfully parsed input that fails a validator is 422.

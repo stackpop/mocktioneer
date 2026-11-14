@@ -78,10 +78,13 @@ node tests/wire-contract/wire_contract.mjs compare --baseline-repeat \
 ```
 
 Ordinary comparisons treat the after capture as a candidate and require 413 for
-F14 overflow cases. `--baseline-repeat` permits their historical 200/200 and
+F14 overflow cases, 400 for historical cap cases without F14, and complete CORS
+fields on every C8 error. `--baseline-repeat` permits historical 200/200 and
 400/400 repetitions, and requires unchanged overflow statuses. Use it for both
 original and immediately preceding baseline self/repeat checks. Candidate
 self/repeat and baseline→candidate comparisons use the ordinary command.
+The flag is an operator assertion: capture manifests do not attest a revision
+or baseline role. Using it on a candidate bypasses candidate-only requirements.
 
 Comparator failures exit nonzero and report the case. Accepted differences print
 their F/C number and changed fields. All F1–F14
@@ -147,7 +150,8 @@ already present on the successful baseline. Routing 404/405 and normalized-head
 errors have no C8 exception; a 404 from the matched creative handler does.
 Baseline repeats without CORS and candidate repeats with the complete fields
 remain comparable. An identical pair without CORS cannot establish that a
-candidate implements C8; the admitted-dispatch tests assert that requirement.
+candidate implements C8; the ordinary CLI rejects that pair, while the explicit
+baseline-repeat mode retains historical compatibility.
 
 The corpus digest changes when C8 or F14 is added. Capture the pre-PR baseline,
 the immediately preceding PR revision, an independent repeat of each baseline,
@@ -159,8 +163,9 @@ are historical evidence. Saved body-cap cases without F14 retain the exact
 historical 200→400 contract, including C8's historical 400 allowlist. Saved cases
 without C8 also retain their original, narrowly scoped CORS removal exception;
 current F14 cap cases require the complete fields on both responses. The CLI
-role checks apply only to F14, so historical corpora without F14 keep their
-existing comparison commands.
+role checks cover all three named cap cases, including historical corpora.
+Historical non-rejecting repeats require `--baseline-repeat`; ordinary
+historical candidates must reject with 400.
 
 Record raw framing **separately** for each revision:
 

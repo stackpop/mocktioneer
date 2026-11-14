@@ -18,7 +18,7 @@ The 2026-10-23 second review adds a JWKS destination-admission decision that
 remains open. The previous implementation checkpoints are complete; merge
 qualification additionally requires resolving this new security policy.
 
-Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R13. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
+Design: [2026-10-18-edgezero-pr275-migration-design.md](../specs/2026-10-18-edgezero-pr275-migration-design.md), working revision R14. Baseline application revision: `e6c298216fccd5c04e3c8e5fff6e4b602cb30d11` (PR #118). Worktree: `.claude/worktrees/edgezero-pr275`, branch `feat/edgezero-pr275-migration`.
 
 Review on 2026-10-20 checked the exact proposed upstream pin `f6c708ccb5be19ba9fa92575db3c08c0f17e0d72`, not merely the upstream checkout's HEAD. PR #275 remains draft and unmerged. Its current head, `7cccaf10734914161803317aec6c55c22c2bccc9`, adds seven documentation files relative to that pin; it changes no implementation, dependencies or toolchain. Reconcile the spec's stale head metadata and its repinning rule in Task 0; do not silently change Cargo source identity.
 
@@ -187,7 +187,11 @@ The six source pins, trait signatures, entrypoints and test fixtures depend on e
 - [x] Implement a small error-detail function: return exactly `internal error` for `err.kind() == "internal"`; otherwise `err.to_string()`. Map `ResponseTooLarge` from either send or defensive drain to the existing size-limit reason. Other send errors use `JWKS fetch failed:`, defensive drain errors use `Stream read failed:`, missing client stays `Proxy not available`. Preserve the full strings in spec §5.6. Delete `collect_jwks_body` and remove core's `futures-util` dependency only if now unused.
 - [x] Build a `Send + Sync` stub with `#[async_trait(?Send)]`. Store only reply descriptions (bytes/status/error variants) and captured metadata in mutexes; a `Body` stream or `OutboundRequest` may be non-Send. Construct `OutboundResponse::new(method, status, headers, body, clock, ContentTypeProvenance::Unknown)` inside `send`. Implement `start_batch_until` as `OutboundBatch::cutoff(requests.len())`. Insert `HttpClient::with_client(stub)` into request extensions. No public network access.
 - [x] Add tests asserting full reasons for all §5.6 cases, captured GET URL/method, buffered `max_bytes = 65536`, five-second timeout and PlatformDefault policy. Test send-size failure taking precedence over payload-bearing non-200, send-time decode/body error prefix, internal source sentinel redaction, non-200 malformed JSON not parsed, timeout and a distinct custom-stream drain error. A stub returning an error proves Mocktioneer's mapping, not an actual adapter's codec enforcement.
-- [x] Add focused decoded-body policy fixtures using public `edgezero_core::outbound::apply_response_body_policy(native: BodyStream, headers: &mut HeaderMap, policy: ResponseBodyPolicy)`, with known gzip/Brotli/deflate byte fixtures and Content-Encoding headers. Construct `ResponseBodyPolicy` from the configured request's `into_parts()` fields (response mode, decoder/window, encoded/decoded and chunk limits). This helper returns a stream; it does **not** perform final buffered collection. Pass its returned stream to `edgezero_core::outbound::collect_response_stream(stream, 65_536_u64).await` to model that stage. Do not use `Body::into_bytes_bounded` here: that inbound helper takes `usize` and emits `BadRequest`, whereas the outbound collector preserves `ResponseTooLarge`. Assert valid encoded JWKS becomes parseable and expanded output above 65536 fails with `ResponseTooLarge`. Use existing dev `futures` for the source stream. Keep encoded fixtures local and small; do not add a runtime codec dependency just to generate tests. Verify adapter negotiation defaults by source inspection and record the accepted change, rather than pretending the custom stub sets adapter headers.
+- [x] R15 replaces the manual decoded-body policy fixture with raw encoded heads
+  sent through `fetch_jwks` and the real shared buffered finalizer. Assert valid
+  gzip/Brotli/deflate parsing and expanded output overflow with the full public
+  size reason. Exercise encoded overflow both with and without Content-Length.
+  Do not reconstruct a `ResponseBodyPolicy` in the test. Keep fixtures local.
 - [x] Make `build_response` add `Content-Length: 0` for an actually empty buffered ordinary response with an allowed status. Preserve existing explicit representation lengths and the 1xx/204/304/HEAD rules. Test the helper, then test framing of synthetic empty 400/401/403/302/500 responses in provider contracts.
 - [x] Update Fastly contracts to `capture_egress_for_test` and explicit envelope completion, then inspect the prepared frame returned by `envelope.begin()` (which invokes `prepare_response_egress` internally). Assert `declared_length()`/`transmits_body()`, mark the attempt writing and complete with its clock, then recover the response. Use `block_on` and bounded reads. Cloudflare synthetic routes must pass through `CloudflareService` conversion. Do not add production routes for test-only statuses.
 - [x] In Cloudflare browser `test_env_ctx`, add `waitUntil` on the context object and install a conditional `FixedLengthStream` shim only when the global is absent:
@@ -861,7 +865,7 @@ R13 verification and integration record:
   browser control are retained. Existing Chrome for Testing **156.0.8078.4**
   plus its matching task-local driver executed all six unchanged Cloudflare
   tests with wasm-bindgen **0.2.128**. No tests were dropped. Optional CF-target
-  Clippy still reports three unchanged library lints; the required native
+  Clippy reported three library lints (the exact-base cause was not established); the required native
   strict workspace gate passes.
 - Fresh local **Docker linux/amd64, stock Viceroy 0.21.0, real workerd and
   Spin 4.1.0** delivery checks pass. Spin originally returned missing-blob 503
@@ -898,3 +902,201 @@ destination admission, and review the upstream shipping delta before replacing
 the unmerged revision with a release tag. The private default admission
 completion/grant copy still matches `1467e28a`; its next repin requires another
 source comparison because no public delegate/getter exists.
+
+### Repeated latest-head adoption (2026-11-13, R14)
+
+The user requested another latest-head update. Upstream advanced one commit
+from `1467e28a` to `737f845276f89f83452f40394abf2236c05449f0`; PR #275 remains
+open, ready for review and unmerged. The preceding consumer is `7358099`.
+Separate read-only core/outbound and provider/logging audits recommend a
+consistent pin/lock refresh and logging documentation, with no consumer API
+rewrite or new upload feature.
+
+The user explicitly reiterated the logging hard cut. All production entrypoints
+continue through current `run_app`; Cloudflare and Spin therefore execute the
+new fallible `init_logger(LevelFilter)` before assembly. Mocktioneer installs no
+competing backend, sets no application-owned override, and adds no zero-argument
+initializer alias, no-op replacement or swallowed initialization failure.
+Custom lifecycle documentation uses the new fallible API and runtime binding /
+component-environment configuration rather than implying manifest metadata
+configures the managed runtime filter.
+
+- [x] Preserve the clean preceding source identity and freshly built native
+  server/CLI, and verify its 203 workspace tests before repinning.
+- [x] Audit the complete one-commit source delta. Admission/config APIs,
+  capability declarations and SDK/runtime pins are unchanged. Body's additional
+  forwarding-length scalar is unused by our bodyless JWKS GET and is absent
+  from parsed-key cache charges. Existing fixtures remain compatible.
+- [x] Repin all six dependencies/eight source entries; retain existing registry
+  versions and add only the two required fern dependency edges.
+- [x] Document Workers console / Spin stderr managed logging, runtime level
+  selection, immutable initialization and ownership. Keep approved request,
+  JWKS/cache/CORS and destination-policy decisions unchanged.
+- [x] Run native tests/fmt/strict Clippy/features/config, Node/browser/docs and
+  actual target contracts. Compare fresh seeded/unseeded wire captures with
+  independent repeats and unchanged corpus/rules.
+- [ ] Exercise actual local runtime delivery, especially changed Cloudflare
+  and Spin run_app logging at normal and Off levels. Keep hosted qualification
+  and stronger provider guarantees separate.
+- [ ] Obtain independent spec and code-quality reviews, recheck upstream head,
+  and publish through existing PR #131 / issue #130. Track new-head CI there.
+
+Evidence: retained local R14 indexes listed below. Task-local tools are reused
+with their exact identities; prior results are historical unless explicitly rerun.
+
+R14 verification record (final runtime/review status is completed below):
+
+- Native workspace **203 tests**, fmt, strict all-feature workspace Clippy,
+  adapter feature compilation and immutable native server/CLI builds pass.
+  Lock resolution changes only eight EdgeZero source identities and adds
+  fern edges to Cloudflare/Spin; all **377 packages** retain their versions.
+  SDK uniqueness remains Spin 8.0.0 / wasm-bindgen 0.2.128, js-sys/web-sys
+  0.3.105. Strict default-template config validation also passes.
+- Fresh wire qualification passes **12 captures / 522 curl exchanges**,
+  **16 comparisons / 696 case checks**, all **85 seeded + 2 unseeded** cases,
+  independent restarts/repeats and three raw parser characterizations.
+  Baseline `7358099` and candidate binaries are freshly built; the original
+  e6c298216 binary is reused with its prior source/build provenance and hash
+  verified. Corpus bytes and candidate 413 enforcement remain unchanged.
+- Fresh **61 Node tests**, **41 Playwright tests** (retries 0), and strict CLI
+  push/auction/APS roundtrip at **CPM 0.35** pass. Docs ESLint/Prettier/build
+  pass after fixing the changed Markdown table alignment.
+- Actual WASM target contracts pass: **Fastly 5 / Cloudflare 6 / Spin 4**.
+  Fresh production Fastly delivery passes root, seeded auction, GIF, real
+  empty 400/302 and OPTIONS 204 framing/CORS with stock Viceroy 0.21.0.
+- Changed Cloudflare/Spin run_app paths pass **30 HTTP checks** across fresh
+  Info/Off fixtures: existing handler warnings appear twice at Info and zero
+  times at Off, while HTTP/pricing/CORS/framing remain correct. Repeated
+  requests pass; retained instance identity is not independently attested.
+  Spin Off uses its component environment, verified through Spin 4.1.0;
+  outbound-host drift rejects with exit 2 and is restored byte-for-byte.
+- Workerd uses the retained 2023 date, three flags and actual disposable KV,
+  without a browser polyfill. Direct-origin length is checked before Wrangler
+  HTML rewriting. Browser-server sandbox bind refusal was resolved through
+  escalation. A live Wrangler attempt timed out while a duplicate build waited
+  for Cargo; that failure is retained. Final disposable fixtures skip only
+  that duplicate build, using the separately built exact-pin Worker artifact.
+  No runtime compatibility flag, SDK or transport setting was changed.
+
+Evidence indexes: `wire-qualification.json`, `provider-verification.json`,
+`provider-live-results.json`, and the final Fastly/Docker and focused logging
+indexes in the directory above. These are local application/target checks,
+not hosted networking, complete allocation or provider timing qualification.
+The consumer does not use streamed outbound uploads; that upstream change
+was source-audited rather than presented as exercised application behavior.
+
+The logging hard-cut source audit found no retired initializer calls, competing
+consumer logger installation or application ownership override. The focused
+existing upstream native unit filters also pass: **core logging 7 / Cloudflare
+logger 2 / Spin logger 1**, including Spin managed/foreign subprocess controls.
+They cover same-level idempotence, changed-level rejection, preserved foreign
+logger failure, resolver/filter ceilings and boot filtering at ordinary Off.
+All 766 materialized upstream source files remain byte-identical. This is
+native unit evidence, not hosted or application-owned provider-runner execution.
+See `logging-hard-cut-source-audit.json` and
+`logging-hard-cut-unit-verification.json`; no consumer tests or shims were added.
+
+
+## R15: PR #131 review corrections
+
+1. Add regressions in `verification.rs` for encoded overflow and parse redaction;
+   drive codec fixtures through `fetch_jwks`. Run scoped core tests before and
+   after the two production corrections (encoded cap and category/location).
+2. Add CLI comparator regressions for C8 candidates, historical cap roles, F5
+   header count and malformed captures; run Node tests before/after fixes. Keep
+   `requests.json` unchanged. Move comparator tests into an independent CI job.
+3. Correct provider commands, error schemas, config/encoding/handler docs and CI
+   command coverage. Record browser versions; reproduce Firefox 160 with the
+   lock-matched runner and qualify a real workerd POST at the final source.
+4. Run the full required suite: locked fetch, workspace fmt/strict Clippy/tests,
+   adapter feature check, all three actual WASM contract commands from test.yml,
+   strict config validation and 0.35 config push roundtrip, Playwright, comparator
+   and docs lint/format/build. Report optional target Clippy honestly. Refresh
+   native wire comparison and affected provider qualification.
+5. Commit/push, reply in all original threads with dispositions and executed
+   evidence, update the PR and request re-review. CREATOR leaves threads open.
+   Same-account approval exception, upstream merge/repin and JWKS destination
+   admission decisions remain merge gates.
+
+
+## R16: current upstream repin
+
+Repin all six EdgeZero dependencies/eight lock identities to `e9ffaa8f` after
+source-auditing the 41-file, three-commit delta. Follow the managed Fastly logger
+hard cut through the existing standard entrypoint; no compatibility shim or
+manual initializer is added. Update Fastly runtime-filter docs, recheck private
+admission defaults, and rerun the R15 full suite and provider controls against
+this source. Earlier R14 evidence remains historical.
+
+
+## R15/R16 executed verification and handoff
+
+The candidate uses `e9ffaa8f8057144155ffe164280994445fa0f6d8`. The full required
+local suite passes: workspace **205 tests** (176 core unit, 12 auction integration,
+15 core endpoint, 1 CLI, 1 Spin runtime-config), strict host workspace Clippy,
+fmt, feature compilation, immutable native build, actual WASM contracts
+**Cloudflare 6 / Fastly 5 / Spin 4**, **64 comparator** and **41 Playwright**
+tests, docs lint/format/build, strict config validation and CPM **0.35** push
+roundtrip. Focused existing upstream native logger tests pass **8 core /
+4 Fastly / 2 Cloudflare / 1 Spin**. All 767 upstream source files remain unchanged.
+
+Fresh wire qualification passes **12 captures / 522 curl exchanges**,
+**16 comparisons / 696 case checks**, and three parser characterizations.
+Historical immutable original/published-head binaries were reused with their
+prior provenance; the candidate binary is freshly built. Corpus SHA256 remains
+`524c2555445b7e57e2af56676902557c97008dae34b0d94afc2968bb9478f1a4`.
+An earlier candidate-repeat capture failed with curl55/Broken pipe on the
+9 MiB 405 fallback; that failure and the resulting incomplete cross-comparison
+are retained. Five separate baseline and five candidate diagnostic uploads
+returned405/curl0. The reset cause remains unconfirmed; the complete fresh
+candidate qualification then passed without changing requests or assertions.
+
+Production Cloudflare/workerd and Spin run_app checks pass **30 HTTP checks**
+across Info/Off fixtures, including real POST JSON and seeded pricing, framing,
+CORS, empty errors/redirects and warning counts (2 at Info, 0 at Off). No browser
+polyfill is installed in workerd. The Firefox160 reproduction remains a failed
+**5/1** browser suite: independent native Requests lack the body getter while
+arrayBuffer preserves JSON. Chrome passes; CI now explicitly selects Chrome
+and a matching driver and records browser/driver/runner versions. No valid
+fixture or Worker transport was changed to hide the Firefox API limitation.
+
+Optional target Clippy is **not green and not a CI gate**. At this source:
+
+| Command (all use `cargo clippy --locked`, then `-- -D warnings`) | Exit | Observed diagnostics |
+| --- | --- | --- |
+| `-p mocktioneer-adapter-fastly --features fastly --target wasm32-wasip1 --all-targets` | 101 | 29: one entrypoint plus 28 contract diagnostics before cancellation |
+| `-p mocktioneer-adapter-fastly --features fastly --target wasm32-wasip1 --test contract` | 101 | 28 contract diagnostics |
+| `-p mocktioneer-adapter-cloudflare --features cloudflare --target wasm32-unknown-unknown --all-targets` | 101 | 3 library diagnostics; contract not reached |
+| `-p mocktioneer-adapter-spin --features spin --target wasm32-wasip2 --all-targets` | 101 | 10 contract diagnostics |
+
+The passing host command excludes WASM-only items. No exact-base reproduction
+was run, so these failures are not called pre-existing. This corrects the older
+CF-only scope report; target lint cleanup/gating is deferred under the reviewer
+reporting alternative. No lint was suppressed or check weakened.
+
+Evidence indexes retained locally: `final-native-results.tsv`,
+`final-extra-results.json`, `wire-qualification.json`,
+`provider-build-results.json`, `provider-live-results.json`,
+`latest-logging-units.json`, `optional-target-clippy-results.json`,
+`firefox160-native-request-boundary.json`, and their full logs. The new
+Wrangler deployment command passed an actual local dry run; nothing deployed.
+Docker qualification is delegated to the existing PR CI build/smoke job and is
+not claimed as a new local success.
+
+CREATOR investigations used separate JWKS, comparator, docs/browser and latest
+upstream scopes. Verification helpers reproduced Firefox, recorded optional
+target lints, checked the logger hard cuts and performed a read-only final diff
+check. Central implementation chose the minimal fixes; no parallel source edits
+or PRfection REVIEWER approval occurred. The final source corrections are the
+encoded cap, parse redaction, CLI role enforcement and exact F5 count handling;
+timeout/cache policies remain approved. Metadata attestation is declined with
+the operator-selected baseline flag limitation documented.
+
+The PR remains gated on REVIEWER acceptance at the pushed head, required remote
+checks, the upstream merge/repin and a JWKS destination-admission decision. In
+one-account mode, a current-head `REVIEWER: APPROVE` COMMENT still needs the
+user’s explicit head-specific exception before merging.
+
+Fresh Fastly production run_app delivery also passes six HTTP checks under stock
+Viceroy 0.21.0: seeded auction, root, GIF, real empty 400/302 and OPTIONS204.
+No hosted or live Fastly runtime-filter override guarantee is claimed.

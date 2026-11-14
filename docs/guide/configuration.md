@@ -231,7 +231,7 @@ An actual `[[kv_namespaces]]` binding named `mocktioneer_config` is required:
 run `mocktioneer-cli provision --adapter cloudflare`, then
 `mocktioneer-cli config push --adapter cloudflare`. Store-name Worker variables
 only rename the binding lookup; they do not create a namespace or binding.
-Without the binding, `enable_weak_ref` or `internal_stream_byob_return_view`, bid routes return 503
+Without the binding, `enable_weak_ref` or `internal_stream_byob_return_view`, auction and APS routes return 503
 `service_unavailable` without `Retry-After`. Keep production namespace IDs out
 of the repository. See [Cloudflare setup](./adapters/cloudflare).
 
@@ -321,7 +321,7 @@ cargo run -p mocktioneer-cli -- config push --adapter axum --yes
 `config push` writes the whole struct as a single **blob envelope** (canonical
 JSON + a SHA for drift detection) under the store's key — for axum that's
 `.edgezero/local-config-mocktioneer_config.json` as
-`{ "mocktioneer_config": "<envelope>" }`. The handlers read it back through the
+`{ "mocktioneer_config": "<envelope>" }`. The auction and APS handlers read it back through the
 typed `AppConfig` extractor, before reading the auction or APS request body.
 Its two-second config-read deadline is BestEffort on every adapter: synchronous
 provider calls can exceed it before expiry is observed. Observed expiry returns
@@ -369,11 +369,57 @@ roll out a change.
 
 ## Logging Configuration
 
-| Field         | Description                                          |
-| ------------- | ---------------------------------------------------- |
-| `endpoint`    | Log endpoint name (Fastly-specific)                  |
-| `level`       | Log level: `trace`, `debug`, `info`, `warn`, `error` |
-| `echo_stdout` | Whether to print logs to stdout                      |
+The adapter tables above record logging metadata. On Cloudflare and Spin,
+`run_app` selects the runtime filter from `EDGEZERO__LOGGING__LEVEL` rather than
+those tables. Cloudflare reads a Worker binding; Spin reads its runtime
+environment. Valid values are case-insensitive `off`, `error`, `warn`, `info`,
+`debug` and `trace`; absent or invalid values resolve to Info.
+
+Cloudflare installs a Workers console backend and Spin installs a stderr
+backend before application assembly. Both preserve Error/Warn boot diagnostics
+on `edgezero::boot` independently of ordinary Off/Error filtering. Repeated
+initialization at the same level succeeds; a changed level or foreign installed
+logger returns an error instead of reconfiguring a live instance.
+
+For example, configure Cloudflare in `wrangler.toml`:
+
+```toml
+[vars]
+EDGEZERO__LOGGING__LEVEL = "warn"
+```
+
+For Spin, set the guest environment in `spin.toml`:
+
+```toml
+[component.mocktioneer.environment]
+EDGEZERO__LOGGING__LEVEL = "warn"
+```
+
+When invoking `spin up` directly, `--env EDGEZERO__LOGGING__LEVEL=warn` also
+passes the value to the component. A host shell variable alone does not declare
+the guest environment.
+
+Fastly starts from its manifest logging configuration. An optional ConfigStore
+named `edgezero_logging` can override the level with key
+`EDGEZERO__LOGGING__LEVEL`. The adapter reads at most 16 bytes once during logger
+setup. An absent store or key keeps the manifest level; invalid or oversized
+values select Info. Other provider failures remain configuration errors.
+The logging store is separate from the required typed auction/APS config store.
+
+Fastly, Cloudflare and Spin use managed logger installation before assembly.
+Identical setup is idempotent; Fastly compares endpoint, level and stdout,
+while Cloudflare/Spin compare the level. Changed or foreign installation fails.
+Fastly custom lifecycle owners must propagate `ManagedLoggerError`;
+Cloudflare/Spin custom owners call `init_logger(level)` and propagate its error.
+`dispatch_app` does not install a logger. Application-owned logging
+requires `Hooks::owns_logging()` to return true and a backend installed before
+the runner, with backend and facade filters configured by the application.
+
+| Field         | Description                                                 |
+| ------------- | ----------------------------------------------------------- |
+| `endpoint`    | Log endpoint name (Fastly-specific)                         |
+| `level`       | Log level: `trace`, `debug`, `info`, `warn`, `error`, `off` |
+| `echo_stdout` | Whether to print logs to stdout                             |
 
 ## Environment Variables
 

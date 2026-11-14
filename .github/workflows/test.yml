@@ -174,6 +174,29 @@ jobs:
       - name: Fetch dependencies (locked)
         run: cargo fetch --locked
 
+      # The Worker request stream requires Fetch Request.body. Firefox 160
+      # omits that getter; a browser contract must use an implementation of it.
+      - name: Set up Chrome for Cloudflare contracts
+        if: matrix.adapter == 'cloudflare'
+        id: chrome
+        uses: browser-actions/setup-chrome@v2
+        with:
+          chrome-version: stable
+          install-chromedriver: true
+
+      - name: Configure Cloudflare browser and record versions
+        if: matrix.adapter == 'cloudflare'
+        env:
+          CHROME_PATH: ${{ steps.chrome.outputs.chrome-path }}
+          DRIVER_PATH: ${{ steps.chrome.outputs.chromedriver-path }}
+        run: |
+          "$CHROME_PATH" --version
+          "$DRIVER_PATH" --version
+          wasm-bindgen-test-runner --version
+          jq -n --arg binary "$CHROME_PATH" '{"goog:chromeOptions":{"binary":$binary}}' > "$RUNNER_TEMP/cloudflare-webdriver.json"
+          printf 'CHROMEDRIVER=%s\n' "$DRIVER_PATH" >> "$GITHUB_ENV"
+          printf 'WASM_BINDGEN_TEST_WEBDRIVER_JSON=%s/cloudflare-webdriver.json\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+
       - name: Run ${{ matrix.adapter }} wasm contract tests
         env:
           ${{ matrix.runner_env }}: ${{ matrix.runner_value }}

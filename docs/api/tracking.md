@@ -94,8 +94,9 @@ curl http://127.0.0.1:8787/pixel
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "pid: missing required field"
+    "kind": "bad_request",
+    "message": "invalid query string: missing field `pid`",
+    "status": 400
   }
 }
 ```
