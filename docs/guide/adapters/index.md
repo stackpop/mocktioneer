@@ -46,6 +46,27 @@ flowchart TD
     class axumRt,fastlyRt,cfRt,spinRt runtime;
 ```
 
+## Capability Support
+
+The adapters declare the following capability support:
+
+| Capability                       | Axum        | Fastly      | Cloudflare  | Spin        |
+| -------------------------------- | ----------- | ----------- | ----------- | ----------- |
+| Outbound HTTP                    | Native      | BestEffort  | Native      | Native      |
+| Inbound body-read deadlines      | Native      | BestEffort  | BestEffort  | BestEffort  |
+| Outbound HTTP deadlines          | Native      | BestEffort  | BestEffort  | BestEffort  |
+| Config-read deadlines            | BestEffort  | BestEffort  | BestEffort  | BestEffort  |
+| Buffered response content length | Native      | BestEffort  | BestEffort  | BestEffort  |
+| Outbound failure diagnostics     | BestEffort  | Native      | BestEffort  | Native      |
+| Response egress                  | BestEffort  | BestEffort  | BestEffort  | BestEffort  |
+| Ingress admission                | Native      | Native      | Native      | Native      |
+| Raw ingress framing validation   | Unsupported | Unsupported | Unsupported | Unsupported |
+
+BestEffort budgets do not guarantee provider cancellation or teardown by the
+deadline. Normalized-head checks do not establish raw-wire framing validation:
+host parsing may reject or normalize input first. This table describes framework
+capabilities; local contract tests do not establish hosted provider guarantees. See [API limits](/api/#request-limits-and-deadlines).
+
 ## Choosing an Adapter
 
 ### For Development
@@ -80,21 +101,23 @@ The EdgeZero CLI provides a unified interface for all adapters. It's maintained 
 
 ```bash
 # Install (requires access to EdgeZero repo)
-cargo install --git https://github.com/IABTechLab/edgezero.git edgezero-cli --features cli
+cargo install --git https://github.com/IABTechLab/edgezero.git --rev e9ffaa8f8057144155ffe164280994445fa0f6d8 edgezero-cli --features cli
 
 # Serve any adapter
-edgezero-cli serve --adapter axum
-edgezero-cli serve --adapter fastly
-edgezero-cli serve --adapter cloudflare
-edgezero-cli serve --adapter spin        # needs a Spin 4.1+ runtime
+edgezero serve --adapter axum
+edgezero serve --adapter fastly
+edgezero serve --adapter cloudflare
+edgezero serve --adapter spin        # needs a Spin 4.1+ runtime
 
 # Build any adapter
-edgezero-cli build --adapter fastly
+edgezero build --adapter fastly
 ```
 
 The CLI reads `edgezero.toml` for adapter commands and configuration. Fastly
 deployment with declared stores requires a verified application release; see
 the [Fastly breaking change and deployment prerequisites](./fastly#deployment).
+For Spin, its build/serve/deploy gate also checks outbound hosts against
+`spin.toml`; direct `spin build`/`spin up` commands do not.
 Direct build and serve commands are also listed on the adapter pages below.
 
 ### In-repo `mocktioneer-cli`
@@ -114,7 +137,7 @@ cargo run -p mocktioneer-cli -- config push --adapter axum --yes
 ```
 
 `serve`/`build`/`deploy`/`auth`/`provision` work from either the external
-`edgezero-cli` or `mocktioneer-cli`; the typed `config validate` / `config diff` /
+`edgezero` or `mocktioneer-cli`; the typed `config validate` / `config diff` /
 `config push` commands are only in `mocktioneer-cli`.
 
 ## Common Configuration
@@ -123,6 +146,9 @@ All adapters read from the same `edgezero.toml`:
 
 - Routes are identical across platforms
 - Middleware is applied consistently
-- Logging levels are configurable per-adapter
+- Axum, Cloudflare and Spin runtime logging uses `EDGEZERO__LOGGING__LEVEL`;
+  their manifest logging tables do not set the runtime filter
+- Fastly uses manifest logging settings, with an optional startup level override
+  from its `edgezero_logging` ConfigStore
 
 See [Configuration](../configuration) for details.

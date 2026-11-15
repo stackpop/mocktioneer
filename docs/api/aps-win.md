@@ -77,6 +77,9 @@ async function reportWin(slot, price) {
 
 ## Error Responses
 
+The 422 validation messages below are illustrative. Validator parameter keys
+can appear in a different order between processes.
+
 ### Missing slot (400)
 
 ```bash
@@ -86,8 +89,9 @@ curl "http://127.0.0.1:8787/aps/win?price=2.50"
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "slot: missing required field"
+    "kind": "bad_request",
+    "message": "invalid query string: missing field `slot`",
+    "status": 400
   }
 }
 ```
@@ -101,8 +105,9 @@ curl "http://127.0.0.1:8787/aps/win?slot=header-banner"
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "price: missing required field"
+    "kind": "bad_request",
+    "message": "invalid query string: missing field `price`",
+    "status": 400
   }
 }
 ```
@@ -116,13 +121,14 @@ curl "http://127.0.0.1:8787/aps/win?slot=header-banner&price=-1.0"
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "price: must be >= 0"
+    "kind": "validation",
+    "message": "price: Validation error: range [{\"value\": Number(-1.0), \"min\": Number(0.0)}]",
+    "status": 422
   }
 }
 ```
 
-### Empty slot (400)
+### Empty slot (422)
 
 ```bash
 curl "http://127.0.0.1:8787/aps/win?slot=&price=2.50"
@@ -131,8 +137,9 @@ curl "http://127.0.0.1:8787/aps/win?slot=&price=2.50"
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "slot: must have at least 1 character"
+    "kind": "validation",
+    "message": "slot: Validation error: length [{\"min\": Number(1), \"value\": String(\"\")}]",
+    "status": 422
   }
 }
 ```

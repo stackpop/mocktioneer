@@ -12,7 +12,6 @@ async-trait = { workspace = true }
 base64 = { workspace = true }
 ed25519-dalek = { workspace = true }
 edgezero-core = { workspace = true }
-futures-util = { workspace = true }
 handlebars = { workspace = true }
 log = { workspace = true }
 serde = { workspace = true }

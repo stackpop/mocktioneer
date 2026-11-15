@@ -9,6 +9,9 @@ POST /adserver/mediate
 Content-Type: application/json
 ```
 
+Requests are capped at **8 MiB** with a **10-second body-read budget**. See
+[request limits and deadlines](./#request-limits-and-deadlines).
+
 ## Request Format
 
 ```json
@@ -218,13 +221,31 @@ curl -X POST http://127.0.0.1:8787/adserver/mediate \
 
 ## Error Responses
 
+### Oversized Body (413)
+
+A body over 8 MiB returns this response without `Retry-After`:
+
+```json
+{
+  "error": {
+    "kind": "payload_too_large",
+    "message": "request body too large",
+    "status": 413
+  }
+}
+```
+
+The messages below are illustrative; the error envelope uses `kind`, `message`
+and `status` on both failure paths.
+
 ### Malformed or Missing Fields (400)
 
 ```json
 {
   "error": {
-    "code": "BAD_REQUEST",
-    "message": "..."
+    "kind": "bad_request",
+    "message": "...",
+    "status": 400
   }
 }
 ```
@@ -234,8 +255,9 @@ curl -X POST http://127.0.0.1:8787/adserver/mediate \
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "..."
+    "kind": "validation",
+    "message": "...",
+    "status": 422
   }
 }
 ```

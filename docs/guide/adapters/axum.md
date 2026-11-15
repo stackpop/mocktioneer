@@ -29,7 +29,7 @@ endpoints work without a pushed config.)
 ## Using the CLI
 
 ```bash
-edgezero-cli serve --adapter axum
+edgezero serve --adapter axum
 # or, in-repo (no external install):
 cargo run -p mocktioneer-cli -- serve --adapter axum
 ```
@@ -58,19 +58,47 @@ The Axum adapter uses:
 
 ### Logging
 
+The manifest table records logging metadata:
+
 ```toml
 [adapters.axum.logging]
 level = "info"
 echo_stdout = true
 ```
 
-Logs are written to stdout. Adjust `level` for more or less verbosity:
+Logs are written to stdout. The runtime filter comes from the process variable
+`EDGEZERO__LOGGING__LEVEL`; the manifest table does not set it:
+
+```bash
+EDGEZERO__LOGGING__LEVEL=warn cargo run -p mocktioneer-adapter-axum
+```
+
+Choose a runtime level for more or less verbosity:
 
 - `trace` - Most verbose
 - `debug` - Debug information
 - `info` - Normal operation (default)
 - `warn` - Warnings only
 - `error` - Errors only
+
+## HTTP Transport
+
+Axum serves **HTTP/1 only**, admits at most 256 connections, and closes a
+connection without a response after a 10-second head-read or idle timeout.
+Hyper applies raw head limits before dispatch. EdgeZero then checks the visible
+request target (8192 bytes), normalized header count (100), and normalized header
+size (64 KiB); failures return 414 or 431 without CORS headers.
+
+These normalized checks do not guarantee rejection of every ambiguous raw head.
+Hyper can merge identical duplicate `Content-Length` fields and remove
+`Content-Length` when `Transfer-Encoding` is present. Raw ingress framing
+validation is Unsupported. JSON is accepted without `Content-Type` and with
+`text/plain`; `application/json` remains recommended.
+
+Body-read deadlines are Native on Axum: 10 seconds for the three POST bid routes,
+30 seconds by default. Observed expiry returns 408. Config extraction has a
+BestEffort two-second deadline; observed expiry returns 503 `service_unavailable`
+without `Retry-After`. See [API limits and config errors](/api/#request-limits-and-deadlines).
 
 ## Docker Deployment
 
@@ -98,6 +126,9 @@ docker run -p 8787:8787 \
   -v "$PWD/.edgezero/local-config-mocktioneer_config.json:/app/.edgezero/local-config-mocktioneer_config.json:ro" \
   mocktioneer:latest
 ```
+
+After updating that mounted blob with `config push`, restart the container to
+load the new snapshot. This startup-snapshot behavior is unchanged.
 
 ## Development Workflow
 
@@ -132,7 +163,7 @@ Standard Rust debugging works with the Axum adapter:
 RUST_BACKTRACE=1 cargo run -p mocktioneer-adapter-axum
 
 # With debug logging
-RUST_LOG=debug cargo run -p mocktioneer-adapter-axum
+EDGEZERO__LOGGING__LEVEL=debug cargo run -p mocktioneer-adapter-axum
 ```
 
 ## Performance Testing
@@ -152,7 +183,8 @@ hey -n 10000 -c 100 http://127.0.0.1:8787/openrtb2/auction \
 
 ## Differences from Edge Adapters
 
-The Axum adapter behaves identically to edge adapters for request handling, but:
+The adapters share handlers, with different transport and deadline capabilities
+listed in the [capability table](./#capability-support):
 
 | Feature      | Axum          | Edge (Fastly/Cloudflare) |
 | ------------ | ------------- | ------------------------ |

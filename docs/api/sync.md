@@ -101,47 +101,24 @@ curl -v "http://127.0.0.1:8787/sync/start?ts_domain=ts.publisher.com" \
 
 ### Error Responses
 
-#### Missing ts_domain (400)
+| Failure                                         | Status | Body                                 |
+| ----------------------------------------------- | ------ | ------------------------------------ |
+| Missing `ts_domain` or malformed query          | 400    | Framework JSON error (`bad_request`) |
+| Empty `ts_domain` or more than 253 characters   | 422    | Framework JSON error (`validation`)  |
+| Invalid hostname syntax after length validation | 400    | Empty (`Content-Length: 0`)          |
+| Domain not in the configured allowlist          | 403    | Empty (`Content-Length: 0`)          |
 
-```bash
-curl http://127.0.0.1:8787/sync/start
-# Returns 400 Bad Request
-```
-
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "ts_domain: missing required field"
-  }
-}
-```
-
-#### Invalid hostname (400)
-
-Characters like `/`, `@`, `:`, `?`, `#`, or whitespace in `ts_domain` are rejected. Empty labels, labels longer than 63 characters, underscores, and labels starting or ending with `-` are also rejected:
+Hostname checks reject `/`, `@`, `:`, `?`, `#`, whitespace, empty labels,
+labels over 63 characters, underscores, and labels starting or ending with `-`.
+The redirect has an empty body with `Content-Length: 0`; it does not perform a
+server-side fetch of the trusted-server URL.
 
 ```bash
 curl "http://127.0.0.1:8787/sync/start?ts_domain=evil.com/redirect"
-# Returns 400 Bad Request
-```
+# Returns an empty 400 Bad Request
 
-```json
-{
-  "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "ts_domain: not a valid hostname"
-  }
-}
-```
-
-#### Domain not allowed (403)
-
-When `MOCKTIONEER_TS_DOMAINS` is set and `ts_domain` is not in the allowlist:
-
-```bash
-curl "http://127.0.0.1:8787/sync/start?ts_domain=unknown.com"
-# Returns 403 Forbidden
+curl "http://127.0.0.1:8787/sync/start?ts_domain="
+# Returns 422 Unprocessable Entity
 ```
 
 ---
@@ -154,7 +131,7 @@ curl "http://127.0.0.1:8787/sync/start?ts_domain=unknown.com"
 GET /sync/done?ts_synced={0|1}
 ```
 
-Receives the callback from trusted-server after the sync completes. Returns a 1x1 transparent GIF regardless of outcome.
+Receives the callback from trusted-server after the sync completes. Returns a 1x1 transparent GIF for a valid success or failure callback.
 
 ### Parameters
 
@@ -165,7 +142,7 @@ Receives the callback from trusted-server after the sync completes. Returns a 1x
 
 ### Response
 
-Always returns a 1x1 transparent GIF:
+Valid callbacks return a 1x1 transparent GIF:
 
 ```
 HTTP/1.1 200 OK
@@ -173,6 +150,10 @@ Content-Type: image/gif
 Content-Length: 43
 Cache-Control: no-store, no-cache, must-revalidate, max-age=0
 ```
+
+Missing or malformed query fields return 400 (`bad_request`). A `ts_synced`
+value other than `0` or `1`, or a `ts_reason` longer than 256 characters, returns
+422 (`validation`).
 
 ### Examples
 

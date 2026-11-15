@@ -4,7 +4,8 @@ The `/e/dtb/bid` endpoint accepts Amazon Publisher Services (APS) Transparent Ad
 
 ::: warning Requires a pushed config
 Like the OpenRTB endpoint, this reads `bid_cpm` from the typed app config via the
-fail-loud `AppConfig` extractor and returns an error until the config blob is
+fail-loud `AppConfig` extractor and returns 503 `config_out_of_date` with
+`Retry-After: 60` until the config blob is
 pushed once for the target adapter:
 
 ```bash
@@ -20,6 +21,12 @@ See [Configuration › Typed App Config](/guide/configuration#typed-app-config).
 POST /e/dtb/bid
 Content-Type: application/json
 ```
+
+Requests are capped at **1 MiB** with a **10-second body-read budget**. JSON
+is accepted without a `Content-Type` header and with `text/plain`, although
+`application/json` is recommended. `AppConfig` is extracted before the body, so
+config failures take precedence over parsing and size errors. See
+[request limits and config errors](./#request-limits-and-deadlines).
 
 ## Request Format
 
@@ -185,27 +192,26 @@ curl -X POST http://127.0.0.1:8787/e/dtb/bid \
 
 ## Error Responses
 
-### Empty Slots (422)
+| Failure                                        | Status | `error.kind`        |
+| ---------------------------------------------- | ------ | ------------------- |
+| Empty slots or other request validator failure | 422    | `validation`        |
+| Malformed JSON or missing required JSON fields | 400    | `bad_request`       |
+| Body over 1 MiB                                | 413    | `payload_too_large` |
+| Observed body-read deadline expiry             | 408    | `request_timeout`   |
+
+An oversized body returns 413 without `Retry-After`:
 
 ```json
 {
   "error": {
-    "code": "VALIDATION_ERROR",
-    "message": "slots: must have at least 1 item"
+    "kind": "payload_too_large",
+    "message": "request body too large",
+    "status": 413
   }
 }
 ```
 
-### Invalid JSON (400)
-
-```json
-{
-  "error": {
-    "code": "PARSE_ERROR",
-    "message": "expected value at line 1 column 1"
-  }
-}
-```
+Config failures have their own [503/500 response rules](./#bid-route-config-errors).
 
 ## Differences from Real APS
 

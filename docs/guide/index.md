@@ -16,3 +16,8 @@ Mocktioneer runs on multiple edge platforms:
 - [Axum (Native)](./adapters/axum) - For local development and testing
 - [Fastly Compute](./adapters/fastly) - Deploy to Fastly's edge network
 - [Cloudflare Workers](./adapters/cloudflare) - Deploy to Cloudflare's edge network
+- [Spin / Fermyon](./configuration#spin-adapter) - Run with Spin CLI 4.1+
+
+Consult the [capability table](./adapters/#capability-support) for per-adapter
+deadline and framing support, and the [API limits](/api/#request-limits-and-deadlines)
+for request budgets and config-error behavior.
