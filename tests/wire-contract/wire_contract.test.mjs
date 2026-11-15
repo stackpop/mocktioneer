@@ -1899,11 +1899,15 @@ test("test_head_count_permits_only_the_exact_normalized_431_transition", () => {
   assert.throws(() => compare(item,before,after),wire.ContractError);
   assert.throws(() => wire.compare_response(item,before,after,response(Buffer.from("changed"))),wire.ContractError);
   for (const changed of [
-    response(Buffer.from("wrong"),431),
-    response(body,431,["content-type: application/json","x-extra: unsafe"]),
-    response(wire.error_body(431,"bad_request","normalized request header count exceeds configured limit"),431),
-    response(wire.error_body(431,"request_header_fields_too_large","changed"),431),
-  ]) assert.throws(() => wire.compare_response(item,before,changed,before),wire.ContractError);
+    response(Buffer.from("wrong"),431,["content-type: application/json"]),
+    response(wire.error_body(431,"bad_request","normalized request header count exceeds configured limit"),431,["content-type: application/json"]),
+    response(wire.error_body(431,"request_header_fields_too_large","changed"),431,["content-type: application/json"]),
+    response(wire.error_body(414,"uri_too_long","normalized request target exceeds configured limit"),431,["content-type: application/json"]),
+  ]) assert.throws(() => wire.compare_response(item,before,changed,before),/unlisted normalized-target error/);
+  assert.throws(
+    () => wire.compare_response(item,before,response(body,431,["content-type: application/json","x-extra: unsafe"]),before),
+    wire.ContractError,
+  );
   const hyper = response(Buffer.alloc(0),431,["content-length: 0"]);
   assert.deepEqual(compare(item,hyper,hyper),[]);
 });

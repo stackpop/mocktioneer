@@ -135,9 +135,10 @@ fn seeded_config_handle(bid_cpm: f64) -> ConfigStoreHandle {
     ConfigStoreHandle::new(Arc::new(store))
 }
 
-// `run_in_browser` selects the wasm-bindgen browser harness. In CI this runs
-// headless in Firefox (via the geckodriver that ships on the ubuntu-latest
-// runners); locally it picks up whichever browser driver is on PATH.
+// `run_in_browser` selects the wasm-bindgen browser harness. CI runs headless
+// Chrome with CHROMEDRIVER and WASM_BINDGEN_TEST_WEBDRIVER_JSON set explicitly.
+// Use the same local setup: Firefox 160 lacks Request.prototype.body, which
+// the Worker streaming bridge requires.
 // `CARGO_TARGET_WASM32_UNKNOWN_UNKNOWN_RUNNER=wasm-bindgen-test-runner` is
 // what wires the runner into `cargo test`; the harness mode is declared here.
 wasm_bindgen_test_configure!(run_in_browser);

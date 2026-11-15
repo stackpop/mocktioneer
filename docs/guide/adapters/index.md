@@ -146,8 +146,8 @@ All adapters read from the same `edgezero.toml`:
 
 - Routes are identical across platforms
 - Middleware is applied consistently
-- Cloudflare and Spin runtime logging uses `EDGEZERO__LOGGING__LEVEL`; their
-  manifest logging tables do not configure the managed backend
+- Axum, Cloudflare and Spin runtime logging uses `EDGEZERO__LOGGING__LEVEL`;
+  their manifest logging tables do not set the runtime filter
 - Fastly uses manifest logging settings, with an optional startup level override
   from its `edgezero_logging` ConfigStore
 

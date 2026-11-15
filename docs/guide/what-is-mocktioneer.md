@@ -16,7 +16,7 @@ When developing and testing ad tech integrations, you face several challenges:
 Mocktioneer provides:
 
 - **Deterministic bidding** - Fixed input and configuration produce the same prices and bid selection; operational deadlines, key-cache expiry and signature freshness use clocks
-- **Embedded creatives** - Assets render locally or at the edge; bid routes use pushed config, and signed requests may fetch trusted-server keys
+- **Embedded creatives** - Assets render locally or at the edge; auction and APS routes use pushed config, and signed requests may fetch trusted-server keys
 - **OpenRTB 2.x banner support** - Works with standard OpenRTB banner clients
 - **APS TAM compatibility** - Test Amazon Publisher Services integrations
 - **Predictable creatives** - SVG banners with size and bid information for visual verification

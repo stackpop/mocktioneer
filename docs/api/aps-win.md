@@ -77,6 +77,9 @@ async function reportWin(slot, price) {
 
 ## Error Responses
 
+The 422 validation messages below are illustrative. Validator parameter keys
+can appear in a different order between processes.
+
 ### Missing slot (400)
 
 ```bash

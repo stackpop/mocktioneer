@@ -369,11 +369,12 @@ roll out a change.
 
 ## Logging Configuration
 
-The adapter tables above record logging metadata. On Cloudflare and Spin,
-`run_app` selects the runtime filter from `EDGEZERO__LOGGING__LEVEL` rather than
-those tables. Cloudflare reads a Worker binding; Spin reads its runtime
-environment. Valid values are case-insensitive `off`, `error`, `warn`, `info`,
-`debug` and `trace`; absent or invalid values resolve to Info.
+The adapter tables above record logging metadata. Axum, Cloudflare and Spin
+select their runtime filter from `EDGEZERO__LOGGING__LEVEL` rather than those
+tables. Axum reads the process environment; Cloudflare reads a Worker binding;
+Spin reads its component environment. Valid values are case-insensitive `off`,
+`error`, `warn`, `info`, `debug` and `trace`; absent or invalid values resolve to
+Info.
 
 Cloudflare installs a Workers console backend and Spin installs a stderr
 backend before application assembly. Both preserve Error/Warn boot diagnostics

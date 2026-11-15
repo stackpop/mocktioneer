@@ -207,13 +207,20 @@ Every PR must pass:
    CARGO_TARGET_WASM32_WASIP2_RUNNER="wasmtime run" cargo test -p mocktioneer-adapter-spin --features spin --target wasm32-wasip2 --test contract
    ```
 
-10. The non-default config push roundtrip from `test.yml`:
+10. The non-default config push roundtrip from `test.yml`, with local-safe temp
+    storage and cleanup. This overwrites and removes the local Axum snapshot;
+    use a disposable worktree or push your normal config afterward.
 
     ```sh
-    printf 'bid_cpm = 0.35\n' > "${RUNNER_TEMP}/seed.toml"
-    cargo run -p mocktioneer-cli -- config push --adapter axum --yes --app-config "${RUNNER_TEMP}/seed.toml"
-    got="$(jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' .edgezero/local-config-mocktioneer_config.json)"
-    test "$got" = "0.35"
+    (
+      set -eu
+      config_check_seed="$(mktemp "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/mocktioneer-seed.XXXXXX")"
+      trap 'rm -f "$config_check_seed" .edgezero/local-config-mocktioneer_config.json' EXIT
+      printf 'bid_cpm = 0.35\n' > "$config_check_seed"
+      cargo run -p mocktioneer-cli -- config push --adapter axum --yes --app-config "$config_check_seed"
+      got="$(jq -r '.mocktioneer_config | fromjson | .data.bid_cpm' .edgezero/local-config-mocktioneer_config.json)"
+      test "$got" = "0.35"
+    )
     ```
 
 Docker image is built and pushed to `ghcr.io/stackpop/mocktioneer` on push to

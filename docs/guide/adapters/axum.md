@@ -58,13 +58,22 @@ The Axum adapter uses:
 
 ### Logging
 
+The manifest table records logging metadata:
+
 ```toml
 [adapters.axum.logging]
 level = "info"
 echo_stdout = true
 ```
 
-Logs are written to stdout. Adjust `level` for more or less verbosity:
+Logs are written to stdout. The runtime filter comes from the process variable
+`EDGEZERO__LOGGING__LEVEL`; the manifest table does not set it:
+
+```bash
+EDGEZERO__LOGGING__LEVEL=warn cargo run -p mocktioneer-adapter-axum
+```
+
+Choose a runtime level for more or less verbosity:
 
 - `trace` - Most verbose
 - `debug` - Debug information
@@ -154,7 +163,7 @@ Standard Rust debugging works with the Axum adapter:
 RUST_BACKTRACE=1 cargo run -p mocktioneer-adapter-axum
 
 # With debug logging
-RUST_LOG=debug cargo run -p mocktioneer-adapter-axum
+EDGEZERO__LOGGING__LEVEL=debug cargo run -p mocktioneer-adapter-axum
 ```
 
 ## Performance Testing

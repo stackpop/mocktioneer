@@ -1100,3 +1100,72 @@ user’s explicit head-specific exception before merging.
 Fresh Fastly production run_app delivery also passes six HTTP checks under stock
 Viceroy 0.21.0: seeded auction, root, GIF, real empty 400/302 and OPTIONS204.
 No hosted or live Fastly runtime-filter override guarantee is claimed.
+
+## R17: remaining re-review corrections (2026-11-15)
+
+The current review accepted 16 prior threads and left two partial documentation
+fixes plus four nits. Continue the approved documentation/test-correction scope;
+no runtime behavior, dependency pin, timeout/cache policy or destination boundary
+changes are introduced. The shipping repin remains a separate merge gate.
+
+1. Record a fresh full baseline at 6f38c6e, using the matching Chrome/driver,
+   wasm-bindgen 0.2.128, Viceroy 0.21 and Wasmtime 48.0.2. These actual local
+   tools are available; do not substitute another runner version or Firefox.
+2. Prove the F5 count coverage gap with a scratch head-count body-guard mutant.
+   Correct the three negative response headers, assert the precise body-rejection
+   reason and keep the unrelated-header negative separate. Verify the old test
+   accepts the mutant, corrected test rejects it, and original module passes.
+3. Make CLAUDE gate 10 use a local-safe temporary seed and an isolated cleanup
+   trap matching CI snapshot removal. Document its local snapshot side effect.
+   Execute the exact snippet both without RUNNER_TEMP and with a CI-style temp
+   directory; keep the caller’s initial config files unchanged in the harness.
+4. Complete the auction/APS config scope sentence; describe validator 422 message
+   parameter order as illustrative; correct the Cloudflare browser comment;
+   document Axum process-environment logging in configuration, adapter overview
+   and Axum examples (including the stale RUST_LOG example).
+5. Verify logging in a disposable native fixture with baked manifest level error:
+   absent runtime variable still emits Info; runtime error suppresses Info.
+   Check seeded POST200/pricing in both fresh processes and stop them afterward.
+6. Run the full required suite at the final source; record exact commands,
+   exit codes and results. Do not turn optional target Clippy diagnostics or
+   earlier failed qualification attempts into passing claims. Inspect the
+   final diff, commit/push, reply in each of the six original threads and
+   request re-review at the non-draft pushed head. Only REVIEWER resolves them.
+
+Read-only CREATOR investigation separated public docs/logging from contract/CI
+recipes. The chosen changes keep manifest metadata while documenting the real
+runtime variable, qualify validator examples instead of changing runtime order,
+and test the existing comparator guard without changing production parsing.
+
+R17 executed verification: baseline and final full required suites both pass
+**205 Rust tests, 15 actual WASM contracts (6/5/4), 64 Node tests and 41
+Playwright tests**, plus locked fetch, fmt, strict native all-feature Clippy,
+feature compilation/native builds, docs install/lint/format/build, strict config
+validation and the CPM0.35 parsed-blob roundtrip. Exact local tools: Rust1.98.1,
+Node24.20.0, Chrome/driver156.0.8078.4, bindgen runner0.2.128, Viceroy0.21.0
+and Wasmtime48.0.2. No runner substitution or download was needed.
+
+The old focused count test accepts the deliberate scratch guard mutant (exit0);
+the corrected test rejects it (exit1, Missing expected exception); restored
+original comparator passes (exit0). Production comparator/corpus bytes are
+unchanged. The exact CLAUDE gate10 snippet passes without RUNNER_TEMP and with
+a CI-style temporary path containing spaces: both exit0/got0.35, seed and
+snapshot removed. A forced assertion failure exits1 and still cleans both.
+The harness restores the caller’s initial snapshot byte-for-byte.
+
+A separately compiled native fixture bakes manifest logging level error, verified
+through introspection. Two fresh servers return seeded auction200/CPM0.20:
+with no runtime variable, the handler Info marker appears; with runtime level
+error, it does not. Both owned servers stop and their port closes. This confirms
+the documentation correction without changing the logging implementation.
+
+CREATOR helpers separately investigated and checked docs/logging and the
+contract/recipe corrections. They reported no material final-diff issues and
+did not act as PRfection REVIEWER. Evidence indexes: baseline/final native
+results, baseline/final extra results, mutation-before/after-results.json,
+gate10-results.json and axum-logging-results.json, with full logs retained
+locally. Prior optional target Clippy failures and full wire/provider
+qualification at6f38c6e remain historical; they were not rerun or relabeled
+in this documentation/test-only revision. Dependency and runtime sources are
+unchanged. REVIEWER acceptance, destination admission and the shipping repin
+remain merge gates; the reported upstream4cbabfee head is not adopted blindly.
